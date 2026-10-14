@@ -1,0 +1,83 @@
+{
+  "ranAt": "2026-10-12T10:10:34.929Z",
+  "pages": 19,
+  "totalViolationNodes": 0,
+  "report": [
+    {
+      "path": "/login",
+      "violations": []
+    },
+    {
+      "path": "/",
+      "violations": []
+    },
+    {
+      "path": "/health",
+      "violations": []
+    },
+    {
+      "path": "/issues",
+      "violations": []
+    },
+    {
+      "path": "/issues/ISS-0001",
+      "violations": []
+    },
+    {
+      "path": "/tasks/board",
+      "violations": []
+    },
+    {
+      "path": "/tasks/list",
+      "violations": []
+    },
+    {
+      "path": "/tasks/TSK-0003",
+      "violations": []
+    },
+    {
+      "path": "/modules/technical",
+      "violations": []
+    },
+    {
+      "path": "/modules/performance",
+      "violations": []
+    },
+    {
+      "path": "/modules/ai-compliance",
+      "violations": []
+    },
+    {
+      "path": "/crawls",
+      "violations": []
+    },
+    {
+      "path": "/opportunities",
+      "violations": []
+    },
+    {
+      "path": "/opportunities/briefs/BRF-001",
+      "violations": []
+    },
+    {
+      "path": "/reports/daily",
+      "violations": []
+    },
+    {
+      "path": "/ai-compliance/rules",
+      "violations": []
+    },
+    {
+      "path": "/settings/thresholds",
+      "violations": []
+    },
+    {
+      "path": "/team/employees",
+      "violations": []
+    },
+    {
+      "path": "/notifications",
+      "violations": []
+    }
+  ]
+}

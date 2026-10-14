@@ -1,0 +1,32 @@
+{
+  "name": "deodap-seo-sentinel",
+  "private": true,
+  "version": "0.1.0",
+  "description": "DeoDap SEO Sentinel — daily SEO audit, recommendation and task-operations platform (internal).",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w @sentinel/web",
+    "dev:api": "npm run dev -w @sentinel/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "traceability": "tsx tools/traceability/generate.mjs",
+    "build:prod": "VITE_API_MODE=http npm run build -w @sentinel/web && npm run build -w @sentinel/api",
+    "start": "node apps/api/dist/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "overrides": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

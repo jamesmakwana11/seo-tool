@@ -1,0 +1,4101 @@
+{
+  "summary": {
+    "base": "http://localhost:4173",
+    "ranAt": "2026-10-14T09:09:54.143Z",
+    "visits": 504,
+    "routes": 56,
+    "roles": [
+      "admin",
+      "seo",
+      "developer"
+    ],
+    "widths": [
+      1440,
+      768,
+      390
+    ],
+    "failingVisits": 0,
+    "denied": [
+      "seo /team/roles",
+      "seo /system",
+      "seo /diagnostics",
+      "developer /team/roles",
+      "developer /opportunities",
+      "developer /opportunities/keywords",
+      "developer /opportunities/gaps",
+      "developer /opportunities/briefs",
+      "developer /opportunities/clusters",
+      "developer /opportunities/seasonal",
+      "developer /opportunities/link-building",
+      "developer /opportunities/mentions",
+      "developer /competitors",
+      "developer /ai-compliance/rules",
+      "developer /settings/notifications",
+      "developer /settings/integrations",
+      "developer /settings/thresholds",
+      "developer /settings/crawl",
+      "developer /audit",
+      "developer /opportunities/briefs/BRF-001"
+    ],
+    "interactions": [
+      {
+        "name": "one-tap allocation assigns the issue",
+        "ok": true
+      },
+      {
+        "name": "keyboard focus visible",
+        "ok": true,
+        "detail": {
+          "tag": "A",
+          "outline": "solid"
+        }
+      },
+      {
+        "name": "global search",
+        "ok": true
+      },
+      {
+        "name": "new website starts empty and isolated",
+        "ok": true
+      },
+      {
+        "name": "developer denied Roles page and nav hidden",
+        "ok": true
+      }
+    ]
+  },
+  "results": [
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/",
+      "h1": "Overview",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/health",
+      "h1": "SEO Health Score",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/search?q=schema",
+      "h1": "Search",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/notifications",
+      "h1": "Notifications",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/profile",
+      "h1": "Profile & account",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/technical",
+      "h1": "Technical SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/technical/crawlability",
+      "h1": "4.1 Crawlability & indexability",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/technical/responses",
+      "h1": "4.2 Response codes, redirects & links",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/technical/canonicals",
+      "h1": "4.3 Canonicals & duplication",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/technical/security",
+      "h1": "4.5 Security, mobile & rendering",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/technical/structured-data",
+      "h1": "4.6 Structured data",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/performance",
+      "h1": "Performance & CWV",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/content",
+      "h1": "Content",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/onpage",
+      "h1": "On-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/offpage",
+      "h1": "Off-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/offpage/backlinks",
+      "h1": "Backlink analysis",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/aeo",
+      "h1": "AEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/geo",
+      "h1": "GEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/ai-compliance",
+      "h1": "AI Content Compliance",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/modules/ai-visibility",
+      "h1": "AI visibility",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/crawls",
+      "h1": "Crawl Center",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/verification",
+      "h1": "Verification results",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/issues",
+      "h1": "Issues board",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/issues/groups",
+      "h1": "Template-level issues",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/issues/exclusions",
+      "h1": "Exclusions & false positives",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/websites",
+      "h1": "Websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/websites/overview",
+      "h1": "All websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/team/employees",
+      "h1": "Employees",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/team/roles",
+      "h1": "Roles & permissions",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/team/allocations",
+      "h1": "Allocation history",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/opportunities",
+      "h1": "Opportunities",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/opportunities/keywords",
+      "h1": "Keyword research",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/opportunities/gaps",
+      "h1": "Competitor keyword gaps",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/opportunities/briefs",
+      "h1": "Content briefs",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/opportunities/clusters",
+      "h1": "Topic clusters",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/opportunities/seasonal",
+      "h1": "Seasonal planner",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/opportunities/link-building",
+      "h1": "Link building & digital PR",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/opportunities/mentions",
+      "h1": "Unlinked brand mentions",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/competitors",
+      "h1": "Competitor view",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/reports/daily",
+      "h1": "Daily digest",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/reports/weekly",
+      "h1": "Weekly rollup",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/reports/monthly",
+      "h1": "Monthly executive report",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/reports/history",
+      "h1": "Report history & export",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/ai-compliance/rules",
+      "h1": "Custom rule builder",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/settings/notifications",
+      "h1": "Notifications & alerts",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/settings/integrations",
+      "h1": "Integrations",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/settings/thresholds",
+      "h1": "Thresholds & scoring",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/settings/crawl",
+      "h1": "Crawl configuration",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/audit",
+      "h1": "Audit log",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/system",
+      "h1": "System health",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/diagnostics",
+      "h1": "API diagnostics",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/issues/ISS-0001",
+      "h1": "Product schema price mismatch on 294 product pages",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/issues/ISS-0066",
+      "h1": "Buying guide with no first-hand experience signals",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/crawls/CRL-0034",
+      "h1": "Smart crawl CRL-0034",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/opportunities/briefs/BRF-001",
+      "h1": "Wholesale steel bottles in India: buyer guide",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 1440,
+      "path": "/no-such-page",
+      "h1": null,
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/",
+      "h1": "Overview",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/health",
+      "h1": "SEO Health Score",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/search?q=schema",
+      "h1": "Search",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/notifications",
+      "h1": "Notifications",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/profile",
+      "h1": "Profile & account",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/technical",
+      "h1": "Technical SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/technical/crawlability",
+      "h1": "4.1 Crawlability & indexability",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/technical/responses",
+      "h1": "4.2 Response codes, redirects & links",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/technical/canonicals",
+      "h1": "4.3 Canonicals & duplication",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/technical/security",
+      "h1": "4.5 Security, mobile & rendering",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/technical/structured-data",
+      "h1": "4.6 Structured data",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/performance",
+      "h1": "Performance & CWV",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/content",
+      "h1": "Content",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/onpage",
+      "h1": "On-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/offpage",
+      "h1": "Off-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/offpage/backlinks",
+      "h1": "Backlink analysis",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/aeo",
+      "h1": "AEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/geo",
+      "h1": "GEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/ai-compliance",
+      "h1": "AI Content Compliance",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/modules/ai-visibility",
+      "h1": "AI visibility",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/crawls",
+      "h1": "Crawl Center",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/verification",
+      "h1": "Verification results",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/issues",
+      "h1": "Issues board",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/issues/groups",
+      "h1": "Template-level issues",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/issues/exclusions",
+      "h1": "Exclusions & false positives",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/websites",
+      "h1": "Websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/websites/overview",
+      "h1": "All websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/team/employees",
+      "h1": "Employees",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/team/roles",
+      "h1": "Roles & permissions",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/team/allocations",
+      "h1": "Allocation history",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/opportunities",
+      "h1": "Opportunities",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/opportunities/keywords",
+      "h1": "Keyword research",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/opportunities/gaps",
+      "h1": "Competitor keyword gaps",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/opportunities/briefs",
+      "h1": "Content briefs",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/opportunities/clusters",
+      "h1": "Topic clusters",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/opportunities/seasonal",
+      "h1": "Seasonal planner",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/opportunities/link-building",
+      "h1": "Link building & digital PR",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/opportunities/mentions",
+      "h1": "Unlinked brand mentions",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/competitors",
+      "h1": "Competitor view",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/reports/daily",
+      "h1": "Daily digest",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/reports/weekly",
+      "h1": "Weekly rollup",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/reports/monthly",
+      "h1": "Monthly executive report",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/reports/history",
+      "h1": "Report history & export",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/ai-compliance/rules",
+      "h1": "Custom rule builder",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/settings/notifications",
+      "h1": "Notifications & alerts",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/settings/integrations",
+      "h1": "Integrations",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/settings/thresholds",
+      "h1": "Thresholds & scoring",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/settings/crawl",
+      "h1": "Crawl configuration",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/audit",
+      "h1": "Audit log",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/system",
+      "h1": "System health",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/diagnostics",
+      "h1": "API diagnostics",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/issues/ISS-0001",
+      "h1": "Product schema price mismatch on 294 product pages",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/issues/ISS-0066",
+      "h1": "Buying guide with no first-hand experience signals",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/crawls/CRL-0034",
+      "h1": "Smart crawl CRL-0034",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/opportunities/briefs/BRF-001",
+      "h1": "Wholesale steel bottles in India: buyer guide",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "path": "/no-such-page",
+      "h1": null,
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/",
+      "h1": "Overview",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/health",
+      "h1": "SEO Health Score",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/search?q=schema",
+      "h1": "Search",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/notifications",
+      "h1": "Notifications",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/profile",
+      "h1": "Profile & account",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/technical",
+      "h1": "Technical SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/technical/crawlability",
+      "h1": "4.1 Crawlability & indexability",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/technical/responses",
+      "h1": "4.2 Response codes, redirects & links",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/technical/canonicals",
+      "h1": "4.3 Canonicals & duplication",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/technical/security",
+      "h1": "4.5 Security, mobile & rendering",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/technical/structured-data",
+      "h1": "4.6 Structured data",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/performance",
+      "h1": "Performance & CWV",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/content",
+      "h1": "Content",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/onpage",
+      "h1": "On-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/offpage",
+      "h1": "Off-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/offpage/backlinks",
+      "h1": "Backlink analysis",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/aeo",
+      "h1": "AEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/geo",
+      "h1": "GEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/ai-compliance",
+      "h1": "AI Content Compliance",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/modules/ai-visibility",
+      "h1": "AI visibility",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/crawls",
+      "h1": "Crawl Center",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/verification",
+      "h1": "Verification results",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/issues",
+      "h1": "Issues board",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/issues/groups",
+      "h1": "Template-level issues",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/issues/exclusions",
+      "h1": "Exclusions & false positives",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/websites",
+      "h1": "Websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/websites/overview",
+      "h1": "All websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/team/employees",
+      "h1": "Employees",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/team/roles",
+      "h1": "Roles & permissions",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/team/allocations",
+      "h1": "Allocation history",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/opportunities",
+      "h1": "Opportunities",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/opportunities/keywords",
+      "h1": "Keyword research",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/opportunities/gaps",
+      "h1": "Competitor keyword gaps",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/opportunities/briefs",
+      "h1": "Content briefs",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/opportunities/clusters",
+      "h1": "Topic clusters",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/opportunities/seasonal",
+      "h1": "Seasonal planner",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/opportunities/link-building",
+      "h1": "Link building & digital PR",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/opportunities/mentions",
+      "h1": "Unlinked brand mentions",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/competitors",
+      "h1": "Competitor view",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/reports/daily",
+      "h1": "Daily digest",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/reports/weekly",
+      "h1": "Weekly rollup",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/reports/monthly",
+      "h1": "Monthly executive report",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/reports/history",
+      "h1": "Report history & export",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/ai-compliance/rules",
+      "h1": "Custom rule builder",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/settings/notifications",
+      "h1": "Notifications & alerts",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/settings/integrations",
+      "h1": "Integrations",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/settings/thresholds",
+      "h1": "Thresholds & scoring",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/settings/crawl",
+      "h1": "Crawl configuration",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/audit",
+      "h1": "Audit log",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/system",
+      "h1": "System health",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/diagnostics",
+      "h1": "API diagnostics",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/issues/ISS-0001",
+      "h1": "Product schema price mismatch on 294 product pages",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/issues/ISS-0066",
+      "h1": "Buying guide with no first-hand experience signals",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/crawls/CRL-0034",
+      "h1": "Smart crawl CRL-0034",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/opportunities/briefs/BRF-001",
+      "h1": "Wholesale steel bottles in India: buyer guide",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "path": "/no-such-page",
+      "h1": null,
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/",
+      "h1": "Overview",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/health",
+      "h1": "SEO Health Score",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/search?q=schema",
+      "h1": "Search",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/notifications",
+      "h1": "Notifications",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/profile",
+      "h1": "Profile & account",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/technical",
+      "h1": "Technical SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/technical/crawlability",
+      "h1": "4.1 Crawlability & indexability",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/technical/responses",
+      "h1": "4.2 Response codes, redirects & links",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/technical/canonicals",
+      "h1": "4.3 Canonicals & duplication",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/technical/security",
+      "h1": "4.5 Security, mobile & rendering",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/technical/structured-data",
+      "h1": "4.6 Structured data",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/performance",
+      "h1": "Performance & CWV",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/content",
+      "h1": "Content",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/onpage",
+      "h1": "On-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/offpage",
+      "h1": "Off-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/offpage/backlinks",
+      "h1": "Backlink analysis",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/aeo",
+      "h1": "AEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/geo",
+      "h1": "GEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/ai-compliance",
+      "h1": "AI Content Compliance",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/modules/ai-visibility",
+      "h1": "AI visibility",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/crawls",
+      "h1": "Crawl Center",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/verification",
+      "h1": "Verification results",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/issues",
+      "h1": "Issues board",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/issues/groups",
+      "h1": "Template-level issues",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/issues/exclusions",
+      "h1": "Exclusions & false positives",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/websites",
+      "h1": "Websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/websites/overview",
+      "h1": "All websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/team/employees",
+      "h1": "Employees",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/team/roles",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/team/allocations",
+      "h1": "Allocation history",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/opportunities",
+      "h1": "Opportunities",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/opportunities/keywords",
+      "h1": "Keyword research",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/opportunities/gaps",
+      "h1": "Competitor keyword gaps",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/opportunities/briefs",
+      "h1": "Content briefs",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/opportunities/clusters",
+      "h1": "Topic clusters",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/opportunities/seasonal",
+      "h1": "Seasonal planner",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/opportunities/link-building",
+      "h1": "Link building & digital PR",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/opportunities/mentions",
+      "h1": "Unlinked brand mentions",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/competitors",
+      "h1": "Competitor view",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/reports/daily",
+      "h1": "Daily digest",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/reports/weekly",
+      "h1": "Weekly rollup",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/reports/monthly",
+      "h1": "Monthly executive report",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/reports/history",
+      "h1": "Report history & export",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/ai-compliance/rules",
+      "h1": "Custom rule builder",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/settings/notifications",
+      "h1": "Notifications & alerts",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/settings/integrations",
+      "h1": "Integrations",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/settings/thresholds",
+      "h1": "Thresholds & scoring",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/settings/crawl",
+      "h1": "Crawl configuration",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/audit",
+      "h1": "Audit log",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/system",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/diagnostics",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/issues/ISS-0001",
+      "h1": "Product schema price mismatch on 294 product pages",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/issues/ISS-0066",
+      "h1": "Buying guide with no first-hand experience signals",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/crawls/CRL-0034",
+      "h1": "Smart crawl CRL-0034",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/opportunities/briefs/BRF-001",
+      "h1": "Wholesale steel bottles in India: buyer guide",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 1440,
+      "path": "/no-such-page",
+      "h1": null,
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/",
+      "h1": "Overview",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/health",
+      "h1": "SEO Health Score",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/search?q=schema",
+      "h1": "Search",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/notifications",
+      "h1": "Notifications",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/profile",
+      "h1": "Profile & account",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/technical",
+      "h1": "Technical SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/technical/crawlability",
+      "h1": "4.1 Crawlability & indexability",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/technical/responses",
+      "h1": "4.2 Response codes, redirects & links",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/technical/canonicals",
+      "h1": "4.3 Canonicals & duplication",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/technical/security",
+      "h1": "4.5 Security, mobile & rendering",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/technical/structured-data",
+      "h1": "4.6 Structured data",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/performance",
+      "h1": "Performance & CWV",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/content",
+      "h1": "Content",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/onpage",
+      "h1": "On-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/offpage",
+      "h1": "Off-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/offpage/backlinks",
+      "h1": "Backlink analysis",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/aeo",
+      "h1": "AEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/geo",
+      "h1": "GEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/ai-compliance",
+      "h1": "AI Content Compliance",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/modules/ai-visibility",
+      "h1": "AI visibility",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/crawls",
+      "h1": "Crawl Center",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/verification",
+      "h1": "Verification results",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/issues",
+      "h1": "Issues board",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/issues/groups",
+      "h1": "Template-level issues",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/issues/exclusions",
+      "h1": "Exclusions & false positives",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/websites",
+      "h1": "Websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/websites/overview",
+      "h1": "All websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/team/employees",
+      "h1": "Employees",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/team/roles",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/team/allocations",
+      "h1": "Allocation history",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/opportunities",
+      "h1": "Opportunities",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/opportunities/keywords",
+      "h1": "Keyword research",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/opportunities/gaps",
+      "h1": "Competitor keyword gaps",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/opportunities/briefs",
+      "h1": "Content briefs",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/opportunities/clusters",
+      "h1": "Topic clusters",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/opportunities/seasonal",
+      "h1": "Seasonal planner",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/opportunities/link-building",
+      "h1": "Link building & digital PR",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/opportunities/mentions",
+      "h1": "Unlinked brand mentions",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/competitors",
+      "h1": "Competitor view",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/reports/daily",
+      "h1": "Daily digest",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/reports/weekly",
+      "h1": "Weekly rollup",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/reports/monthly",
+      "h1": "Monthly executive report",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/reports/history",
+      "h1": "Report history & export",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/ai-compliance/rules",
+      "h1": "Custom rule builder",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/settings/notifications",
+      "h1": "Notifications & alerts",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/settings/integrations",
+      "h1": "Integrations",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/settings/thresholds",
+      "h1": "Thresholds & scoring",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/settings/crawl",
+      "h1": "Crawl configuration",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/audit",
+      "h1": "Audit log",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/system",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/diagnostics",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/issues/ISS-0001",
+      "h1": "Product schema price mismatch on 294 product pages",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/issues/ISS-0066",
+      "h1": "Buying guide with no first-hand experience signals",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/crawls/CRL-0034",
+      "h1": "Smart crawl CRL-0034",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/opportunities/briefs/BRF-001",
+      "h1": "Wholesale steel bottles in India: buyer guide",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 768,
+      "path": "/no-such-page",
+      "h1": null,
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/",
+      "h1": "Overview",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/health",
+      "h1": "SEO Health Score",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/search?q=schema",
+      "h1": "Search",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/notifications",
+      "h1": "Notifications",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/profile",
+      "h1": "Profile & account",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/technical",
+      "h1": "Technical SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/technical/crawlability",
+      "h1": "4.1 Crawlability & indexability",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/technical/responses",
+      "h1": "4.2 Response codes, redirects & links",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/technical/canonicals",
+      "h1": "4.3 Canonicals & duplication",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/technical/security",
+      "h1": "4.5 Security, mobile & rendering",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/technical/structured-data",
+      "h1": "4.6 Structured data",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/performance",
+      "h1": "Performance & CWV",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/content",
+      "h1": "Content",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/onpage",
+      "h1": "On-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/offpage",
+      "h1": "Off-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/offpage/backlinks",
+      "h1": "Backlink analysis",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/aeo",
+      "h1": "AEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/geo",
+      "h1": "GEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/ai-compliance",
+      "h1": "AI Content Compliance",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/modules/ai-visibility",
+      "h1": "AI visibility",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/crawls",
+      "h1": "Crawl Center",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/verification",
+      "h1": "Verification results",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/issues",
+      "h1": "Issues board",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/issues/groups",
+      "h1": "Template-level issues",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/issues/exclusions",
+      "h1": "Exclusions & false positives",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/websites",
+      "h1": "Websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/websites/overview",
+      "h1": "All websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/team/employees",
+      "h1": "Employees",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/team/roles",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/team/allocations",
+      "h1": "Allocation history",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/opportunities",
+      "h1": "Opportunities",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/opportunities/keywords",
+      "h1": "Keyword research",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/opportunities/gaps",
+      "h1": "Competitor keyword gaps",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/opportunities/briefs",
+      "h1": "Content briefs",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/opportunities/clusters",
+      "h1": "Topic clusters",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/opportunities/seasonal",
+      "h1": "Seasonal planner",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/opportunities/link-building",
+      "h1": "Link building & digital PR",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/opportunities/mentions",
+      "h1": "Unlinked brand mentions",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/competitors",
+      "h1": "Competitor view",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/reports/daily",
+      "h1": "Daily digest",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/reports/weekly",
+      "h1": "Weekly rollup",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/reports/monthly",
+      "h1": "Monthly executive report",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/reports/history",
+      "h1": "Report history & export",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/ai-compliance/rules",
+      "h1": "Custom rule builder",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/settings/notifications",
+      "h1": "Notifications & alerts",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/settings/integrations",
+      "h1": "Integrations",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/settings/thresholds",
+      "h1": "Thresholds & scoring",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/settings/crawl",
+      "h1": "Crawl configuration",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/audit",
+      "h1": "Audit log",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/system",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/diagnostics",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/issues/ISS-0001",
+      "h1": "Product schema price mismatch on 294 product pages",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/issues/ISS-0066",
+      "h1": "Buying guide with no first-hand experience signals",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/crawls/CRL-0034",
+      "h1": "Smart crawl CRL-0034",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/opportunities/briefs/BRF-001",
+      "h1": "Wholesale steel bottles in India: buyer guide",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "seo",
+      "width": 390,
+      "path": "/no-such-page",
+      "h1": null,
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/",
+      "h1": "Development overview",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/health",
+      "h1": "SEO Health Score",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/search?q=schema",
+      "h1": "Search",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/notifications",
+      "h1": "Notifications",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/profile",
+      "h1": "Profile & account",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/technical",
+      "h1": "Technical SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/technical/crawlability",
+      "h1": "4.1 Crawlability & indexability",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/technical/responses",
+      "h1": "4.2 Response codes, redirects & links",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/technical/canonicals",
+      "h1": "4.3 Canonicals & duplication",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/technical/security",
+      "h1": "4.5 Security, mobile & rendering",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/technical/structured-data",
+      "h1": "4.6 Structured data",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/performance",
+      "h1": "Performance & CWV",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/content",
+      "h1": "Content",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/onpage",
+      "h1": "On-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/offpage",
+      "h1": "Off-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/offpage/backlinks",
+      "h1": "Backlink analysis",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/aeo",
+      "h1": "AEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/geo",
+      "h1": "GEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/ai-compliance",
+      "h1": "AI Content Compliance",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/modules/ai-visibility",
+      "h1": "AI visibility",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/crawls",
+      "h1": "Crawl Center",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/verification",
+      "h1": "Verification results",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/issues",
+      "h1": "Issues board",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/issues/groups",
+      "h1": "Template-level issues",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/issues/exclusions",
+      "h1": "Exclusions & false positives",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/websites",
+      "h1": "Websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/websites/overview",
+      "h1": "All websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/team/employees",
+      "h1": "Employees",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/team/roles",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/team/allocations",
+      "h1": "Allocation history",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/opportunities",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/opportunities/keywords",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/opportunities/gaps",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/opportunities/briefs",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/opportunities/clusters",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/opportunities/seasonal",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/opportunities/link-building",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/opportunities/mentions",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/competitors",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/reports/daily",
+      "h1": "Daily digest",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/reports/weekly",
+      "h1": "Weekly rollup",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/reports/monthly",
+      "h1": "Monthly executive report",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/reports/history",
+      "h1": "Report history & export",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/ai-compliance/rules",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/settings/notifications",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/settings/integrations",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/settings/thresholds",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/settings/crawl",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/audit",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/system",
+      "h1": "System health",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/diagnostics",
+      "h1": "API diagnostics",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/issues/ISS-0001",
+      "h1": "Product schema price mismatch on 294 product pages",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/issues/ISS-0066",
+      "h1": "Buying guide with no first-hand experience signals",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/crawls/CRL-0034",
+      "h1": "Smart crawl CRL-0034",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/opportunities/briefs/BRF-001",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 1440,
+      "path": "/no-such-page",
+      "h1": null,
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/",
+      "h1": "Development overview",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/health",
+      "h1": "SEO Health Score",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/search?q=schema",
+      "h1": "Search",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/notifications",
+      "h1": "Notifications",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/profile",
+      "h1": "Profile & account",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/technical",
+      "h1": "Technical SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/technical/crawlability",
+      "h1": "4.1 Crawlability & indexability",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/technical/responses",
+      "h1": "4.2 Response codes, redirects & links",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/technical/canonicals",
+      "h1": "4.3 Canonicals & duplication",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/technical/security",
+      "h1": "4.5 Security, mobile & rendering",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/technical/structured-data",
+      "h1": "4.6 Structured data",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/performance",
+      "h1": "Performance & CWV",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/content",
+      "h1": "Content",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/onpage",
+      "h1": "On-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/offpage",
+      "h1": "Off-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/offpage/backlinks",
+      "h1": "Backlink analysis",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/aeo",
+      "h1": "AEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/geo",
+      "h1": "GEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/ai-compliance",
+      "h1": "AI Content Compliance",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/modules/ai-visibility",
+      "h1": "AI visibility",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/crawls",
+      "h1": "Crawl Center",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/verification",
+      "h1": "Verification results",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/issues",
+      "h1": "Issues board",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/issues/groups",
+      "h1": "Template-level issues",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/issues/exclusions",
+      "h1": "Exclusions & false positives",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/websites",
+      "h1": "Websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/websites/overview",
+      "h1": "All websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/team/employees",
+      "h1": "Employees",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/team/roles",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/team/allocations",
+      "h1": "Allocation history",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/opportunities",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/opportunities/keywords",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/opportunities/gaps",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/opportunities/briefs",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/opportunities/clusters",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/opportunities/seasonal",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/opportunities/link-building",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/opportunities/mentions",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/competitors",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/reports/daily",
+      "h1": "Daily digest",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/reports/weekly",
+      "h1": "Weekly rollup",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/reports/monthly",
+      "h1": "Monthly executive report",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/reports/history",
+      "h1": "Report history & export",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/ai-compliance/rules",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/settings/notifications",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/settings/integrations",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/settings/thresholds",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/settings/crawl",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/audit",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/system",
+      "h1": "System health",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/diagnostics",
+      "h1": "API diagnostics",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/issues/ISS-0001",
+      "h1": "Product schema price mismatch on 294 product pages",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/issues/ISS-0066",
+      "h1": "Buying guide with no first-hand experience signals",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/crawls/CRL-0034",
+      "h1": "Smart crawl CRL-0034",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/opportunities/briefs/BRF-001",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 768,
+      "path": "/no-such-page",
+      "h1": null,
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/",
+      "h1": "Development overview",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/health",
+      "h1": "SEO Health Score",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/search?q=schema",
+      "h1": "Search",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/notifications",
+      "h1": "Notifications",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/profile",
+      "h1": "Profile & account",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/technical",
+      "h1": "Technical SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/technical/crawlability",
+      "h1": "4.1 Crawlability & indexability",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/technical/responses",
+      "h1": "4.2 Response codes, redirects & links",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/technical/canonicals",
+      "h1": "4.3 Canonicals & duplication",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/technical/security",
+      "h1": "4.5 Security, mobile & rendering",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/technical/structured-data",
+      "h1": "4.6 Structured data",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/performance",
+      "h1": "Performance & CWV",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/content",
+      "h1": "Content",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/onpage",
+      "h1": "On-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/offpage",
+      "h1": "Off-Page SEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/offpage/backlinks",
+      "h1": "Backlink analysis",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/aeo",
+      "h1": "AEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/geo",
+      "h1": "GEO",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/ai-compliance",
+      "h1": "AI Content Compliance",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/modules/ai-visibility",
+      "h1": "AI visibility",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/crawls",
+      "h1": "Crawl Center",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/verification",
+      "h1": "Verification results",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/issues",
+      "h1": "Issues board",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/issues/groups",
+      "h1": "Template-level issues",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/issues/exclusions",
+      "h1": "Exclusions & false positives",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/websites",
+      "h1": "Websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/websites/overview",
+      "h1": "All websites",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/team/employees",
+      "h1": "Employees",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/team/roles",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/team/allocations",
+      "h1": "Allocation history",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/opportunities",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/opportunities/keywords",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/opportunities/gaps",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/opportunities/briefs",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/opportunities/clusters",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/opportunities/seasonal",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/opportunities/link-building",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/opportunities/mentions",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/competitors",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/reports/daily",
+      "h1": "Daily digest",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/reports/weekly",
+      "h1": "Weekly rollup",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/reports/monthly",
+      "h1": "Monthly executive report",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/reports/history",
+      "h1": "Report history & export",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/ai-compliance/rules",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/settings/notifications",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/settings/integrations",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/settings/thresholds",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/settings/crawl",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/audit",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/system",
+      "h1": "System health",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/diagnostics",
+      "h1": "API diagnostics",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/issues/ISS-0001",
+      "h1": "Product schema price mismatch on 294 product pages",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/issues/ISS-0066",
+      "h1": "Buying guide with no first-hand experience signals",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/crawls/CRL-0034",
+      "h1": "Smart crawl CRL-0034",
+      "denied": false,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/opportunities/briefs/BRF-001",
+      "h1": null,
+      "denied": true,
+      "problems": []
+    },
+    {
+      "role": "developer",
+      "width": 390,
+      "path": "/no-such-page",
+      "h1": null,
+      "denied": false,
+      "problems": []
+    }
+  ]
+}

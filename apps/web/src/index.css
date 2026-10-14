@@ -1,0 +1,157 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  html {
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-canvas font-sans text-[14px] text-ink;
+  }
+  ::selection {
+    background: rgba(118, 80, 216, 0.18);
+  }
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 2px solid #7650d8;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  input,
+  select,
+  textarea {
+    color-scheme: light;
+  }
+  /* Thin, low-contrast scrollbars that stay out of the way on dark surfaces. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #dcd7e8 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #dcd7e8;
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Diagonal hatching marks sample / simulated data so it can't be mistaken for a status colour. */
+  .demo-hatch {
+    background-color: #fef3c7;
+    background-image: repeating-linear-gradient(135deg, rgba(180, 83, 9, 0.07) 0 6px, transparent 6px 12px);
+  }
+  /* Motion answers an action: a page settles in, a popover opens from its trigger. */
+  .anim-page {
+    animation: page-in 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  .anim-pop {
+    animation: pop-in 0.14s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    transform-origin: top;
+  }
+  .anim-slide-in {
+    animation: slide-in 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  /* Smooth group expansion in the sidebar (grid-rows 0fr → 1fr). */
+  .nav-group {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.18s ease;
+  }
+  .nav-group[data-open='true'] {
+    grid-template-rows: 1fr;
+  }
+  /* Folded links leave the tab order and the accessibility tree once the fold finishes. */
+  .nav-group[data-open='false'] > ul {
+    visibility: hidden;
+    transition: visibility 0s 0.18s;
+  }
+  /* SEO module performance row. Phone: name + score, bar, issue counts on separate lines.
+     From 640px: name and counts on the left, a shared-width bar in the middle, score on the right, so bars line up. */
+  .module-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'name score' 'bar bar' 'meta meta';
+    column-gap: 0.75rem;
+    row-gap: 0.5rem;
+    align-items: center;
+  }
+  @media (min-width: 640px) {
+    .module-row {
+      grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) 6rem;
+      grid-template-areas: 'name bar score' 'meta bar score';
+      column-gap: 1.25rem;
+      row-gap: 0.2rem;
+    }
+  }
+  /* Loading skeleton: a soft lavender shimmer instead of a blinking block. */
+  .skeleton {
+    background: linear-gradient(90deg, #f3effb 0%, #f3effb 35%, #ebe4f9 50%, #f3effb 65%, #f3effb 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+  .bar-grow {
+    transform-origin: left;
+    animation: bar-grow 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  /* Activity rail: a hairline connects consecutive events. */
+  .rail-timeline .rail-item {
+    position: relative;
+  }
+  .rail-timeline > .rail-item:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 21.5px;
+    top: 38px;
+    bottom: -8px;
+    width: 1px;
+    background: #eae6f2;
+  }
+  .sidebar-scroll {
+    scrollbar-color: transparent transparent;
+  }
+  .sidebar-scroll:hover {
+    scrollbar-color: #dcd7e8 transparent;
+  }
+}
+
+@keyframes shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+@keyframes bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-in {
+  from { transform: translateX(-16px); opacity: 0.6; }
+  to { transform: none; opacity: 1; }
+}
