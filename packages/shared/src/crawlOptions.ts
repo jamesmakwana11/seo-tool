@@ -78,6 +78,15 @@ export function crawlOptionErrors(input: Partial<Record<CrawlOptionField, unknow
     else if ((v as number) < CRAWL_LIMITS.requestDelayMs.min || (v as number) > CRAWL_LIMITS.requestDelayMs.max) errs.requestDelayMs = `Delay between requests must be between 0 and ${fmt(CRAWL_LIMITS.requestDelayMs.max)} ms.`;
   }
   num('concurrency', CRAWL_LIMITS.concurrency.min, CRAWL_LIMITS.concurrency.max, 'Concurrency');
+  if (input.excludePatterns !== undefined && input.excludePatterns !== null) {
+    const v = input.excludePatterns;
+    if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) errs.excludePatterns = 'Exclusions must be a list of URL paths.';
+    else if (v.length > 50) errs.excludePatterns = 'Use at most 50 exclusion patterns.';
+    else {
+      const bad = (v as string[]).map((x) => x.trim()).filter((x) => x && (!x.startsWith('/') || x.length > 300 || /\s/.test(x)));
+      if (bad.length) errs.excludePatterns = `Each exclusion is a URL path starting with "/" (no spaces), e.g. /blogs/*/tagged/* — check: ${bad.slice(0, 3).join(', ')}`;
+    }
+  }
   return errs;
 }
 
@@ -91,6 +100,8 @@ export function validateCrawlOptions(input: unknown, siteUrl: string, maxPagesCa
   u.hash = '';
   const out: CrawlOptions = { startUrl: u.toString(), maxPages: o.maxPages as number | null, maxDepth: o.maxDepth as number | null, timeoutMs: o.timeoutMs as number, concurrency: o.concurrency as number };
   if (typeof o.requestDelayMs === 'number') out.requestDelayMs = o.requestDelayMs;
+  const ex = Array.isArray(o.excludePatterns) ? (o.excludePatterns as string[]).map((x) => x.trim()).filter(Boolean) : [];
+  if (ex.length) out.excludePatterns = [...new Set(ex)];
   return out;
 }
 
@@ -132,6 +143,12 @@ const CSV_COLUMNS: { header: string; value: (u: CrawledUrl) => unknown }[] = [
   { header: 'issue_count', value: (u) => u.issues?.length },
   { header: 'issues', value: (u) => u.issues?.map((i) => `${i.id} ${i.checkId} [${i.severity}] ${i.title}`).join(' | ') },
   { header: 'error', value: (u) => u.error },
+  { header: 'crawl_state', value: (u) => u.crawlState },
+  { header: 'exclusion_reason', value: (u) => u.exclusionReason },
+  { header: 'discovered_via', value: (u) => u.foundVia?.join(' ') },
+  { header: 'found_on', value: (u) => u.foundOn },
+  { header: 'inlinks', value: (u) => u.inlinks },
+  { header: 'template', value: (u) => u.template },
 ];
 
 /** One CSV cell. Values that a spreadsheet would run as a formula (=, +, -, @, tab, CR) are prefixed with a quote. */
@@ -140,6 +157,16 @@ function csvCell(v: unknown): string {
   let s = String(v);
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** CSV header line (CRLF-terminated) — for exports written in chunks. */
+export function crawlCsvHeader(): string {
+  return `${CSV_COLUMNS.map((c) => c.header).join(',')}\r\n`;
+}
+
+/** One CSV row (CRLF-terminated). */
+export function crawlCsvRow(u: CrawledUrl): string {
+  return `${CSV_COLUMNS.map((c) => csvCell(c.value(u))).join(',')}\r\n`;
 }
 
 export function crawlResultsCsv(d: CrawlDetail): string {

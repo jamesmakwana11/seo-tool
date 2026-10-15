@@ -2,7 +2,7 @@ import type { Evidence, PageTemplate } from '@sentinel/shared';
 import { wordCount } from '@sentinel/shared';
 import type { Finding } from '../services/ports';
 import type { LinkStatus, ParsedPage, SiteContext } from '../crawler/types';
-import { normalizeUrl, pathOf, sameUrl, urlKey } from '../crawler/url';
+import { normalizeUrl, pathOf, sameUrl, scopedProductCanonical, urlKey } from '../crawler/url';
 
 export type Ev = Omit<Evidence, 'id' | 'capturedAt' | 'source'>;
 
@@ -51,6 +51,53 @@ export interface Prepared {
   inlinks: Map<string, string[]>;
   /** Same lists keyed by urlKey (trailing-slash-insensitive): the first list per key, for inlinksOf's fallback. */
   inlinksByKey?: Map<string, string[]>;
+  /**
+   * Whole-crawl view for streaming analysis (Go crawler): page-level analyzers run over batches of pages, so anything
+   * that compares pages with each other (duplicates, inlinks, link status, template boilerplate) comes from here.
+   * Absent for the in-memory (Node crawler) analysis, where every page is in `all`.
+   */
+  global?: GlobalView;
+}
+
+/**
+ * Cross-page facts computed once over the whole crawl (Node index of every page + the Rust text core), used when pages
+ * are analysed in batches. Every member is optional: analyzers fall back to computing from the pages they were given.
+ */
+export interface GlobalView {
+  /** Status of any crawled URL or checked link target in the whole crawl. */
+  statusOf?: (url: string) => StatusInfo | undefined;
+  /** Internal pages linking to a URL (distinct source pages, whole crawl). */
+  inlinkCount: (url: string) => number;
+  /** Up to 10 of those source pages. */
+  inlinkSamples: (url: string) => string[];
+  /** Template boilerplate blocks (blocks on ≥50% and ≥3 of a template's pages). */
+  boilerplate?: Map<PageTemplate, Set<string>>;
+  /** Unique words per page (text core) — the batch Prepared recomputes it from uniqueText instead. */
+  uniqueWordsOf?: (url: string) => number | undefined;
+  /** Unique text kept for a few pages (duplicate-cluster evidence). */
+  uniqueTextOf?: (url: string) => string | undefined;
+  /** URL → every URL sharing its title / meta description / single H1 (ONP-TITLE / ONP-META / ONP-H1 rules). */
+  titleDups?: Map<string, string[]>;
+  metaDups?: Map<string, string[]>;
+  h1Dups?: Map<string, string[]>;
+  /** Per-template duplicate groups as TECH-DUPLICATE builds them (brand-stripped title, raw meta, first H1). */
+  dupGroups?: { title: string[][]; meta: string[][]; h1: string[][] };
+  /** Pages in a ≥85% near-duplicate cluster among CONT-QUALITY candidates. */
+  qualityDupUrls?: Set<string>;
+  /** AIC-06: how many pages of the whole crawl carry this review text (normalised as reviewBodies() does), with a sample. */
+  reviewShare?: (body: string) => { pages: number; urls: string[] } | undefined;
+  /** Crawl-budget samples (filtered / sorted URLs) of the whole crawl — ONP-TPL-COLLECTION checks them per collection. */
+  budgetSamples?: ParsedPage[];
+  /** ONP-TPL-COLLECTION: collection URL → another collection with an identical description. */
+  collectionDescDup?: Map<string, string>;
+  /**
+   * Near-duplicate clusters from the text core, as URLs, per template (exact Jaccard of 4-word shingles verified).
+   * 'asWritten' compares the unique copy; 'h1Masked' the unique copy with the page's own H1 replaced by a placeholder;
+   * 'descMasked' the description (or, without one, the page's own blocks) with the H1 masked (AIC-01).
+   */
+  near?: (variant: 'asWritten' | 'h1Masked' | 'descMasked', threshold: 0.9 | 0.85 | 0.8 | 0.75) => string[][];
+  /** Why near-duplicate data is missing (text core failed or disabled). */
+  nearUnavailable?: string;
 }
 
 export const TEMPLATE_NOUN: Record<PageTemplate, [string, string]> = {
@@ -91,7 +138,7 @@ export function isSelfCanonical(p: ParsedPage): boolean {
   return !c || sameUrl(c, p.url);
 }
 
-export function prepare(pages: ParsedPage[], ctx: SiteContext): Prepared {
+export function prepare(pages: ParsedPage[], ctx: SiteContext, global?: GlobalView): Prepared {
   const requested = pages.filter((p) => !p.skippedByRobots && !p.derivedFrom);
   const ok = pages.filter((p) => !p.skippedByRobots && !p.budgetSample && !p.paginated && !p.scopedSample && p.status === 200 && p.chain.length === 0 && !!p.html);
   const indexable = ok.filter((p) => !isNoindex(p).noindex && isSelfCanonical(p));
@@ -120,12 +167,12 @@ export function prepare(pages: ParsedPage[], ctx: SiteContext): Prepared {
     return v;
   };
   const statusCache = new Map<string, StatusInfo | undefined>();
-  const statusOf = (url: string): StatusInfo | undefined => {
+  const statusOf = global?.statusOf ?? ((url: string): StatusInfo | undefined => {
     if (statusCache.has(url)) return statusCache.get(url);
     const s = statusOfUncached(url);
     statusCache.set(url, s);
     return s;
-  };
+  });
   const statusOfUncached = (url: string): StatusInfo | undefined => {
     const k = norm(url);
     const p = pageIndex.get(k) ?? pageKeyIndex.get(urlKey(url));
@@ -142,8 +189,8 @@ export function prepare(pages: ParsedPage[], ctx: SiteContext): Prepared {
   };
 
   // Template boilerplate: blocks appearing on ≥50% (and ≥3) of a template's pages.
-  const boiler = new Map<PageTemplate, Set<string>>();
-  for (const [t, list] of byTemplate) {
+  const boiler = global?.boilerplate ?? new Map<PageTemplate, Set<string>>();
+  for (const [t, list] of global?.boilerplate ? [] : byTemplate) {
     if (list.length < 3) continue;
     const freq = new Map<string, number>();
     for (const p of list) for (const b of new Set(p.html!.ownBlocks)) freq.set(b, (freq.get(b) ?? 0) + 1);
@@ -153,6 +200,7 @@ export function prepare(pages: ParsedPage[], ctx: SiteContext): Prepared {
   const uniqCache = new Map<ParsedPage, string>();
   const uniqueText = (p: ParsedPage) => {
     if (!p.html) return '';
+    if (global?.uniqueTextOf) return global.uniqueTextOf(p.url) ?? '';
     const hit = uniqCache.get(p);
     if (hit !== undefined) return hit;
     const b = boiler.get(p.template);
@@ -168,15 +216,19 @@ export function prepare(pages: ParsedPage[], ctx: SiteContext): Prepared {
     if (v === undefined) { v = urlKey(u); keyCache.set(u, v); }
     return v;
   };
-  for (const p of ok) {
+  for (const p of global ? [] : ok) {
     const self = urlKey(p.url);
     const seen = new Set<string>();
     for (const raw of p.html!.internalLinks) {
-      const l = norm(raw);
-      if (seen.has(l)) continue;
-      seen.add(l);
-      if (keyOf(l) === self) continue;
-      { const list = inlinks.get(l); if (list) list.push(p.url); else inlinks.set(l, [p.url]); }
+      const l0 = norm(raw);
+      // A collection-scoped product link also links the canonical product page.
+      const sc = scopedProductCanonical(l0);
+      for (const l of sc ? [l0, norm(sc)] : [l0]) {
+        if (seen.has(l)) continue;
+        seen.add(l);
+        if (keyOf(l) === self) continue;
+        { const list = inlinks.get(l); if (list) list.push(p.url); else inlinks.set(l, [p.url]); }
+      }
     }
   }
   const inlinksByKey = new Map<string, string[]>();
@@ -187,6 +239,8 @@ export function prepare(pages: ParsedPage[], ctx: SiteContext): Prepared {
   return {
     ctx, all: pages, requested, ok, indexable, content, budgetSamples, byTemplate, statusOf, uniqueText,
     uniqueWords: (p) => {
+      const g = global?.uniqueWordsOf?.(p.url);
+      if (g !== undefined) return g;
       let n = wordsCache.get(p);
       if (n === undefined) { n = wordCount(uniqueText(p)); wordsCache.set(p, n); }
       return n;
@@ -194,7 +248,20 @@ export function prepare(pages: ParsedPage[], ctx: SiteContext): Prepared {
     boilerplateKnown: (t) => boiler.has(t),
     inlinks,
     inlinksByKey,
+    global,
   };
+}
+
+/** Number of internal pages linking to the URL (whole crawl when analysing in batches). */
+export function inlinkCount(prep: Prepared, url: string): number {
+  if (prep.global) return prep.global.inlinkCount(url);
+  return inlinksOf(prep, url).length;
+}
+
+/** Up to `n` internal pages linking to the URL. */
+export function inlinkSample(prep: Prepared, url: string, n: number): string[] {
+  if (prep.global) return prep.global.inlinkSamples(url).slice(0, n);
+  return inlinksOf(prep, url).slice(0, n);
 }
 
 export function inlinksOf(prep: Prepared, url: string): string[] {
@@ -241,10 +308,31 @@ export interface AggregateOpts {
 
 const uniq = <T>(a: T[]) => [...new Set(a)];
 
+/**
+ * Batch analysis: while set, every finding built by aggregate() is reported with the options it was built from, so
+ * findings of the same check from several page batches can be merged into one (titles, counts and template-wide
+ * detection recomputed over the whole crawl). Analyzers are synchronous, so a module-level hook is safe.
+ */
+let aggregateSink: ((f: Finding | undefined, o: AggregateOpts) => void) | undefined;
+
+/** `sink` also hears about aggregations that found nothing (f undefined): their pages still count as examined. */
+export function withAggregateSink<T>(sink: (f: Finding | undefined, o: AggregateOpts) => void, run: () => T): T {
+  const prev = aggregateSink;
+  aggregateSink = sink;
+  try {
+    return run();
+  } finally {
+    aggregateSink = prev;
+  }
+}
+
 /** One finding per check per template aggregating several sub-problems. Returns undefined if nothing failed. */
 export function aggregate(o: AggregateOpts): Finding | undefined {
   const problems = o.problems.filter((p) => p.urls.length);
-  if (!problems.length) return undefined;
+  if (!problems.length) {
+    aggregateSink?.(undefined, o);
+    return undefined;
+  }
   const urls = uniq(problems.flatMap((p) => p.urls));
   const n = urls.length;
   const nn = noun(o.template, n);
@@ -268,7 +356,7 @@ export function aggregate(o: AggregateOpts): Finding | undefined {
   ]
     .filter(Boolean)
     .join('\n');
-  return {
+  const f: Finding = {
     checkId: o.checkId,
     template: o.template,
     key: `${o.checkId}::${o.template ?? 'site'}${o.keySuffix ? `::${o.keySuffix}` : ''}`,
@@ -279,6 +367,8 @@ export function aggregate(o: AggregateOpts): Finding | undefined {
     severityContext: { ...(templateWide ? { templateWide: true } : {}), ...(o.severityContext ?? {}) },
     evidence,
   };
+  aggregateSink?.(f, o);
+  return f;
 }
 
 /** Evidence items kept per problem while collecting (aggregate() shows at most 15 per finding). */

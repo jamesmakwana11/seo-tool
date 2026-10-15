@@ -22,8 +22,8 @@ export function analyzeTitle(prep: Prepared): AnalyzerResult {
   const t = prep.ctx.thresholds;
   const brand = prep.ctx.config.site.brand || 'DeoDap';
   const pages = pagesForMeta(prep);
-  const dups = new Map<string, string[]>();
-  for (const g of duplicateGroups(pages, (p) => p.html!.title?.toLowerCase().trim() || undefined)) for (const u of g) dups.set(u, g);
+  const dups = prep.global?.titleDups ?? new Map<string, string[]>();
+  if (!prep.global?.titleDups) for (const g of duplicateGroups(pages, (p) => p.html!.title?.toLowerCase().trim() || undefined)) for (const u of g) dups.set(u, g);
   return perTemplate(prep, pages, 'ONP-TITLE', 'title-tag defects', (p) => {
     const title = p.html!.title;
     const out: { label: string; evidence?: Ev[] }[] = [];
@@ -43,8 +43,8 @@ export function analyzeTitle(prep: Prepared): AnalyzerResult {
 export function analyzeMeta(prep: Prepared): AnalyzerResult {
   const t = prep.ctx.thresholds;
   const pages = pagesForMeta(prep);
-  const dups = new Map<string, string[]>();
-  for (const g of duplicateGroups(pages, (p) => p.html!.metaDescription?.toLowerCase().trim() || undefined)) for (const u of g) dups.set(u, g);
+  const dups = prep.global?.metaDups ?? new Map<string, string[]>();
+  if (!prep.global?.metaDups) for (const g of duplicateGroups(pages, (p) => p.html!.metaDescription?.toLowerCase().trim() || undefined)) for (const u of g) dups.set(u, g);
   return perTemplate(prep, pages, 'ONP-META', 'meta-description defects', (p) => {
     const m = p.html!.metaDescription;
     if (!m) return [{ label: 'missing a meta description', evidence: [htmlEv(p.url, 'meta description', p.html!.metaDescriptionCount ? '<meta name="description" content=""> (empty)' : '(no <meta name="description">)')] }];
@@ -65,8 +65,8 @@ export const tokens = (s: string) => (s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?
 
 export function analyzeH1(prep: Prepared): AnalyzerResult {
   const pages = pagesForMeta(prep);
-  const dups = new Map<string, string[]>();
-  for (const g of duplicateGroups(pages.filter((p) => p.template !== 'home'), (p) => (p.html!.h1s.length === 1 ? p.html!.h1s[0].toLowerCase() : undefined))) for (const u of g) dups.set(u, g);
+  const dups = prep.global?.h1Dups ?? new Map<string, string[]>();
+  if (!prep.global?.h1Dups) for (const g of duplicateGroups(pages.filter((p) => p.template !== 'home'), (p) => (p.html!.h1s.length === 1 ? p.html!.h1s[0].toLowerCase() : undefined))) for (const u of g) dups.set(u, g);
   return perTemplate(prep, pages, 'ONP-H1', 'H1 defects', (p) => {
     const h1s = p.html!.h1s.filter((x) => x.trim());
     if (!h1s.length) return [{ label: 'missing an H1', evidence: [htmlEv(p.url, 'H1', p.html!.h1s.length ? '<h1></h1> (empty)' : '(no <h1> on page)')] }];
@@ -233,11 +233,12 @@ export function analyzeTplCollection(prep: Prepared): AnalyzerResult {
     const h = p.html!;
     const words = wordCount(descs.get(p.url) ?? '');
     const sameDesc = byDesc.get(descs.get(p.url) ?? '');
-    const dupUrl = sameDesc?.find((u) => u !== p.url);
+    // Batch analysis: identical descriptions across the whole crawl come from the text core.
+    const dupUrl = prep.global?.collectionDescDup ? prep.global.collectionDescDup.get(p.url) : sameDesc?.find((u) => u !== p.url);
     const dupOf = dupUrl !== undefined ? [dupUrl] : undefined;
     const handleWords = tokens((collectionHandle(p.url) ?? '').replace(/-/g, ' '));
     const h1 = (h.h1s[0] ?? '').toLowerCase();
-    const filtered = prep.budgetSamples.filter((s) => collectionHandle(s.url) === collectionHandle(p.url) && s.status === 200 && s.html);
+    const filtered = (prep.global?.budgetSamples ?? prep.budgetSamples).filter((s) => collectionHandle(s.url) === collectionHandle(p.url) && s.status === 200 && s.html);
     const filteredOk = filtered.filter((s) => (s.html!.canonicals[0] && !sameUrl(s.html!.canonicals[0], s.url)) || isNoindex(s).noindex);
     const subLinks = h.links.filter((l) => l.internal && l.inMain && /^\/collections\/[^/]+\/?$/.test(pathOf(l.url)) && collectionHandle(l.url) !== collectionHandle(p.url));
     const productLinks = h.links.filter((l) => l.internal && l.inMain && /\/products\//.test(pathOf(l.url)));

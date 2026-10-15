@@ -127,7 +127,9 @@ export type Permission =
   | 'notifications.configure'
   | 'audit.view'
   | 'system.view'
-  | 'diagnostics.view';
+  | 'diagnostics.view'
+  | 'shopify.edit'
+  | 'shopify.theme';
 
 export type PermissionMatrix = Record<Role, Permission[]>;
 
@@ -597,8 +599,73 @@ export interface CrawlRun {
   resolvedStartUrl?: string;
   /** The address that was entered, when it redirected. */
   resolvedFrom?: string;
-  /** What a running crawl is doing now: fetching pages, analysing them, or saving results and issues. */
-  phase?: 'crawling' | 'analysing' | 'saving';
+  /** What a running crawl is doing now. */
+  phase?: CrawlPhase;
+  /** Which crawler ran: the Go production crawler, or the built-in Node crawler (re-verification, tests). */
+  engine?: 'go' | 'node';
+  /** How the crawl ended — distinct from `status` (lifecycle). Only 'completed' means every eligible URL was fetched. */
+  outcome?: CrawlOutcomeState;
+  outcomeReason?: string;
+  /** Live and final URL accounting (see CrawlCoverageCounts). */
+  coverage?: CrawlCoverageCounts;
+  /** Memory of every process working on the crawl (MB): API (Node.js), Go crawler, Rust text core. */
+  memory?: CrawlMemory;
+  /** Milliseconds per phase (robots, sitemaps, crawl, checks, text analysis, analysis, saving). */
+  timings?: Record<string, number>;
+  /** Page rows stored for this run (the Pages table pages through them on the server). */
+  urlCount?: number;
+  /** Smart crawl: what was prioritised and what was not audited. */
+  smart?: { budget: number; prioritized: number; notAudited: number; basis: string[] };
+  /** Last diagnostics from the crawler (rate limiting, stalls, unavailable sitemap, text core problems). */
+  warnings?: { code: string; message: string; at: ISODate }[];
+  /** Duplicate-content analysis (Rust text core) ran for this crawl. */
+  textCore?: { ok: boolean; error?: string };
+}
+
+export type CrawlPhase =
+  | 'preflight' | 'robots' | 'sitemaps' | 'crawling' | 'crawling_sitemap_only' | 'samples' | 'checks' | 'finalizing' | 'text_analysis' | 'analysing' | 'saving';
+
+export type CrawlOutcomeState = 'completed' | 'partial' | 'cancelled' | 'failed' | 'resource_stopped';
+
+export interface CrawlCoverageCounts {
+  /** Unique same-site URLs found (links, sitemaps, pagination, redirects, the start URL). */
+  discovered: number;
+  /** Eligible, waiting for a worker. */
+  queued: number;
+  /** Found only in the sitemap, waiting for link discovery to finish. */
+  waiting: number;
+  /** Being fetched now. */
+  active: number;
+  /** Fetched (any outcome). */
+  processed: number;
+  /** Final answer below 400. */
+  succeeded: number;
+  /** 4xx / 5xx / no response. */
+  failed: number;
+  /** Not fetched: disallowed by robots.txt. */
+  robots: number;
+  /** Not fetched: beyond the depth limit you set. */
+  depthLimited: number;
+  /** Not fetched: the page limit you set was reached. */
+  pageLimited: number;
+  /** Out of scope by rule (sort/filter parameters, cart/account paths, non-HTML files, crawl traps, your exclusions). */
+  excluded: number;
+  excludedBy: Record<string, number>;
+  /** Eligible but not fetched because the crawl was cancelled or stopped for resources. */
+  notProcessed: number;
+  sitemapUrls: number;
+  pagesPerMin: number;
+  politeness?: { delayMs: number; floorMs?: number; crawlDelayMs?: number; slowDowns: number; retries: number; rateLimited?: number; waitedMs?: number; avgLatencyMs?: number };
+}
+
+export interface CrawlMemory {
+  nodeRssMB: number;
+  nodeHeapMB: number;
+  goRssMB?: number;
+  textCoreRssMB?: number;
+  totalMB: number;
+  peakTotalMB: number;
+  budgetMB?: number;
 }
 
 /** Live-crawl settings chosen in the Crawl Center. Validated server-side (see CRAWL_LIMITS). */
@@ -612,6 +679,8 @@ export interface CrawlOptions {
   concurrency: number;
   /** Gap between requests for this crawl (ms). Optional: the server default applies when absent. */
   requestDelayMs?: number;
+  /** URL paths never crawled, e.g. /blogs/{any}/tagged/{any} written with "*" for {any}; "*" matches any run of characters. */
+  excludePatterns?: string[];
 }
 
 /** One issue seen on a crawled page in this run (issue tracker record + its Fix Card). */
@@ -656,6 +725,25 @@ export interface CrawledUrl {
   imagesMissingAlt?: number;
   inSitemap?: boolean;
   issues?: CrawledUrlIssue[];
+  // ---- coverage (Go crawler)
+  /** fetched | robots | excluded | depth_limit | page_limit | not_processed — why a URL has (no) page data. */
+  crawlState?: 'fetched' | 'robots' | 'excluded' | 'depth_limit' | 'page_limit' | 'not_processed';
+  /** Why an excluded URL was not crawled (sort_filter_search_parameter, crawl_trap, excluded_by_settings …). */
+  exclusionReason?: string;
+  /** How the URL was found: start, link, sitemap, pagination, redirect, seed. */
+  foundVia?: string[];
+  /** The first page that linked to it. */
+  foundOn?: string;
+  template?: string;
+  /** Internal links pointing at this URL (seen in this crawl). */
+  inlinks?: number;
+  headings?: { level: number; text: string }[];
+  wordCount?: number;
+  uniqueWords?: number;
+  issueCount?: number;
+  topSeverity?: Severity;
+  /** Page problems worked out over the whole crawl (dup-title, dup-meta, broken, …) — set on rows read from the Pages API. */
+  flags?: string[];
 }
 
 export interface SitemapDiff {
@@ -1186,7 +1274,7 @@ export interface AuditLogEntry {
   actorId: string;
   actorName: string;
   action: string; // e.g. issue.allocate
-  entityType: 'issue' | 'task' | 'crawl' | 'config' | 'employee' | 'rule' | 'integration' | 'report' | 'alert' | 'verification' | 'auth' | 'disavow' | 'qa_gate' | 'exclusion' | 'brief' | 'opportunity' | 'system';
+  entityType: 'issue' | 'task' | 'crawl' | 'config' | 'employee' | 'rule' | 'integration' | 'report' | 'alert' | 'verification' | 'auth' | 'disavow' | 'qa_gate' | 'exclusion' | 'brief' | 'opportunity' | 'system' | 'shopify';
   entityId: string;
   summary: string;
   before?: unknown;

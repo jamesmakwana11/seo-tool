@@ -10,3 +10,7 @@
 **/.env
 **/.env.*
 !**/.env.example
+bin
+**/target
+apps/api/.stress
+apps/web/e2e/results

@@ -68,18 +68,16 @@ export function extractabilityScore(p: ParsedPage): { score: number; parts: Reco
 
 export function analyzeExtractability(prep: Prepared): AnalyzerResult {
   const pages = prep.content.filter((p) => ['collection', 'product', 'blog_article', 'page', 'home'].includes(p.template) && !UTILITY_PAGE.test(pathOf(p.url)));
-  const res = perTemplate(prep, pages, 'AEO-EXTRACTABILITY', 'no quotable formats', (p) => {
+  return perTemplate(prep, pages, 'AEO-EXTRACTABILITY', 'no quotable formats', (p) => {
     const { score, parts } = extractabilityScore(p);
     if (score >= 20 || p.tier > 2) return [];
     return [{ label: 'have no quotable format (definition sentence, comparison table, numbered steps, spec table)', evidence: [metricEv(`extractability ${score}/100`, { score, ...parts }, p.url)] }];
-  });
-  for (const f of res.findings) {
-    const scores = pages.filter((p) => p.template === f.template).map((p) => ({ url: p.url, ...extractabilityScore(p) }));
+  }, (_t, list) => {
+    // Template average over every examined page (the finding's severity metric).
+    const scores = list.map((p) => ({ url: p.url, ...extractabilityScore(p) }));
     const avg = Math.round(scores.reduce((n, s) => n + s.score, 0) / Math.max(1, scores.length));
-    f.severityContext = { ...f.severityContext, metric: avg };
-    f.evidence.push(metricEv(`template average extractability ${avg}/100`, { average: avg, pages: scores.slice(0, 50).map((s) => ({ url: s.url, score: s.score })) }));
-  }
-  return res;
+    return { severityContext: { metric: avg }, extraEvidence: [metricEv(`template average extractability ${avg}/100`, { average: avg, pages: scores.slice(0, 50).map((s) => ({ url: s.url, score: s.score })) })] };
+  });
 }
 
 // ------------------------------------------------------------------------------------------------ AEO-ENTITY

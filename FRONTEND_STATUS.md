@@ -38,6 +38,15 @@ All 83 screens from prompt §4.2 are implemented (requirements `CUS-SCR-01…83`
 | Opportunities | `/opportunities`, `/opportunities/keywords`, `/gaps`, `/briefs`, `/briefs/:id` (editor), `/clusters`, `/seasonal`, `/link-building`, `/mentions`, `/competitors` |
 | Reports & config | `/reports/daily` (all 8 PDF §12.1 sections + one-tap allocation on each issue line), `/weekly`, `/monthly`, `/history`, `/settings/notifications`, `/settings/integrations`, `/settings/thresholds`, `/settings/crawl`, `/ai-compliance/rules` (rule builder + 30-day dry run), `/audit`, `/system`, `/diagnostics` |
 
+**Added in October 2026 (Go/Rust crawler, Lighthouse, Shopify):**
+
+| Screen | What |
+|---|---|
+| `/crawls/:id` | Server-paged Pages table (search, filters by status / crawl state / indexability / problem / found via / template, sort), page drawer (crawl state, found via/on, inlinks, heading outline, **Fix in SEO editor**), Issues tab filtered to the run, Coverage tab (URL accounting, exclusions by reason, sitemap vs links, duplicates — confirmed vs candidates), Run diagnostics (engine, outcome, speed, memory per process) |
+| `/crawls` | Engine status (Go crawler / Rust text core installed, memory budget), exclude patterns, live coverage counters, Lighthouse panel (mobile / desktop audits and rendered-vs-raw check with results drawer) |
+| `/seo-editor` | Shopify SEO editor: open a page by URL or browse resources, drafts with current vs proposed values, reason, validation, mutation used, manual edits, H1 source; batch review with live values, conflicts, original-values download and typed confirmation; per-field results and storefront re-check; **Theme changes** tab (file editor, diff proposals, write to unpublished themes only) |
+| `/settings/shopify` | Connect with Shopify (OAuth), granted / missing scopes, capabilities, disconnect, where the token is kept |
+
 **Screens pending:** none. **Screens intentionally absent:** none — log-file ingestion (PDF §2, marked optional) has no screen.
 
 ## 3. Role experiences (DEVELOPMENT preview — not production auth)

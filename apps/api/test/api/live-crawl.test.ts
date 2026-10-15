@@ -140,7 +140,8 @@ describe('a live crawl', () => {
     const tiny = await h.crawl({ maxPages: 3 });
     expect(tiny.run.urlsCrawled).toBeLessThanOrEqual(3);
     const shallow = await h.crawl({ maxDepth: 0, maxPages: 40 });
-    const linkFollowed = shallow.urls.filter((u) => u.reason !== 'sitemap' && !u.redirectedFrom);
+    // Fetched pages only: the Go crawler also lists URLs it found but did not fetch (crawlState depth_limit, …).
+    const linkFollowed = shallow.urls.filter((u) => u.reason !== 'sitemap' && !u.redirectedFrom && (u.crawlState ?? 'fetched') === 'fetched');
     expect(linkFollowed.every((u) => (u.depth ?? 0) === 0)).toBe(true);
   });
 

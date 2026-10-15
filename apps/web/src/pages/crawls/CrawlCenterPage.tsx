@@ -15,6 +15,7 @@ import { CRAWL_TRIGGER_LABELS, CRAWL_TYPE_LABELS, CrawlStatusBadge } from '@/com
 import { describeCron, nextRuns, parseCron } from '@/components/crawls/cron';
 import { fmtDuration } from '@/components/crawls/format';
 import { CrawlProgress, LiveCrawlForm, TemporaryResultsNote } from '@/components/crawls/LiveCrawl';
+import { LighthousePanel } from '@/components/crawls/LighthousePanel';
 import { fmtDateTime, fmtNum, fmtRelative } from '@/lib/format';
 
 const isActive = (r: CrawlRun) => r.status === 'running' || r.status === 'queued';
@@ -40,6 +41,7 @@ export default function CrawlCenterPage() {
       <div className="space-y-5">
         <LiveCrawlPanel running={running} latest={latestLive} />
         <StartCrawlPanel running={running} loading={q.isLoading} />
+        <LighthouseSection />
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <StrategyPanel />
           <SchedulesPanel />
@@ -72,6 +74,7 @@ function LiveCrawlPanel({ running, latest }: { running?: CrawlRun; latest?: Craw
                 <CrawlProgress run={latest} />
               </div>
             )}
+            {st.engine && <EngineStatus e={st.engine} />}
             <TemporaryResultsNote />
           </div>
         )}
@@ -341,4 +344,23 @@ function History({ runs }: { runs: CrawlRun[] }) {
       </Panel>
     </div>
   );
+}
+
+/** Which crawler runs here and whether its native parts are installed (told plainly, never assumed). */
+function EngineStatus({ e }: { e: NonNullable<import('@sentinel/shared').CrawlerStatus['engine']> }) {
+  return (
+    <p className="rounded-ctl border border-line bg-canvas px-3 py-2 text-xs text-ink-soft">
+      <strong className="font-medium">Crawler:</strong>{' '}
+      {e.active === 'go' ? 'Go production crawler' : 'built-in Node.js crawler'}
+      {' · '}Go crawler {e.goCrawler.available ? `installed${e.goCrawler.version ? ` (${e.goCrawler.version})` : ''}` : `not available — ${e.goCrawler.problem ?? 'not found'}`}
+      {' · '}Rust text core {e.textCore.available ? 'installed' : `not available — ${e.textCore.problem ?? 'not found'} (duplicate-content checks are skipped)`}
+      {e.memoryBudgetMB ? ` · memory budget ${e.memoryBudgetMB.toLocaleString('en-US')} MB for all crawl processes` : ' · no memory budget set'}
+      {e.note ? ` · ${e.note}` : ''}
+    </p>
+  );
+}
+
+function LighthouseSection() {
+  const status = useApiQuery(['crawls', 'status'], () => api.getCrawlerStatus());
+  return status.data ? <LighthousePanel siteUrl={status.data.siteUrl} /> : null;
 }

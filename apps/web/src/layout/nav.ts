@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Gauge, CircleAlert, Users, Globe, FolderCog, Radar, Wrench, Zap, FileText, Code2, Link2, MessageSquareQuote,
   Sparkles, ShieldCheck, Bot, Lightbulb, Search, Layers, CalendarRange, Swords, Megaphone, AtSign, Newspaper, CalendarDays, CalendarClock,
   History, Bell, Plug, SlidersHorizontal, Settings2, ScrollText, Activity, Terminal, ListChecks, KeyRound, ArrowLeftRight, BadgeCheck,
-  Ban, Network, PencilRuler,
+  Ban, Network, PencilRuler, Store, FilePenLine,
 } from 'lucide-react';
 import type { Permission, Role } from '@sentinel/shared';
 
@@ -12,6 +12,8 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   perm?: Permission;
+  /** Shown when the user has any of these permissions. */
+  anyOf?: Permission[];
   roles?: Role[]; // restrict visibility by role in addition to permission
   end?: boolean;
 }
@@ -34,6 +36,7 @@ export const NAV: NavSection[] = [
       { to: '/issues', label: 'Issues board', icon: CircleAlert, perm: 'issues.view', end: true },
       { to: '/verification', label: 'Verification', icon: BadgeCheck, perm: 'crawls.view' },
       { to: '/crawls', label: 'Crawl Center', icon: Radar, perm: 'crawls.view' },
+      { to: '/seo-editor', label: 'SEO editor', icon: FilePenLine, anyOf: ['shopify.edit', 'shopify.theme'] },
     ],
   },
   {
@@ -85,6 +88,7 @@ export const NAV: NavSection[] = [
     id: 'configuration', label: 'Configuration', collapsible: true,
     items: [
       { to: '/settings/integrations', label: 'Integrations', icon: Plug, perm: 'integrations.view' },
+      { to: '/settings/shopify', label: 'Shopify', icon: Store, perm: 'integrations.view' },
       { to: '/settings/thresholds', label: 'Thresholds & scoring', icon: SlidersHorizontal, perm: 'settings.view' },
       { to: '/settings/crawl', label: 'Crawl configuration', icon: Settings2, perm: 'settings.view' },
       { to: '/settings/notifications', label: 'Alerts & notifications', icon: Bell, perm: 'notifications.configure' },
@@ -98,7 +102,7 @@ export const NAV: NavSection[] = [
 ];
 
 export function visibleNav(role: Role, can: (p: Permission) => boolean): NavSection[] {
-  return NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.perm || can(i.perm)) && (!i.roles || i.roles.includes(role))) })).filter((s) => s.items.length);
+  return NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.perm || can(i.perm)) && (!i.anyOf || i.anyOf.some(can)) && (!i.roles || i.roles.includes(role))) })).filter((s) => s.items.length);
 }
 
 /** True when `pathname` is the page an item points to (same rule NavLink uses). */

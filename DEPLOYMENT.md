@@ -14,7 +14,9 @@ One container runs everything: the Express API serves the built React app from t
 | --- | --- | --- |
 | Web app (React/Vite) | `apps/web/dist`, served by the API at `/` | Built with `VITE_API_MODE=http`; SPA fallback for deep links |
 | API (Express) | `apps/api/dist/server.js` | `/api/*`, JSON errors, structured JSON logs (pino) on stdout |
-| Crawler | in the API process | Only requests `CRAWLER_BASE_URL` / registered website hosts, and only when `CRAWLER_ALLOW_LIVE=true` |
+| Crawler | `bin/sentinel-crawler` (Go) started by the API per crawl, with `bin/sentinel-textcore` (Rust) for duplicate analysis | Only requests `CRAWLER_BASE_URL` / registered website hosts, and only when `CRAWLER_ALLOW_LIVE=true`. Falls back to the built-in Node.js crawler when the binaries are missing |
+| Lighthouse / rendered checks | a separate Node process driving Chromium, one at a time | Only in images built with `INSTALL_CHROMIUM=true`; refused when memory is short |
+| Shopify SEO editor | in the API process | Writes only after confirmation; see `docs/SHOPIFY_SEO_EDITOR.md` |
 | Scheduler | in the API process | Off unless `SCHEDULER_ENABLED=true`: daily smart crawl 02:00 IST, weekly full crawl, 00:30 IST escalations, 08:00 IST digest |
 | Health | `GET /healthz` (liveness), `GET /api/health` (storage + crawler readiness) | |
 
@@ -27,8 +29,16 @@ Any Docker host with HTTPS, env vars and a managed PostgreSQL offering works. Re
 service, Singapore region for India, managed PostgreSQL available later in the same region). Equivalent alternatives:
 Railway, Fly.io, Google Cloud Run (min-instances=1, max-instances=1, CPU always allocated).
 
-Service requirements: 1 instance, ~0.5 vCPU / 512 MB–1 GB RAM (full crawls of ~5,000 pages keep page data in memory —
-prefer 1 GB), health-check path `/healthz`, port from `PORT` (image default 8080).
+Service requirements: 1 instance, ~0.5 vCPU / 512 MB RAM is enough for full crawls of 50,000+ pages (measured: peak
+383 MB for the API + 92 MB crawler + 35 MB text core on a 53,000-page synthetic store, see
+`docs/measurements/go-crawl-50k.json`). Lighthouse needs Chromium and ~1 GB RAM in total. Health-check path
+`/healthz`, port from `PORT` (image default 8080).
+
+The image sets `NODE_OPTIONS=--max-old-space-size=288` for a 512 MB plan. **Never set an 8 GB heap on a 512 MB
+service** — Node would try to use memory the container does not have and be killed. On a larger plan raise it to
+about 55 % of the plan's RAM (1 GB plan → 560). The crawl memory budget defaults to 85 % of the container limit and
+covers the API, crawler and text core together; a crawl that reaches it ends as “Stopped for memory” instead of
+crashing the service.
 
 ## Steps (Render, Docker)
 
@@ -60,6 +70,7 @@ Put a TLS-terminating proxy (Caddy/nginx/the platform load balancer) in front; k
 
 ```bash
 npm ci
+npm run build:native               # Go crawler + Rust text core → bin/ (needs Go 1.22+ and Rust 1.75+)
 npm run build:prod                 # web (http mode) + API bundle
 NODE_ENV=production WEB_DIST_DIR=$PWD/apps/web/dist PORT=8080 … npm start
 ```
@@ -85,6 +96,23 @@ Crawling and scheduling (needed for real audits):
 | `CRAWLER_USER_AGENT` | optional; allow-list it in Shopify bot protection |
 | `SCHEDULER_ENABLED` | `true` for the daily/weekly crawls, escalations and digest |
 | `CRAWLER_MAX_PAGES`, `CRAWLER_REQUEST_DELAY_MS`, `CRAWLER_MAX_BODY_BYTES`, `CRAWLER_MAX_CONCURRENT_JOBS` | crawl limits: optional page cap (unset = no limit) / 250 ms / 5 MB / 2 — see `LOCAL_CRAWLING.md` |
+| `CRAWLER_ENGINE` | `auto` (default: Go crawler when installed — always in the Docker image) / `go` / `node` |
+| `CRAWLER_MEMORY_BUDGET_MB` | optional; default 85 % of the container memory limit (API + crawler + text core) |
+| `CRAWLER_SMART_MAX_PAGES` | pages a Smart crawl fetches, highest priority first (default 500) |
+| `CRAWLER_KEEP_RESULTS` | recent crawls whose page rows stay browsable (default 3, temporary files) |
+| `CRAWLER_GO_BIN`, `TEXTCORE_BIN`, `CRAWLER_WORK_DIR` | set by the image (`/app/bin/…`, `/tmp/sentinel-crawls`) |
+| `LIGHTHOUSE_ENABLED`, `LIGHTHOUSE_CHROME_FLAGS` | Lighthouse on/off (default on, but it needs Chromium: build with `--build-arg INSTALL_CHROMIUM=true`); in the container Chromium runs as a non-root user and usually needs `LIGHTHOUSE_CHROME_FLAGS=--no-sandbox` |
+
+Shopify SEO editor (optional — `docs/SHOPIFY_SEO_EDITOR.md`):
+
+| Variable | Value |
+| --- | --- |
+| `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET` | the Shopify app's client id and secret (OAuth “Connect with Shopify”) |
+| `APP_BASE_URL` | also the OAuth redirect base: register `<APP_BASE_URL>/api/shopify/oauth/callback` in the app |
+| `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_ADMIN_TOKEN` | alternative: a custom-app token for the primary website |
+
+The OAuth token is held in memory only, so after every redeploy an admin clicks **Connect with Shopify** again
+(or use `SHOPIFY_ADMIN_TOKEN`).
 
 With `CRAWLER_ALLOW_LIVE=true` and no `CRAWLER_BASE_URL`, the production server refuses to start and says so in the
 log, rather than starting with a Crawl Center that shows "Live crawling is not available for this website". The

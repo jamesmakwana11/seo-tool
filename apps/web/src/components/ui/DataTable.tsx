@@ -27,8 +27,11 @@ interface Props<T> {
   initialSort?: { key: string; dir: 'asc' | 'desc' };
   dense?: boolean;
   caption?: string;
-  /** Server-side pagination (controlled). When set, client paging/search are disabled. */
-  server?: { page: number; pageSize: number; total: number; onPage: (p: number) => void };
+  /**
+   * Server-side pagination (controlled). When set, client paging/search are disabled. With `onSort`, clicking a sortable
+   * header asks the server to sort (rows arrive sorted); without it, only the visible page is sorted.
+   */
+  server?: { page: number; pageSize: number; total: number; onPage: (p: number) => void; sort?: { key: string; dir: 'asc' | 'desc' }; onSort?: (s: { key: string; dir: 'asc' | 'desc' }) => void };
   rowClassName?: (r: T) => string | undefined;
 }
 
@@ -43,7 +46,7 @@ export function DataTable<T>({ rows, columns, rowKey, onRowClick, search, search
       const s = q.trim().toLowerCase();
       list = list.filter((r) => search(r).toLowerCase().includes(s));
     }
-    if (sort) {
+    if (sort && !server?.onSort) {
       const col = columns.find((c) => c.key === sort.key);
       if (col?.sort) list = [...list].sort((a, b) => col.sort!(a, b) * (sort.dir === 'asc' ? 1 : -1));
     }
@@ -56,6 +59,12 @@ export function DataTable<T>({ rows, columns, rowKey, onRowClick, search, search
   const visible = server ? filtered : filtered.slice((cur - 1) * ps, cur * ps);
   const pages = Math.max(1, Math.ceil(total / ps));
   const go = (p: number) => (server ? server.onPage(p) : setPage(p));
+  const curSort = server?.onSort ? server.sort : sort;
+  const toggleSort = (key: string) => {
+    const next = { key, dir: curSort?.key === key && curSort.dir === 'desc' ? 'asc' as const : 'desc' as const };
+    if (server?.onSort) server.onSort(next);
+    else setSort(next);
+  };
 
   return (
     <div>
@@ -76,11 +85,11 @@ export function DataTable<T>({ rows, columns, rowKey, onRowClick, search, search
           <thead>
             <tr className="border-b border-line bg-raised/70 text-left">
               {columns.map((c) => (
-                <th key={c.key} scope="col" style={{ width: c.width }} className={clsx('px-3 py-2.5 text-xs font-medium text-muted', c.hideOnMobile && 'hidden md:table-cell', c.className)} aria-sort={sort?.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <th key={c.key} scope="col" style={{ width: c.width }} className={clsx('px-3 py-2.5 text-xs font-medium text-muted', c.hideOnMobile && 'hidden md:table-cell', c.className)} aria-sort={curSort?.key === c.key ? (curSort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
                   {c.sort ? (
-                    <button className="inline-flex items-center gap-1 hover:text-ink" onClick={() => setSort((s) => ({ key: c.key, dir: s?.key === c.key && s.dir === 'desc' ? 'asc' : 'desc' }))}>
+                    <button className="inline-flex items-center gap-1 hover:text-ink" onClick={() => toggleSort(c.key)}>
                       {c.header}
-                      {sort?.key === c.key && (sort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                      {curSort?.key === c.key && (curSort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
                     </button>
                   ) : c.header}
                 </th>

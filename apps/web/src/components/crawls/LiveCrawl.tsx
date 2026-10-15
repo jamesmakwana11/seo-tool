@@ -25,16 +25,17 @@ export function TemporaryResultsNote({ compact }: { compact?: boolean }) {
 
 // ------------------------------------------------------------------ start form
 
-type FormState = { startUrl: string; allPages: boolean; maxPages: string; anyDepth: boolean; maxDepth: string; timeoutSec: string; concurrency: string; delayMs: string };
+type FormState = { startUrl: string; allPages: boolean; maxPages: string; anyDepth: boolean; maxDepth: string; timeoutSec: string; concurrency: string; delayMs: string; exclude: string };
 const toForm = (o: CrawlOptions, delayMs: number): FormState => ({
   startUrl: o.startUrl, allPages: o.maxPages === null, maxPages: o.maxPages === null ? '' : String(o.maxPages),
   anyDepth: o.maxDepth === null, maxDepth: o.maxDepth === null ? '' : String(o.maxDepth), timeoutSec: String(o.timeoutMs / 1000), concurrency: String(o.concurrency),
-  delayMs: String(o.requestDelayMs ?? delayMs),
+  delayMs: String(o.requestDelayMs ?? delayMs), exclude: (o.excludePatterns ?? []).join('\n'),
 });
 const num = (v: string) => (v.trim() === '' ? NaN : Number(v));
 const fromForm = (f: FormState) => ({
   startUrl: f.startUrl.trim(), maxPages: f.allPages ? null : num(f.maxPages), maxDepth: f.anyDepth ? null : num(f.maxDepth),
   timeoutMs: Math.round(num(f.timeoutSec) * 1000), concurrency: num(f.concurrency), requestDelayMs: num(f.delayMs),
+  ...(f.exclude.trim() ? { excludePatterns: f.exclude.split(/\r?\n/).map((x) => x.trim()).filter(Boolean) } : {}),
 });
 
 export function LiveCrawlForm({ status, running, onStarted }: { status: CrawlerStatus; running?: CrawlRun; onStarted: (r: CrawlRun) => void }) {
@@ -113,11 +114,17 @@ export function LiveCrawlForm({ status, running, onStarted }: { status: CrawlerS
           <Input id="crawl-conc" type="number" inputMode="numeric" min={CRAWL_LIMITS.concurrency.min} max={CRAWL_LIMITS.concurrency.max} value={form.concurrency} onChange={set('concurrency')} aria-invalid={!!errors.concurrency} />
         </Field>
       </div>
+      <Field label="Exclude URL paths (optional)" htmlFor="crawl-exclude" error={(errors as Record<string, string | undefined>).excludePatterns} hint={'One path per line, "*" matches anything — e.g. /blogs/*/tagged/* or /pages/old-*. Excluded URLs are listed as excluded, never fetched.'}>
+        <textarea id="crawl-exclude" rows={2} className="w-full rounded-ctl border border-line-strong bg-surface px-3 py-2 font-mono text-[13px]" value={form.exclude} onChange={set('exclude')} spellCheck={false} />
+      </Field>
       {form.allPages && (
         <p className="rounded-ctl border border-line bg-canvas px-3 py-2 text-xs text-ink-soft">
-          <strong className="font-medium">All pages:</strong> every page found through links and the sitemap is fetched. A large store can take hours
-          (a page every {fmtNum(Math.max(status.requestDelayMs, 1))} ms at most) and needs a lot of server memory. You can cancel at any time.
-          URLs with query strings (filters, sorting) and cart / account pages are skipped so the crawl always ends.
+          <strong className="font-medium">All pages:</strong> every page found through links and the sitemap is fetched, at any depth. A large store can take hours
+          (a page every {fmtNum(Math.max(status.requestDelayMs, 1))} ms at most). You can cancel at any time and keep what was fetched.
+          {status.engine?.active === 'go'
+            ? <> The Go crawler keeps memory bounded{status.engine.memoryBudgetMB ? ` (all crawl processes together stay under ${fmtNum(status.engine.memoryBudgetMB)} MB; if they reach it, the crawl stops taking new pages and says so)` : ''}.</>
+            : <> The built-in crawler keeps every page in memory, so a very large site can exhaust a small server.</>}
+          {' '}Sort / filter parameters, cart / account pages and endless URL patterns are skipped and listed as excluded, so the crawl always ends.
         </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -140,6 +147,21 @@ function hostOf(u: string) {
 }
 
 // ------------------------------------------------------------------ live progress
+
+function SmallCount({ label, value, hint }: { label: string; value?: number; hint?: string }) {
+  return (
+    <div className="min-w-0 rounded-ctl border border-line px-2.5 py-1.5" title={hint}>
+      <dt className="truncate text-[11px] text-muted">{label}</dt>
+      <dd className="text-sm font-semibold tabular-nums">{value === undefined ? '—' : fmtNum(value)}</dd>
+    </div>
+  );
+}
+
+const PHASES: Record<string, string> = {
+  preflight: 'Checking the site address…', robots: 'Reading robots.txt…', sitemaps: 'Reading sitemaps…', crawling_sitemap_only: 'Fetching pages found only in the sitemap…',
+  samples: 'Fetching parameter, pagination and duplicate-path samples…', checks: 'Checking links, images, scripts, host variants and TLS…', finalizing: 'Writing results…',
+  text_analysis: 'Comparing page text for duplicates (Rust text core)…',
+};
 
 function Counter({ label, value, tone, hint }: { label: string; value?: number; tone?: 'ok' | 'crit'; hint?: string }) {
   return (
@@ -177,7 +199,9 @@ export function CrawlProgress({ run, showLink = true }: { run: CrawlRun; showLin
       ? `Fetching finished. Analysing ${fmtNum(processed)} pages — on a large crawl this can take several minutes.`
       : run.phase === 'saving'
         ? 'Saving page results and updating issues…'
-        : `Running — figures refresh every 2 seconds.${perMinute ? ` About ${fmtNum(perMinute)} pages a minute` : ''}${perMinute && waiting ? `; ${fmtNum(waiting)} found and waiting` : ''}${perMinute ? '.' : ''} Discovered includes URLs from the sitemap${run.options?.maxPages ? '; only up to the maximum pages are fetched' : ''}.`;
+        : run.phase && PHASES[run.phase]
+          ? `${PHASES[run.phase]} ${perMinute ? `About ${fmtNum(perMinute)} pages a minute so far.` : ''}`
+          : `Running — figures refresh every 2 seconds.${perMinute ? ` About ${fmtNum(perMinute)} pages a minute` : ''}${perMinute && waiting ? `; ${fmtNum(waiting)} found and waiting` : ''}${perMinute ? '.' : ''} Discovered includes URLs from the sitemap${run.options?.maxPages ? '; only up to the maximum pages are fetched' : ''}.`;
   return (
     <section aria-label={`Crawl ${run.id} progress`} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -203,6 +227,24 @@ export function CrawlProgress({ run, showLink = true }: { run: CrawlRun; showLin
         <Counter label="Successful" value={succeeded} tone="ok" hint="Final response 2xx or 3xx" />
         <Counter label="Errors / no response" value={errorsCount} tone="crit" hint="4xx, 5xx, timeouts, blocked or failed requests" />
       </dl>
+      {run.coverage && (
+        <dl className="grid grid-cols-3 gap-2 sm:grid-cols-6" aria-label="URL accounting">
+          <SmallCount label="Queued" value={run.coverage.queued + run.coverage.waiting} hint="Waiting for a worker (sitemap-only URLs wait until link discovery ends)" />
+          <SmallCount label="Active" value={run.coverage.active} />
+          <SmallCount label="robots.txt" value={run.coverage.robots} />
+          <SmallCount label="Excluded" value={run.coverage.excluded} hint={Object.entries(run.coverage.excludedBy).map(([k, n]) => `${k.replace(/_/g, ' ')}: ${n}`).join('\n')} />
+          <SmallCount label="Over a limit" value={run.coverage.depthLimited + run.coverage.pageLimited} hint="Beyond the depth limit or the page limit" />
+          <SmallCount label="Not processed" value={run.coverage.notProcessed} />
+        </dl>
+      )}
+      {run.memory && (
+        <p className="text-xs text-muted">
+          Memory: {fmtNum(Math.round(run.memory.totalMB))} MB in use (API {fmtNum(Math.round(run.memory.nodeRssMB))} · crawler {run.memory.goRssMB !== undefined ? fmtNum(Math.round(run.memory.goRssMB)) : '—'} · text core {run.memory.textCoreRssMB !== undefined ? fmtNum(Math.round(run.memory.textCoreRssMB)) : '—'} MB)
+          {run.memory.budgetMB ? `, budget ${fmtNum(run.memory.budgetMB)} MB` : ''} · peak {fmtNum(Math.round(run.memory.peakTotalMB))} MB.
+          {run.coverage?.pagesPerMin ? ` ${fmtNum(run.coverage.pagesPerMin)} pages / min.` : ''}
+        </p>
+      )}
+      {active && !!run.warnings?.length && <Notice tone="med">{run.warnings[run.warnings.length - 1].message}</Notice>}
       {(run.resolvedFrom || run.politeness) && (
         <p className="text-xs text-ink-soft">
           {run.resolvedFrom && <>Crawling <span className="font-mono">{run.resolvedStartUrl}</span> ({run.resolvedFrom} redirects there). </>}
@@ -229,8 +271,8 @@ export function CrawlProgress({ run, showLink = true }: { run: CrawlRun; showLin
 
 // ------------------------------------------------------------------ export
 
-export function saveFile(f: { filename: string; mimeType: string; content: string }) {
-  const url = URL.createObjectURL(new Blob([f.content], { type: f.mimeType }));
+export function saveFile(f: { filename: string; mimeType: string; content: string | Blob }) {
+  const url = URL.createObjectURL(typeof f.content === 'string' ? new Blob([f.content], { type: f.mimeType }) : f.content);
   const a = document.createElement('a');
   a.href = url;
   a.download = f.filename;

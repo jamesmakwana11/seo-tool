@@ -8,7 +8,7 @@ import { diffRobots, isAllowed } from '../crawler/robots';
 import type { ParsedPage } from '../crawler/types';
 import { collectionHandle, hostOf, isSameSite, normalizeUrl, pageParam, pathOf, productHandle, sameUrl, stripQuery, templateOf, urlKey } from '../crawler/url';
 import {
-  aggregate, canonicalOf, escapeHtml, groupByTemplate, htmlEv, httpEv, inlinksOf, isIntentionalNoindex, isNoindex, MAX_KEPT_EVIDENCE, maxOf, metricEv, minOf, noun, perTemplate,
+  aggregate, canonicalOf, escapeHtml, groupByTemplate, htmlEv, httpEv, inlinkCount, inlinkSample, isIntentionalNoindex, isNoindex, MAX_KEPT_EVIDENCE, maxOf, metricEv, minOf, noun, perTemplate,
   problemCollector, textEv, trunc, type AnalyzerResult, type Ev, type Prepared, type Problem,
 } from './context';
 
@@ -186,7 +186,7 @@ export function analyzeOrphans(prep: Prepared): AnalyzerResult {
   if (!prep.ctx.sitemap) return NOT('sitemap not fetched');
   const inSitemap = new Set(prep.ctx.sitemap.entries.map((e) => normalizeUrl(e.url)));
   const cands = prep.indexable.filter((p) => p.template !== 'home' && (inSitemap.has(normalizeUrl(p.url)) || p.inSitemap));
-  return perTemplate(prep, cands, 'TECH-ORPHAN', 'no internal links', (p) => (inlinksOf(prep, p.url).length === 0
+  return perTemplate(prep, cands, 'TECH-ORPHAN', 'no internal links', (p) => (inlinkCount(prep, p.url) === 0
     ? [{ label: 'receive no internal links (found only via the sitemap)', evidence: [metricEv('internal inlinks', { inlinks: 0, foundVia: 'sitemap' }, p.url)] }]
     : []));
 }
@@ -263,7 +263,7 @@ export function analyze4xx(prep: Prepared): AnalyzerResult {
     }
     if (st !== null && st >= 400 && st < 500 && !p.chain.length) {
       const isNew = prevSet ? prevSet.has(normalizeUrl(p.url)) : undefined;
-      const inl = inlinksOf(prep, p.url).length;
+      const inl = inlinkCount(prep, p.url);
       add(p.template, isNew ? `newly return ${st} (were 200 last run)` : `return ${st}${prevSet ? '' : ''}`, p.url, { ...httpEv(p.url, p), data: { status: st, internalInlinks: inl, newSinceLastRun: isNew } });
     }
   }
@@ -271,8 +271,7 @@ export function analyze4xx(prep: Prepared): AnalyzerResult {
   for (const l of prep.ctx.linkTargets.values()) {
     if (hostOf(l.url) !== prep.ctx.host || l.chain.length || l.status === null || l.status < 400 || l.status >= 500) continue;
     const isNew = prevSet ? prevSet.has(normalizeUrl(l.url)) : undefined;
-    const from = inlinksOf(prep, l.url);
-    add(templateOf(l.url), isNew ? `newly return ${l.status} (were 200 last run)` : `return ${l.status} (linked internally)`, l.url, { ...httpEv(l.url, { ...l, finalStatus: l.finalStatus }), data: { status: l.status, internalInlinks: from.length, linkedFrom: from.slice(0, 10), newSinceLastRun: isNew } });
+    add(templateOf(l.url), isNew ? `newly return ${l.status} (were 200 last run)` : `return ${l.status} (linked internally)`, l.url, { ...httpEv(l.url, { ...l, finalStatus: l.finalStatus }), data: { status: l.status, internalInlinks: inlinkCount(prep, l.url), linkedFrom: inlinkSample(prep, l.url, 10), newSinceLastRun: isNew } });
   }
   // soft 404s: 200 responses whose title/H1 says "not found"
   for (const p of prep.ok) {
@@ -449,7 +448,7 @@ export function analyzeDiscontinued(prep: Prepared): AnalyzerResult {
     evidence.push({
       kind: 'http_response', label: `HTTP ${d.status} — suggest 301 → ${suggested}`, url,
       content: `${url} → ${d.status}\nSuggested redirect target (parent collection): ${suggested}`,
-      data: { status: d.status, suggestedRedirect: suggested, basis: fromPath ? 'collection in URL path' : linkingCollections.length ? 'collection page linking to the product' : 'no linking collection found — fallback /collections/all', linkingCollections: linkingCollections.slice(0, 50), linkingCollectionCount: linkingCollections.length, internalInlinks: inlinksOf(prep, url).slice(0, 50), internalInlinkCount: inlinksOf(prep, url).length },
+      data: { status: d.status, suggestedRedirect: suggested, basis: fromPath ? 'collection in URL path' : linkingCollections.length ? 'collection page linking to the product' : 'no linking collection found — fallback /collections/all', linkingCollections: linkingCollections.slice(0, 50), linkingCollectionCount: linkingCollections.length, internalInlinks: inlinkSample(prep, url, 50), internalInlinkCount: inlinkCount(prep, url) },
     });
   }
   return {
@@ -539,10 +538,22 @@ export function duplicateGroups(pages: ParsedPage[], get: (p: ParsedPage) => str
   return [...m.values()].filter((g) => g.length > 1);
 }
 
+/** Keeps the members of each cluster that are in `keep`; clusters left with fewer than `min` members are dropped. */
+export function restrictClusters(clusters: string[][], keep: Set<string>, min = 2): string[][] {
+  const out: string[][] = [];
+  for (const c of clusters) {
+    const k = c.filter((u) => keep.has(u));
+    if (k.length >= min) out.push(k);
+  }
+  return out;
+}
+
 export function analyzeDuplicate(prep: Prepared): AnalyzerResult {
   const brand = prep.ctx.config.site.brand;
   const findings: Finding[] = [];
   const pagesAll = prep.content.filter((p) => !isNoindex(p).noindex);
+  const g = prep.global;
+  if (g && !g.near) return NOT(`near-duplicate content needs the text core: ${g.nearUnavailable ?? 'not available'}`);
   for (const [t, pages] of groupByTemplate(pagesAll)) {
     const problems: Problem[] = [];
     const mk = (label: string, groups: string[][], show: (u: string) => string) => {
@@ -553,11 +564,15 @@ export function analyzeDuplicate(prep: Prepared): AnalyzerResult {
       });
     };
     const byUrl = new Map(pages.map((p) => [p.url, p]));
-    mk('sharing a duplicate title', duplicateGroups(pages, (p) => (p.html!.title ? normTitle(p.html!.title, brand) : undefined)), (u) => byUrl.get(u)!.html!.title ?? '');
-    mk('sharing a duplicate meta description', duplicateGroups(pages, (p) => p.html!.metaDescription?.toLowerCase() || undefined), (u) => byUrl.get(u)!.html!.metaDescription ?? '');
-    mk('sharing a duplicate H1', duplicateGroups(pages, (p) => p.html!.h1s[0]?.toLowerCase() || undefined), (u) => byUrl.get(u)!.html!.h1s[0] ?? '');
-    const docs = pages.filter((p) => prep.uniqueWords(p) >= 40).map((p) => ({ id: p.url, text: prep.uniqueText(p) }));
-    const clusters = nearIdenticalClusters(docs, 0.9);
+    // Whole-crawl groups from the text core (same keys), limited to this template's in-scope pages.
+    const fromCore = (groups: string[][] | undefined) => (groups ? restrictClusters(groups, new Set(pages.map((p) => p.url))) : undefined);
+    mk('sharing a duplicate title', fromCore(g?.dupGroups?.title) ?? duplicateGroups(pages, (p) => (p.html!.title ? normTitle(p.html!.title, brand) : undefined)), (u) => byUrl.get(u)!.html!.title ?? '');
+    mk('sharing a duplicate meta description', fromCore(g?.dupGroups?.meta) ?? duplicateGroups(pages, (p) => p.html!.metaDescription?.toLowerCase() || undefined), (u) => byUrl.get(u)!.html!.metaDescription ?? '');
+    mk('sharing a duplicate H1', fromCore(g?.dupGroups?.h1) ?? duplicateGroups(pages, (p) => p.html!.h1s[0]?.toLowerCase() || undefined), (u) => byUrl.get(u)!.html!.h1s[0] ?? '');
+    const eligible = pages.filter((p) => prep.uniqueWords(p) >= 40);
+    const clusters = g?.near
+      ? restrictClusters(g.near('asWritten', 0.9), new Set(eligible.map((p) => p.url)))
+      : nearIdenticalClusters(eligible.map((p) => ({ id: p.url, text: prep.uniqueText(p) })), 0.9);
     if (clusters.length) {
       problems.push({
         label: 'with near-duplicate body copy (≥90% shingle overlap)', urls: clusters.flat(),

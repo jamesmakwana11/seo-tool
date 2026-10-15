@@ -7,13 +7,15 @@ import {
   ApiError,
   type AiComplianceFlag, type AlertRule, type ApiDiagnostics, type AuditLogEntry, type AuditModule, type AuthResult,
   type BrandMention, type CheckDefinition, type ContentBrief, type ContentScore, type CrawlRun, type CrawlerStatus, type CrawlSchedule, type CrawlType,
-  type CrawlDetail, type CtrRewrite, type CustomRule, type CwvTemplateMetric, type DailyDigest, type DashboardData,
+  type CrawlCoverageReport, type CrawlDetail, type LighthouseRun, type LighthouseStatus, type CrawlPagesResponse, type CtrRewrite, type CustomRule, type CwvTemplateMetric, type DailyDigest, type DashboardData,
   type DeliveryAttempt, type DisavowCandidate, type DryRunResult, type Employee, type EmployeeInput, type HealthPoint, type HealthScore,
   type IntegrationId, type IntegrationStatus, type IntegrationSyncResult, type Issue, type IssueDetail, type IssueFilter, type IssueGroup, type KeywordGap,
   type LinkProspect, type ModuleData, type MonthlyReport, type Notification, type OpportunityItem, type Paged, type PermissionMatrix,
   type ReportMeta, type Role, type SearchResult, type SentinelApi, type SentinelConfig, type SessionUser, type StrikingDistanceQuery,
   type SystemComponentHealth, type SystemErrorEntry, type TopicCluster, type Website, type WebsiteSummary, WEBSITE_HEADER,
   type VerificationAttempt, type WeeklyReport, type AllocationEvent,
+  type ShopifyApplyBatchResult, type ShopifyApplyPreview, type ShopifyDraft, type ShopifyResolveResult, type ShopifyResourceList, type ShopifyStatus,
+  type ShopifyTheme, type ShopifyThemeFile, type ShopifyThemeProposal,
 } from '@sentinel/shared';
 
 const TOKEN_KEY = 'sentinel.http.token';
@@ -60,8 +62,8 @@ export function createHttpApi(baseUrl = '/api', websiteId: () => string | undefi
     }
     return data as T;
   }
-  /** A file response (export): text plus the file name the server suggested. */
-  async function download(path: string): Promise<{ filename: string; mimeType: string; content: string }> {
+  /** A file response (export) as a Blob (large exports are never turned into one big string), plus the suggested name. */
+  async function download(path: string): Promise<{ filename: string; mimeType: string; content: Blob }> {
     const headers: Record<string, string> = {};
     const site = websiteId();
     if (site) headers[WEBSITE_HEADER] = site;
@@ -73,12 +75,13 @@ export function createHttpApi(baseUrl = '/api', websiteId: () => string | undefi
     } catch {
       throw new ApiError(0, 'NETWORK', 'Could not reach the API server. Check that it is running.');
     }
-    const content = await res.text();
     if (!res.ok) {
+      const text = await res.text();
       let err: { code?: string; message?: string } | undefined;
-      try { err = (JSON.parse(content) as { error?: { code: string; message: string } }).error; } catch { /* not JSON */ }
+      try { err = (JSON.parse(text) as { error?: { code: string; message: string } }).error; } catch { /* not JSON */ }
       throw new ApiError(res.status, err?.code ?? 'ERROR', err?.message ?? `Download failed (${res.status}).`);
     }
+    const content = await res.blob();
     const cd = res.headers.get('content-disposition') ?? '';
     const filename = /filename="([^"]+)"/.exec(cd)?.[1] ?? 'export';
     return { filename, mimeType: res.headers.get('content-type') ?? 'application/octet-stream', content };
@@ -138,6 +141,32 @@ export function createHttpApi(baseUrl = '/api', websiteId: () => string | undefi
     cancelCrawl: (id) => post<CrawlRun>(`/crawls/${encodeURIComponent(id)}/cancel`),
     getCrawlerStatus: () => get<CrawlerStatus>('/crawls/status'),
     exportCrawl: (id, format) => download(`/crawls/${encodeURIComponent(id)}/export?format=${format}`),
+    getCrawlPages: (id, query) => get<CrawlPagesResponse>(`/crawls/${encodeURIComponent(id)}/pages${qs({ ...query })}`),
+    getCrawlCoverage: (id) => get<CrawlCoverageReport>(`/crawls/${encodeURIComponent(id)}/coverage`),
+    getLighthouseStatus: () => get<LighthouseStatus>('/lighthouse/status'),
+    startLighthouse: (input) => post<LighthouseRun[]>('/lighthouse/runs', input),
+    listLighthouseRuns: () => get<LighthouseRun[]>('/lighthouse/runs'),
+    getShopifyStatus: () => get<ShopifyStatus>('/shopify/status'),
+    startShopifyOAuth: (shop) => post<{ authorizeUrl: string }>('/shopify/oauth/start', { shop }),
+    disconnectShopify: () => post<ShopifyStatus>('/shopify/disconnect'),
+    resolveShopifyUrl: (url) => get<ShopifyResolveResult>(`/shopify/resolve${qs({ url })}`),
+    listShopifyResources: (input) => get<ShopifyResourceList>(`/shopify/resources${qs(input)}`),
+    createShopifyDraft: (input) => post<ShopifyDraft>('/shopify/drafts', input),
+    listShopifyDrafts: () => get<ShopifyDraft[]>('/shopify/drafts'),
+    getShopifyDraft: (id) => get<ShopifyDraft>(`/shopify/drafts/${encodeURIComponent(id)}`),
+    updateShopifyDraft: (id, input) => patch<ShopifyDraft>(`/shopify/drafts/${encodeURIComponent(id)}`, input),
+    deleteShopifyDraft: (id) => del<{ ok: true }>(`/shopify/drafts/${encodeURIComponent(id)}`),
+    refreshShopifyDraft: (id) => post<ShopifyDraft>(`/shopify/drafts/${encodeURIComponent(id)}/refresh`),
+    previewShopifyApply: (ids) => post<ShopifyApplyPreview>('/shopify/drafts/preview', { ids }),
+    downloadShopifyBackup: (ids) => download(`/shopify/drafts/backup${qs({ ids })}`),
+    applyShopifyDrafts: (ids, confirm) => post<ShopifyApplyBatchResult>('/shopify/drafts/apply', { ids, confirm }),
+    reauditShopifyDraft: (id) => post<ShopifyDraft>(`/shopify/drafts/${encodeURIComponent(id)}/reaudit`),
+    listShopifyThemes: () => get<ShopifyTheme[]>('/shopify/themes'),
+    getShopifyThemeFile: (themeId, filename) => get<ShopifyThemeFile>(`/shopify/themes/file${qs({ themeId, filename })}`),
+    proposeShopifyThemeChange: (input) => post<ShopifyThemeProposal>('/shopify/theme-proposals', input),
+    listShopifyThemeProposals: () => get<ShopifyThemeProposal[]>('/shopify/theme-proposals'),
+    applyShopifyThemeProposal: (id, confirm) => post<ShopifyThemeProposal>(`/shopify/theme-proposals/${encodeURIComponent(id)}/apply`, { confirm }),
+    downloadShopifyThemeBackup: (id) => download(`/shopify/theme-proposals/${encodeURIComponent(id)}/backup`),
     listSchedules: () => get<CrawlSchedule[]>('/crawls/schedules'),
     updateSchedule: (id, input) => patch<CrawlSchedule>(`/crawls/schedules/${id}`, input),
     listVerifications: () => get<VerificationAttempt[]>('/crawls/verifications'),

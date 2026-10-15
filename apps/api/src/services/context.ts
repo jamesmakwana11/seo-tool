@@ -19,6 +19,8 @@ export interface Ctx {
   taskOps: TaskOpsAdapter;
   llm: LlmAdapter;
   engine: CrawlEngine;
+  /** Which crawler is active and whether its native binaries are installed (Crawl Center status). */
+  engineInfo?: () => NonNullable<import('@sentinel/shared').CrawlerStatus['engine']>;
   reverifier: Reverifier;
   sessionSecret: string;
 }

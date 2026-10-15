@@ -14,9 +14,9 @@ import {
   crawlExportFilename, crawlResultsCsv, crawlResultsJson,
   ApiError, CHECKS_BY_ID, DEMO_PASSWORD, INTEGRATION_CATALOG, PREVIEW_USER_BY_ROLE, TEAMS, ROLE_LABELS, buildDailyDigest,
   buildDashboard, buildModuleData, buildMonthlyReport, buildWeeklyReport, canTransition, computeHealthScore,
-  createSeed, evaluateRule, exportReport, filterIssues, generateFixCard, globalSearch, hasPermission,
+  createSeed, evaluateRule, exportReport, filterIssues, queryCrawlRows, generateFixCard, globalSearch, hasPermission,
   issueStatusForTask, paginate, ruleAppliesTo, seasonalPlan, setPriorityConfig, taskPriorityFromSeverity, validateRule,
-  HEALTH_WEIGHTS, DEMO_WEBSITE_ID, createEmptySite, demoWebsite, summarizeWebsite, validateWebsiteInput,
+  HEALTH_WEIGHTS, DEMO_WEBSITE_ID, SHOPIFY_OPTIONAL_SCOPES, SHOPIFY_REQUIRED_SCOPES, createEmptySite, demoWebsite, summarizeWebsite, validateWebsiteInput,
   type ActivityEvent, type AllocationEvent, type ApiDiagnostics, type AuditLogEntry, type AuthResult, type SiteData, type Website,
   type CustomRule, type DeliveryAttempt, type DryRunResult, type Employee, type EmployeeInput, type IntegrationId,
   type IntegrationStatus, type Issue, type IssueDetail, type Permission, type PermissionMatrix, type Role, type SeedData,
@@ -39,6 +39,7 @@ const WEBSITE_METHODS = new Set(['listWebsites', 'createWebsite', 'updateWebsite
 
 let counter = 1000;
 const nid = (p: string) => `${p}-${++counter}`;
+const shopifyMock = () => new ApiError(409, 'SHOPIFY_NOT_CONNECTED', 'Mock mode has no Shopify connection: the SEO editor reads and writes Shopify through the API server.');
 
 const MOCK_NO_LIVE_CRAWL = 'This is the in-browser DEMO version: it cannot fetch websites. Start the API server with live crawling enabled (see LOCAL_CRAWLING.md) to crawl a real site.';
 
@@ -511,6 +512,61 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
         ? { filename: crawlExportFilename(d, 'csv'), mimeType: 'text/csv;charset=utf-8', content: crawlResultsCsv(d) }
         : { filename: crawlExportFilename(d, 'json'), mimeType: 'application/json;charset=utf-8', content: crawlResultsJson(d, iso()) };
     }),
+    getCrawlPages: (id, query) => call('getCrawlPages', () => {
+      need('crawls.view');
+      if (!s.crawls.some((c) => c.id === id)) throw new ApiError(404, 'NOT_FOUND', `Crawl ${id} not found.`);
+      return queryCrawlRows(s.crawlUrls[id] ?? [], query);
+    }),
+    getCrawlCoverage: (id) => call('getCrawlCoverage', () => {
+      need('crawls.view');
+      if (!s.crawls.some((c) => c.id === id)) throw new ApiError(404, 'NOT_FOUND', `Crawl ${id} not found.`);
+      return {
+        available: false, note: 'Mock mode makes no HTTP requests, so there is no crawl coverage to report. Connect the app to the API server for live crawls.',
+        counts: {}, excludedBy: {}, foundVia: {}, listLimit: 0, sitemapNotCrawled: { count: 0, urls: [] }, linkedNotInSitemap: { count: 0, urls: [] },
+        orphanCandidates: { count: 0, urls: [], evaluated: false }, failed: { count: 0, urls: [] }, redirects: { count: 0, urls: [] }, variantGroups: { count: 0, groups: [] },
+        duplicates: { titles: { count: 0, groups: [] }, metaDescriptions: { count: 0, groups: [] }, exactContent: { count: 0, groups: [] }, nearContent: { count: 0, groups: [], threshold: 0.9 } },
+        notProcessed: { count: 0, urls: [] },
+      };
+    }),
+    getLighthouseStatus: () => call('getLighthouseStatus', () => {
+      need('crawls.view');
+      return { available: false, problems: ['Mock mode has no browser: Lighthouse runs on the API server. Connect the app to the API server.'], memoryNeededMB: 350, queued: 0 };
+    }),
+    startLighthouse: () => call('startLighthouse', () => {
+      need('crawls.run');
+      throw new ApiError(409, 'LIGHTHOUSE_UNAVAILABLE', 'Mock mode has no browser: Lighthouse runs on the API server.');
+    }),
+    listLighthouseRuns: () => call('listLighthouseRuns', () => { need('crawls.view'); return []; }),
+    // Shopify: mock mode never talks to a store — every action explains that it needs the API server.
+    getShopifyStatus: () => call('getShopifyStatus', () => {
+      need('integrations.view');
+      return {
+        connected: false, via: null, apiVersion: '2026-07', scopes: [], missingScopes: [], missingOptionalScopes: [],
+        requiredScopes: [...SHOPIFY_REQUIRED_SCOPES], optionalScopes: [...SHOPIFY_OPTIONAL_SCOPES], oauthConfigured: false,
+        problems: ['Mock mode has no Shopify connection: the SEO editor reads and writes Shopify through the API server. Connect the app to the API server.'],
+        tokenNote: 'The access token is only ever held by the API server.', capabilities: { edit: false, themes: false, themeWrite: false, imageAlt: false },
+      };
+    }),
+    startShopifyOAuth: () => call('startShopifyOAuth', () => { need('integrations.manage'); throw shopifyMock(); }),
+    disconnectShopify: () => call('disconnectShopify', () => { need('integrations.manage'); throw shopifyMock(); }),
+    resolveShopifyUrl: () => call('resolveShopifyUrl', () => { need('shopify.edit'); throw shopifyMock(); }),
+    listShopifyResources: () => call('listShopifyResources', () => { need('shopify.edit'); throw shopifyMock(); }),
+    createShopifyDraft: () => call('createShopifyDraft', () => { need('shopify.edit'); throw shopifyMock(); }),
+    listShopifyDrafts: () => call('listShopifyDrafts', () => { need('shopify.edit'); return []; }),
+    getShopifyDraft: () => call('getShopifyDraft', () => { need('shopify.edit'); throw new ApiError(404, 'NOT_FOUND', 'Draft not found.'); }),
+    updateShopifyDraft: () => call('updateShopifyDraft', () => { need('shopify.edit'); throw shopifyMock(); }),
+    deleteShopifyDraft: () => call('deleteShopifyDraft', () => { need('shopify.edit'); throw shopifyMock(); }),
+    refreshShopifyDraft: () => call('refreshShopifyDraft', () => { need('shopify.edit'); throw shopifyMock(); }),
+    previewShopifyApply: () => call('previewShopifyApply', () => { need('shopify.edit'); throw shopifyMock(); }),
+    downloadShopifyBackup: () => call('downloadShopifyBackup', () => { need('shopify.edit'); throw shopifyMock(); }),
+    applyShopifyDrafts: () => call('applyShopifyDrafts', () => { need('shopify.edit'); throw shopifyMock(); }),
+    reauditShopifyDraft: () => call('reauditShopifyDraft', () => { need('shopify.edit'); throw shopifyMock(); }),
+    listShopifyThemes: () => call('listShopifyThemes', () => { need('shopify.theme'); throw shopifyMock(); }),
+    getShopifyThemeFile: () => call('getShopifyThemeFile', () => { need('shopify.theme'); throw shopifyMock(); }),
+    proposeShopifyThemeChange: () => call('proposeShopifyThemeChange', () => { need('shopify.theme'); throw shopifyMock(); }),
+    listShopifyThemeProposals: () => call('listShopifyThemeProposals', () => { need('shopify.theme'); return []; }),
+    applyShopifyThemeProposal: () => call('applyShopifyThemeProposal', () => { need('shopify.theme'); throw shopifyMock(); }),
+    downloadShopifyThemeBackup: () => call('downloadShopifyThemeBackup', () => { need('shopify.theme'); throw shopifyMock(); }),
     listSchedules: () => call('listSchedules', () => { need('crawls.view'); return s.schedules; }),
     updateSchedule: (id, input) => call('updateSchedule', () => {
       need('crawls.configure');

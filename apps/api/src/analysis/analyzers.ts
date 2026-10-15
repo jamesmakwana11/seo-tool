@@ -121,8 +121,8 @@ export const NOT_EVALUATED: Record<string, string> = {
   'GEO-CITATION': 'Opportunity (content brief), not a crawl defect — needs SERP / competitor data to judge citation-worthiness.',
   'GEO-CLUSTER': 'Needs the pillar → cluster topic map per category (and search volumes for missing pillars).',
   'AIC-03': 'Needs structured product data from Shopify (metafields/specs) and an LLM to compare claims.',
-  'TECH-JS-RENDER': 'No headless browser installed — raw HTML vs rendered DOM cannot be compared.',
-  'TECH-MOBILE': 'No headless browser installed — 390px rendering is not available.',
+  'TECH-JS-RENDER': 'Not run during crawls (a browser for every page does not fit the server): compare raw HTML with the rendered page for chosen URLs with the rendered check in the Crawl Center.',
+  'TECH-MOBILE': 'Not run during crawls: run a mobile Lighthouse audit for chosen URLs in the Crawl Center (needs Chrome on the API server).',
 };
 
 /** Validate the registry against the check library at load time (only crawler-evaluable checks may be analyzed). */

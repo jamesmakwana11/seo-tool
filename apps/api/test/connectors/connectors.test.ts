@@ -171,7 +171,7 @@ describe('connector specifics', () => {
   it('shopify: uses X-Shopify-Access-Token and the configured API version; no webhook secret → partial', async () => {
     const { c, f } = connector('shopify', SUCCESS.shopify, makeEnv({ SHOPIFY_WEBHOOK_SECRET: undefined }));
     const r = await c.test();
-    expect(f.calls[0].url).toBe('https://deodap.myshopify.com/admin/api/2024-10/shop.json');
+    expect(f.calls[0].url).toBe('https://deodap.myshopify.com/admin/api/2026-07/shop.json');
     expect(f.calls[0].headers['x-shopify-access-token']).toBe('shpat_SECRET_abcdef123456');
     expect(r).toMatchObject({ ok: true, partial: true });
     expect(r.result).toContain('"DeoDap"');

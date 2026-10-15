@@ -1,0 +1,23 @@
+[package]
+name = "sentinel-textcore"
+version = "1.0.0"
+edition = "2021"
+description = "DeoDap SEO Sentinel text core: normalisation, fingerprints and duplicate detection"
+publish = false
+
+[[bin]]
+name = "sentinel-textcore"
+path = "src/main.rs"
+
+[lib]
+name = "textcore"
+path = "src/lib.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -19,3 +19,6 @@ export * from './websites';
 export * from './crawlOptions';
 export { createSeed, DEMO_PASSWORD, PREVIEW_USER_BY_ROLE, type SeedData, type PageText } from './seed/index';
 export { rng } from './seed/rng';
+export * from './crawlRows';
+export * from './lighthouse';
+export * from './shopify';

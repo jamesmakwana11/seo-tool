@@ -6,8 +6,9 @@
  *
  * Core services depend only on these interfaces.
  */
+import type { CrawlResultStore } from '../results/store';
 import type {
-  CrawlRun, CrawlType, Evidence, IntegrationId, IntegrationStatus, Issue, PageTemplate, PageTier, SitemapDiff, CrawledUrl, Task, DeliveryAttempt,
+  CrawlCoverageCounts, CrawlCoverageReport, CrawlMemory, CrawlRun, CrawlType, Evidence, IntegrationId, IntegrationStatus, Issue, PageTemplate, PageTier, SitemapDiff, CrawledUrl, Task, DeliveryAttempt,
 } from '@sentinel/shared';
 import type { SeverityContext } from '@sentinel/shared';
 
@@ -82,16 +83,42 @@ export interface CrawlPlan {
   /** Gap between requests for this crawl (ms); robots.txt Crawl-delay and 429 / 503 can raise it. */
   requestDelayMs?: number;
   /** Told when the engine moves from fetching pages to analysing them (large crawls analyse for a while). */
-  onPhase?: (phase: 'analysing') => void;
+  onPhase?: (phase: NonNullable<CrawlRun['phase']>) => void;
   /** Cancels the crawl; the engine stops sending requests and returns the pages fetched so far. */
   signal?: AbortSignal;
+  /** URL paths never crawled ("*" matches any run of characters). */
+  excludePatterns?: string[];
+  /** Keep every page's main text for custom rules (Go engine: written to a results file, applied in chunks). */
+  collectTexts?: boolean;
+  /** Run id (names the crawl's work directory). */
+  runId?: string;
+  /** Live coverage counts, memory of every crawl process, phase and diagnostics (Go engine). */
+  onLive?: (live: { coverage?: CrawlCoverageCounts; memory?: CrawlMemory; phase?: CrawlRun['phase']; warning?: { code: string; message: string } }) => void;
+}
+
+/** What an engine run returns. The Go engine keeps page rows in a file-backed store instead of `urls`. */
+export interface EngineRunResult extends Omit<CrawlOutcome, 'run'> {
+  stats: Partial<CrawlRun>;
+  cancelled?: boolean;
+  memoryStopped?: boolean;
+  /** Page rows (Go engine): `urls` is then empty and rows are paged from the store. */
+  store?: CrawlResultStore;
+  coverageReport?: CrawlCoverageReport;
+  /** URLs that answered (for auto-resolution) when `urls` is not used. */
+  answeredUrls?: Set<string>;
+  /** Every page's main text (gzip NDJSON of {url, template, text}) for custom rules, when collectTexts was set. */
+  textsFile?: string;
+  /** The crawl failed; `store` holds what was fetched before the failure. */
+  failed?: string;
+  /** Called once the crawl service has stored what it needs (removes the crawl's temporary work files). */
+  cleanup?: () => Promise<void>;
 }
 
 /** Runs a crawl + analysis. Implementations must make REAL HTTP requests and report failures honestly. */
 export interface CrawlEngine {
   /** Whether the engine may contact the configured site (CRAWLER_ALLOW_LIVE + base URL). */
   readiness(): { ready: boolean; reason?: string; baseUrl?: string };
-  run(plan: CrawlPlan, onProgress?: (crawled: number, failed: number, discovered: number, succeeded: number, politeness?: CrawlRun['politeness']) => void): Promise<Omit<CrawlOutcome, 'run'> & { stats: Partial<CrawlRun>; cancelled?: boolean; memoryStopped?: boolean }>;
+  run(plan: CrawlPlan, onProgress?: (crawled: number, failed: number, discovered: number, succeeded: number, politeness?: CrawlRun['politeness']) => void): Promise<EngineRunResult>;
 }
 
 /** Re-runs one check against specific URLs to verify a fix. */

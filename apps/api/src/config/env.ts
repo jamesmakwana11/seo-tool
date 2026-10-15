@@ -78,6 +78,41 @@ const schema = z.object({
   CRAWLER_MAX_SITEMAP_MB: z.coerce.number().int().min(1).max(200).default(50),
   /** Crawls that may run at the same time across all websites on this server. */
   CRAWLER_MAX_CONCURRENT_JOBS: z.coerce.number().int().min(1).max(10).default(2),
+  /**
+   * Which crawler runs full and smart crawls: "go" = the Go crawler + Rust text core (bounded memory; required for large
+   * sites), "node" = the built-in Node.js crawler, "auto" (default) = Go when its binary is installed, otherwise Node.
+   * Re-verification of fixed issues always uses the built-in crawler (a few explicit URLs).
+   */
+  CRAWLER_ENGINE: z.enum(['auto', 'go', 'node']).default('auto'),
+  /** Path of the Go crawler binary (default: bin/sentinel-crawler[.exe] at the repository root). */
+  CRAWLER_GO_BIN: z.string().optional(),
+  /** Path of the Rust text core binary (default: bin/sentinel-textcore[.exe]). */
+  TEXTCORE_BIN: z.string().optional(),
+  /** Folder for crawl work files and page-row stores (default: the system temp folder /sentinel-crawls). Cleaned on start. */
+  CRAWLER_WORK_DIR: z.string().optional(),
+  /**
+   * Memory all crawl processes together (API + Go crawler + Rust text core) may use before a crawl stops taking new pages
+   * (MB). Default: 85% of the container memory limit when one is detected.
+   */
+  CRAWLER_MEMORY_BUDGET_MB: z.coerce.number().int().min(128).max(65536).optional(),
+  /** Heap limit of the Go crawler (MB). Default: 35% of the budget, at most 160. */
+  CRAWLER_GO_MEMORY_MB: z.coerce.number().int().min(32).max(8192).optional(),
+  /** Pages a smart crawl may fetch (its priority budget). */
+  CRAWLER_SMART_MAX_PAGES: z.coerce.number().int().min(10).max(1_000_000).default(500),
+  /** Finished crawls whose page rows stay available for paging and export (older ones are deleted from disk). */
+  CRAWLER_KEEP_RESULTS: z.coerce.number().int().min(1).max(50).default(3),
+  /** Keep the crawler's raw result files after analysis (debugging only). */
+  CRAWLER_KEEP_WORK_FILES: bool(false),
+  /** Lighthouse lab audits and rendered-page checks (need the lighthouse package and a Chrome / Chromium binary). */
+  LIGHTHOUSE_ENABLED: bool(true),
+  /** Chrome / Chromium used by Lighthouse (default: Playwright's Chromium or a system Chrome). */
+  LIGHTHOUSE_CHROME_PATH: z.string().optional(),
+  /** Extra Chrome flags, space-separated (containers running as root need --no-sandbox). */
+  LIGHTHOUSE_CHROME_FLAGS: z.string().optional(),
+  /** Free memory (MB, within CRAWLER_MEMORY_BUDGET_MB) a Lighthouse run needs; runs are refused below it. */
+  LIGHTHOUSE_MIN_FREE_MB: z.coerce.number().int().min(100).max(8192).default(350),
+  /** Longest time one Lighthouse run may take (ms). */
+  LIGHTHOUSE_TIMEOUT_MS: z.coerce.number().int().min(20000).max(600000).default(120000),
   /** Public URL of the web app, used for deep links in alerts/Task Ops. */
   APP_BASE_URL: z.string().url().optional(),
 
@@ -93,7 +128,14 @@ const schema = z.object({
   SHOPIFY_STORE_DOMAIN: z.string().optional(),
   SHOPIFY_ADMIN_TOKEN: z.string().optional(),
   SHOPIFY_WEBHOOK_SECRET: z.string().optional(),
-  SHOPIFY_API_VERSION: z.string().default('2024-10'),
+  SHOPIFY_API_VERSION: z.string().regex(/^\d{4}-\d{2}$|^unstable$/, 'SHOPIFY_API_VERSION must look like 2026-07').default('2026-07'),
+  /** OAuth (“Connect with Shopify”): the app's client id and secret from the Shopify Dev Dashboard / Partner app. */
+  SHOPIFY_API_KEY: z.string().optional(),
+  SHOPIFY_API_SECRET: z.string().optional(),
+  /** Comma-separated scopes to request (default: the SEO editor's required + optional scopes). */
+  SHOPIFY_SCOPES: z.string().optional(),
+  /** Public URL of this app used for the OAuth redirect (default APP_BASE_URL). Callback: <url>/api/shopify/oauth/callback */
+  SHOPIFY_APP_URL: z.string().url().optional(),
   GBP_OAUTH_CLIENT_ID: z.string().optional(),
   GBP_OAUTH_CLIENT_SECRET: z.string().optional(),
   GBP_OAUTH_REFRESH_TOKEN: z.string().optional(),

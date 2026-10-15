@@ -20,7 +20,8 @@
     "dev:web:http": "npm run dev:http -w @sentinel/web",
     "dev:api:env": "npm run dev:env -w @sentinel/api",
     "start:api:env": "npm run start:env -w @sentinel/api",
-    "start:api:large": "npm run start:env:large -w @sentinel/api"
+    "build:native": "node tools/build-native.mjs",
+    "test:native": "node tools/build-native.mjs --test"
   },
   "engines": {
     "node": ">=20.12"

@@ -31,7 +31,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   'crawls.configure', 'modules.view', 'opportunities.view', 'opportunities.manage', 'reports.view',
   'reports.export', 'rules.view', 'rules.manage', 'qa_gate.approve', 'disavow.approve', 'employees.view',
   'employees.manage', 'roles.manage', 'integrations.view', 'integrations.manage', 'settings.view',
-  'settings.manage', 'notifications.configure', 'audit.view', 'system.view', 'diagnostics.view',
+  'settings.manage', 'notifications.configure', 'audit.view', 'system.view', 'diagnostics.view', 'shopify.edit', 'shopify.theme',
 ];
 
 /**
@@ -46,11 +46,11 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     'tasks.update_own', 'tasks.review', 'tasks.cancel', 'tasks.verify_trigger', 'crawls.view', 'crawls.run',
     'modules.view', 'opportunities.view', 'opportunities.manage', 'reports.view', 'reports.export',
     'rules.view', 'rules.manage', 'qa_gate.approve', 'disavow.approve', 'employees.view', 'settings.view',
-    'settings.manage', 'notifications.configure', 'integrations.view', 'audit.view',
+    'settings.manage', 'notifications.configure', 'integrations.view', 'audit.view', 'shopify.edit',
   ],
   developer: [
     'dashboard.view', 'issues.view', 'issues.update_status', 'tasks.view_team', 'tasks.update_own', 'crawls.view', 'modules.view',
-    'reports.view', 'employees.view', 'diagnostics.view', 'system.view',
+    'reports.view', 'employees.view', 'diagnostics.view', 'system.view', 'shopify.theme',
   ],
 };
 

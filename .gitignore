@@ -9,3 +9,6 @@ playwright-report
 **/.env
 **/.env.*
 !**/.env.example
+bin/
+services/textcore-rs/target/
+apps/api/.stress/

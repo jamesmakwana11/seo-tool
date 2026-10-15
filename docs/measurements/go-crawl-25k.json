@@ -1,0 +1,211 @@
+{
+  "products": 25000,
+  "site": {
+    "ready": true,
+    "url": "http://127.0.0.1:39607/",
+    "products": 25000,
+    "collections": 250,
+    "collectionPages": 1250,
+    "articles": 100
+  },
+  "concurrency": 16,
+  "budgetMB": 450,
+  "heapLimitMB": 304,
+  "status": "completed",
+  "outcome": "completed",
+  "wallMs": 78550,
+  "phasesAtMs": {
+    "crawling": 253,
+    "samples": 28607,
+    "text_analysis": 28858,
+    "analysing": 50294,
+    "saving": 77056
+  },
+  "timings": {
+    "checksMs": 196,
+    "crawlMs": 28584,
+    "robotsMs": 1,
+    "sitemapMs": 1098,
+    "textMs": 8081,
+    "crawlProcessMs": 37086,
+    "indexMs": 11700,
+    "heapAfterIndexMB": 94,
+    "textCoreReadMs": 192,
+    "heapAfterTextCoreMB": 106,
+    "wholeCrawlMs": 1098,
+    "heapAfterWholeCrawlMB": 129,
+    "heapAfterReleaseMB": 134,
+    "batchAnalysisMs": 26168,
+    "heapAfterBatchesMB": 91,
+    "coverageRowsMs": 433,
+    "analysisTotalMs": 39734
+  },
+  "coverage": {
+    "discovered": 53491,
+    "queued": 0,
+    "waiting": 0,
+    "active": 0,
+    "processed": 26633,
+    "succeeded": 26508,
+    "failed": 125,
+    "robots": 0,
+    "depthLimited": 0,
+    "pageLimited": 0,
+    "excluded": 26735,
+    "excludedBy": {
+      "cart_account_or_app_path": 2,
+      "collection_scoped_product_path": 24992,
+      "sort_filter_search_parameter": 1741
+    },
+    "notProcessed": 0,
+    "sitemapUrls": 25235,
+    "pagesPerMin": 6627,
+    "politeness": {
+      "avgLatencyMs": 11,
+      "crawlDelayMs": 0,
+      "delayMs": 0,
+      "floorMs": 0,
+      "rateLimited": 0,
+      "retries": 0,
+      "slowDowns": 0,
+      "waitedMs": 0
+    }
+  },
+  "rows": 53491,
+  "textCore": {
+    "ok": true
+  },
+  "peaksMB": {
+    "nodeRss": 253,
+    "nodeHeap": 134,
+    "go": 57,
+    "textCore": 19,
+    "total": 253
+  },
+  "runMemory": {
+    "nodeRssMB": 252,
+    "nodeHeapMB": 102.6,
+    "totalMB": 252,
+    "peakTotalMB": 252,
+    "budgetMB": 450
+  },
+  "issues": {
+    "total": 48,
+    "byCheck": {
+      "TECH-SITEMAP": 1,
+      "TECH-4XX": 153,
+      "TECH-DISCONTINUED": 125,
+      "TECH-DUPLICATE": 1897,
+      "ONP-TPL-HOME": 1,
+      "AEO-ENTITY": 1,
+      "GEO-EEAT": 101,
+      "AIC-01": 14883,
+      "TECH-BROKEN-INTERNAL": 630,
+      "TECH-THIN": 14977,
+      "TECH-SCHEMA-PRESENCE": 251,
+      "PERF-IMAGES": 150,
+      "ONP-TITLE": 25238,
+      "ONP-META": 2305,
+      "ONP-H1": 2076,
+      "ONP-BREADCRUMBS": 250,
+      "ONP-IMAGES": 1081,
+      "ONP-TPL-COLLECTION": 250,
+      "ONP-TPL-PRODUCT": 24875,
+      "AEO-ANSWER-BLOCK": 1,
+      "AEO-FAQ": 25125,
+      "AEO-EXTRACTABILITY": 1,
+      "GEO-STRUCTURE": 3,
+      "AIC-02": 610,
+      "AIC-09": 14713,
+      "GEO-FRESHNESS": 100,
+      "AIC-05": 100
+    }
+  },
+  "newIssues": 48,
+  "dupTitleSample": [
+    [
+      "http://127.0.0.1:39607/collections/vegetable-choppers-0",
+      "Vegetable Choppers | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:39607/collections/storage-boxs-1",
+      "Storage Boxs | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:39607/collections/lunch-boxs-4",
+      "Lunch Boxs | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:39607/collections/wall-hooks-3",
+      "Wall Hooks | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:39607/collections/desk-organisers-5",
+      "Desk Organisers | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:39607/collections/mixing-bowls-15",
+      "Mixing Bowls | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ]
+  ],
+  "pagesApiMs": {
+    "first": 20,
+    "last": 20,
+    "filterDupTitle": 15,
+    "search": 22,
+    "total": 53491,
+    "dupTitleRows": 2407,
+    "searchRows": 4028
+  },
+  "coverageMs": 0,
+  "coverageSummary": {
+    "sitemapNotCrawled": 0,
+    "failed": 125,
+    "redirects": 125,
+    "nearGroups": 1,
+    "titleGroups": 807,
+    "orphanCandidates": 0
+  },
+  "exportCsv": {
+    "ms": 682,
+    "bytes": 39048041,
+    "rows": 53492
+  },
+  "warnings": []
+}

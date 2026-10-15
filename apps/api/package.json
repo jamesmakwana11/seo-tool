@@ -6,12 +6,11 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "build": "tsc -p tsconfig.json --noEmit && esbuild src/server.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/server.js --packages=external --alias:@sentinel/shared=../../packages/shared/src/index.ts --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
+    "build": "tsc -p tsconfig.json --noEmit && esbuild src/server.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/server.js --packages=external --alias:@sentinel/shared=../../packages/shared/src/index.ts --banner:js=\"import{createRequire as __sentinelCreateRequire}from'module';const require=__sentinelCreateRequire(import.meta.url);\" && node --check dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "dev:env": "tsx watch --env-file=.env src/server.ts",
-    "start:env": "node --env-file=.env dist/server.js",
-    "start:env:large": "node --max-old-space-size=8192 --env-file=.env dist/server.js"
+    "start:env": "node --env-file=.env dist/server.js"
   },
   "devDependencies": {
     "@types/express": "5.0.0",
@@ -30,5 +29,8 @@
     "pino": "9.5.0",
     "undici": "6.29.0",
     "zod": "3.24.1"
+  },
+  "optionalDependencies": {
+    "lighthouse": "^13.5.0"
   }
 }

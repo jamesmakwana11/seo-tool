@@ -11,6 +11,7 @@ Commands work the same in Windows Command Prompt, PowerShell, macOS and Linux.
 
 - Node.js **20.12 or newer** (Node 22 LTS recommended) — `node -v`
 - npm (comes with Node)
+- For large sites: Go 1.22+ (`go version`) and Rust 1.75+ (`cargo --version`) to build the native crawler
 
 ## 2. Install
 
@@ -19,6 +20,20 @@ From the project folder (the one containing `package.json` and `apps/`):
 ```bash
 npm ci
 ```
+
+Build the native crawler (needs **Go 1.22+** and **Rust 1.75+**; install them from <https://go.dev/dl/> and
+<https://rustup.rs/>). On Windows, the Rust installer asks for the Visual Studio C++ Build Tools — accept.
+
+```bash
+npm run build:native     # → bin/sentinel-crawler(.exe) and bin/sentinel-textcore(.exe)
+npm run test:native      # optional: Go and Rust unit tests
+```
+
+The same commands work in Command Prompt, PowerShell, macOS and Linux. Without the binaries the API falls back to
+the built-in Node.js crawler (fine for small sites, not for 25,000+ pages).
+
+Optional — **Lighthouse / rendered checks** need Chrome or Chromium on the computer running the API (an installed
+Google Chrome is found automatically; otherwise set `LIGHTHOUSE_CHROME_PATH`).
 
 ## 3. Configure the API
 
@@ -143,9 +158,25 @@ then use the Crawl Center. Each website's crawl is restricted to its own host.
 
 ## Crawling 50,000+ pages
 
-The crawler has no page limit, and every step after fetching (link checks, analysis, issue tracking, result storage)
-grows in proportion to the number of pages, so a single run can cover 50,000 pages or more. Two things decide whether
-a run of that size completes on your computer: **time** and **memory**.
+Large crawls run on the **Go crawler** (`bin/sentinel-crawler`) with the **Rust text core** (`bin/sentinel-textcore`),
+both started by the API as separate processes. Build them once (section 2). Pages are written to compressed files in a
+temporary folder while crawling and analysed in batches, so memory does not grow with the number of pages:
+
+| Measured on the synthetic store (loopback, no internet) | 25,000 products | 50,000 products |
+| --- | --- | --- |
+| Pages fetched / URL rows | 26,633 / 53,491 | 53,235 / 106,966 |
+| Total time (crawl + analysis + saving) | 79 s | 159 s |
+| Peak memory: API (Node) + crawler (Go) + text core (Rust) | 253 + 57 + 19 MB | 383 + 92 + 35 MB |
+| Node heap limit used for the run | 304 MB | 288 MB |
+
+(`docs/measurements/go-crawl-25k.json` and `go-crawl-50k.json` hold the full figures. A real site is slower: the
+delay between requests and the site's response time decide the crawl time — see below.)
+
+**No large heap setting is needed.** Start the API normally (`npm run dev:api:env`). Do not raise Node's heap to
+several GB. The crawl memory budget (`CRAWLER_MEMORY_BUDGET_MB`; default 85 % of the container / cgroup limit — on a
+computer without such a limit, set it yourself, e.g. `CRAWLER_MEMORY_BUDGET_MB=1500`) covers the API and both native
+processes together. If the budget is reached — or the analysis would not fit in Node's heap — the crawl ends with the
+outcome **Stopped for memory** and says how many URLs were not processed; it never crashes the server. On a 512 MB host keep `NODE_OPTIONS=--max-old-space-size=288` (the Docker image sets it).
 
 **Time.** Requests to the site are spaced by the delay between requests, whatever the concurrency:
 
@@ -156,39 +187,28 @@ a run of that size completes on your computer: **time** and **memory**.
 | 0 ms, concurrency 8 | limited by the site's response time (e.g. 0.5 s → ~16 pages / s) | about 1 hour |
 
 The site's robots.txt `Crawl-delay` and its 429 / 503 answers slow the crawl further — that is intended. Only lower
-the delay for a site you own and whose server can take the load.
+the delay for a site you own and whose server can take the load. The crawl's **Run diagnostics** panel shows the speed,
+the response times, retries, slow-downs and the memory of each process.
 
-**Memory.** All pages stay in the API server's memory until the crawl is analysed. Node.js normally limits its memory
-to about 2–4 GB, which may not be enough for 50,000 pages. Start the API with a larger limit (8 GB below; use a value
-below your computer's free RAM):
+**Smart and full crawls.** A *Smart crawl* fetches the most important URLs first (homepage, URLs to re-verify, pages
+changed in the last 48 h, collections, top products) up to `CRAWLER_SMART_MAX_PAGES` (default 500) and lists what it
+did not fetch. A *Full crawl* has no page or depth limit.
+
+**Results.** The Pages table is paged, searched, filtered and sorted on the server (any crawl size). **Export CSV /
+Export JSON** streams every row. The most recent `CRAWLER_KEEP_RESULTS` (default 3) crawls keep their page rows in
+temporary files; older ones are removed. Temporary crawl files are deleted when a crawl finishes, and left-overs from
+a previous run are removed at start-up.
+
+**Re-run the measurement yourself** (synthetic store on 127.0.0.1, no external website):
 
 ```bash
-npm run build -w @sentinel/api     # once, after each code change
-npm run start:api:large            # API with an 8 GB memory limit, reading apps/api/.env
+cd apps/api
+npx tsx scripts/stress-go-crawl.ts --products 50000 --budget 450 --out ../../docs/measurements/my-50k.json
 ```
 
-Then start the web app as usual (`npm run dev:web:http`). Alternatively set the limit for `npm run dev:api:env`:
-
-| Shell | Command |
-| --- | --- |
-| Windows Command Prompt | `set NODE_OPTIONS=--max-old-space-size=8192` then `npm run dev:api:env` |
-| PowerShell | `$env:NODE_OPTIONS="--max-old-space-size=8192"; npm run dev:api:env` |
-| macOS / Linux | `NODE_OPTIONS=--max-old-space-size=8192 npm run dev:api:env` |
-
-If memory still runs low, the crawl does not crash the server: it stops taking new pages at 80 % of the limit,
-analyses what it has, and says so in the crawl result. Memory use per page depends on the site (page size, number of
-links), so measure on your own site: watch the API process in Task Manager / Activity Monitor during a capped run
-(e.g. 5,000 pages) and scale up.
-
-**Results.** The Pages table loads all rows of a crawl into the browser and shows 25 per page; filtering and search
-work on all of them. **Export CSV / Export JSON** downloads every row. Results stay in memory until the API stops
-(several 50,000-page crawls in one session add up — restart the API between very large test runs if memory is tight).
-
-**Suggested test sequence:**
-
-1. A capped crawl (Maximum pages 500) to check the setup and the speed in pages per minute.
-2. A capped crawl of 5,000 pages, watching the API's memory.
-3. An all-pages crawl started with `npm run start:api:large`.
+Without the native binaries (`CRAWLER_ENGINE=node`, or `auto` when they are not built) the built-in Node.js crawler
+runs instead; it keeps every page in memory and is meant for small sites and tests only. The Crawl Center shows which
+engine is active.
 
 ## Security
 
@@ -230,3 +250,6 @@ skipped by default. Run it with, for example, `STRESS_PAGES=20000` set in the en
 | `ADMIN_EMAIL and ADMIN_INITIAL_PASSWORD must be set together` | Fill in both in `apps/api/.env` |
 | `ADMIN_INITIAL_PASSWORD is too weak` | Use at least 10 characters with letters and numbers |
 | `node: bad option: --env-file` | Update Node.js to 20.12 or newer |
+| Crawl Center: “The Go crawler is not installed” | Run `npm run build:native` (needs Go and Rust), then restart the API |
+| `go` / `cargo` is not recognized | Install Go / Rust, then open a **new** terminal so the PATH is updated |
+| Outcome “Stopped for memory” | The API + crawler + text core reached `CRAWLER_MEMORY_BUDGET_MB`. Raise it (and the host's memory), or crawl with exclusions / a Smart crawl |

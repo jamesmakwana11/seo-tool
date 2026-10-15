@@ -10,11 +10,11 @@ import { ROLES, ROLE_HELP } from '@/components/team/roles';
 
 /** Legacy task permissions are kept in stored matrices for compatibility but are not shown — task management was removed. */
 const SHOWN = ALL_PERMISSIONS.filter((p) => !p.startsWith('tasks.'));
-const GROUP_ORDER = ['dashboard', 'websites', 'issues', 'fixcards', 'crawls', 'modules', 'opportunities', 'reports', 'rules', 'qa_gate', 'disavow', 'employees', 'roles', 'integrations', 'settings', 'notifications', 'audit', 'system', 'diagnostics'];
+const GROUP_ORDER = ['dashboard', 'websites', 'issues', 'fixcards', 'crawls', 'modules', 'opportunities', 'reports', 'rules', 'qa_gate', 'disavow', 'employees', 'roles', 'integrations', 'shopify', 'settings', 'notifications', 'audit', 'system', 'diagnostics'];
 const GROUP_LABELS: Record<string, string> = {
   dashboard: 'Dashboard', issues: 'Issues', fixcards: 'Fix Cards', websites: 'Websites', crawls: 'Crawls', modules: 'Audit modules', opportunities: 'Opportunities', reports: 'Reports',
   rules: 'AI compliance rules', qa_gate: 'QA gate', disavow: 'Disavow', employees: 'Employees', roles: 'Roles', integrations: 'Integrations', settings: 'Settings',
-  notifications: 'Notifications', audit: 'Audit log', system: 'System health', diagnostics: 'Diagnostics',
+  notifications: 'Notifications', audit: 'Audit log', system: 'System health', diagnostics: 'Diagnostics', shopify: 'Shopify',
 };
 const PERM_HELP: Partial<Record<Permission, string>> = {
   'fixcards.approve_proposal': 'Record approval of a proposed live-site change (never applied by Sentinel)',
@@ -24,6 +24,8 @@ const PERM_HELP: Partial<Record<Permission, string>> = {
   'websites.manage': 'Add and edit websites',
   'roles.manage': 'Edit this matrix',
   'employees.manage': 'Invite and edit employees',
+  'shopify.edit': 'SEO editor: draft and apply content changes in Shopify (after confirmation)',
+  'shopify.theme': 'Prepare theme file changes and write them to unpublished themes (never publishes)',
 };
 
 const sortMatrix = (m: PermissionMatrix): PermissionMatrix => Object.fromEntries(ROLES.map((r) => [r, ALL_PERMISSIONS.filter((p) => m[r]?.includes(p))])) as PermissionMatrix;

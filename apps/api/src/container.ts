@@ -6,6 +6,10 @@ import { createInMemoryRepositories } from './repositories/memory/inMemory';
 import { seedDemoData } from './repositories/seedDemo';
 import type { Repositories } from './repositories/types';
 import { createCrawlEngine, type CrawlEngineOptions } from './crawler/engine';
+import { cleanStaleWork, createGoCrawlEngine, defaultWorkDir } from './gocrawl/engine';
+import { memoryPlan } from './gocrawl/memoryBudget';
+import { createLighthouseService } from './lighthouse/service';
+import { createShopifyService } from './shopify/service';
 import { isLocalHost } from './crawler/url';
 import { createReverifier } from './analysis/reverify';
 import { createConnectors, createDeliveryAdapters, createDeliveryService, createIntegrationRegistry, createLlmAdapter, createTaskOpsAdapter, type FetchLike, type MailTransportFactory } from './connectors';
@@ -80,15 +84,41 @@ export async function createContainer(o: ContainerOptions) {
     thresholds: { ...cfg0.thresholds }, config: structuredClone(cfg0), fetchImpl: fetchImpl as typeof fetch | undefined, log: { info: (...a: unknown[]) => log.info(a), warn: (...a: unknown[]) => log.warn(a), error: (...a: unknown[]) => log.error(a) }, now: clock,
   };
   const baseEngine = createCrawlEngine(engineOpts);
+  const workDir = env.CRAWLER_WORK_DIR ?? defaultWorkDir();
+  const goEngine = createGoCrawlEngine({
+    ...engineOpts, workDir, keepWorkFiles: env.CRAWLER_KEEP_WORK_FILES, memoryBudgetMB: env.CRAWLER_MEMORY_BUDGET_MB, goMemoryMB: env.CRAWLER_GO_MEMORY_MB,
+    smartMaxPages: env.CRAWLER_SMART_MAX_PAGES, env: { CRAWLER_GO_BIN: env.CRAWLER_GO_BIN, TEXTCORE_BIN: env.TEXTCORE_BIN },
+  });
+  if (!o.repos && !o.engine) await cleanStaleWork(workDir).catch(() => 0);
+  /** Which engine runs a plan: re-verification → built-in; otherwise CRAWLER_ENGINE (auto = Go when installed). */
+  const goInstalled = () => { const b = goEngine.binaries(); return !!b.crawler.path && !b.crawler.problem; };
+  // An injected fetch (tests with a simulated network) can only drive the built-in crawler.
+  const pick = (type?: string) => (type === 'reverify' || fetchImpl || env.CRAWLER_ENGINE === 'node' || (env.CRAWLER_ENGINE === 'auto' && !goInstalled()) ? 'node' : 'go');
   const engine: CrawlEngine = o.engine ?? {
-    readiness: () => baseEngine.readiness(),
+    readiness: () => (pick() === 'go' ? goEngine.readiness() : baseEngine.readiness()),
     async run(plan, cb) {
       // Pick up configuration changes made since start-up (thresholds, AI-crawler policy, intentional noindex…).
       const cfg = await repos.config.get();
       Object.assign(engineOpts.config, structuredClone(cfg));
       Object.assign(engineOpts.thresholds, cfg.thresholds);
-      return baseEngine.run(plan, cb);
+      if (pick(plan.type) === 'go') return goEngine.run(plan, cb);
+      const out = await baseEngine.run(plan, cb);
+      const warn = plan.type !== 'reverify' && env.CRAWLER_ENGINE === 'auto'
+        ? [{ code: 'node_engine', message: `The Go crawler is not installed on this server (${goEngine.binaries().crawler.problem ?? 'not found'}), so the built-in Node.js crawler ran. It keeps every page in memory and is not suited to very large sites.`, at: clock().toISOString() }]
+        : undefined;
+      return { ...out, stats: { ...out.stats, engine: 'node', ...(warn ? { warnings: warn } : {}) } };
     },
+  };
+  const engineInfo = () => {
+    const b = goEngine.binaries();
+    const mem = memoryPlan({ CRAWLER_MEMORY_BUDGET_MB: env.CRAWLER_MEMORY_BUDGET_MB, CRAWLER_GO_MEMORY_MB: env.CRAWLER_GO_MEMORY_MB });
+    return {
+      active: (o.engine ? 'node' : pick()) as 'go' | 'node',
+      goCrawler: { available: !b.crawler.problem && !!b.crawler.path, version: b.crawler.version, problem: b.crawler.problem },
+      textCore: { available: !b.textCore.problem && !!b.textCore.path, version: b.textCore.version, problem: b.textCore.problem },
+      memoryBudgetMB: mem.budgetMB, memoryBasis: mem.basis,
+      note: env.CRAWLER_ENGINE === 'node' ? 'CRAWLER_ENGINE=node: the built-in crawler is used.' : undefined,
+    };
   };
   const ctxRef: { tierOf?: (u: string) => 1 | 2 | 3 } = {};
   let latestState: import('./services/ports').PreviousCrawlState | undefined;
@@ -98,7 +128,7 @@ export async function createContainer(o: ContainerOptions) {
     previous: () => latestState,
   });
 
-  const ctx: Ctx = { env, repos, log, clock, integrations, delivery, taskOps, llm, engine, reverifier, sessionSecret: env.SESSION_SECRET ?? randomToken(32) };
+  const ctx: Ctx = { env, repos, log, clock, integrations, delivery, taskOps, llm, engine, engineInfo, reverifier, sessionSecret: env.SESSION_SECRET ?? randomToken(32) };
   const recent: ReturnType<DiagnosticsSource['recent']> = [];
   const diagnostics: DiagnosticsSource = o.diagnostics ?? { endpoints: [], recent: () => recent };
 
@@ -107,6 +137,9 @@ export async function createContainer(o: ContainerOptions) {
   const issues = createIssueService(ctx, tasks);
   const rules = createRuleService(ctx);
   const crawls = createCrawlService(ctx, issues, rules);
+  const lighthouse = createLighthouseService(ctx, env, baseEngine.collector, { allowLoopback: engineOpts.allowLoopback ?? false, userAgent: engineOpts.userAgent });
+  // SHOPIFY_ADMIN_TOKEN belongs to the primary website only; added websites connect their own store with OAuth.
+  const shopify = createShopifyService(ctx, { fetchImpl, collector: baseEngine.collector, latestRow: (u) => crawls.latestRow(u), useEnvToken: !o.repos });
   const reports = createReportService(ctx);
   const insights = createInsightService(ctx);
   let schedulerRef: { running: () => boolean } = { running: () => false };
@@ -129,7 +162,7 @@ export async function createContainer(o: ContainerOptions) {
     env, log, clock, repos, ctx, diagnostics, recent,
     /** Injected outbound fetch (tests); undefined in production → adapters use global fetch. */
     fetchImpl,
-    services: { auth, tasks, issues, rules, crawls, reports, insights, admin },
+    services: { auth, tasks, issues, rules, crawls, reports, insights, admin, lighthouse, shopify },
     scheduler,
     refreshVerifierInputs,
     runEscalations: () => runEscalations(ctx, issues),

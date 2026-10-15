@@ -228,7 +228,7 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
    *  - auto-resolution only where the check was evaluated AND every affected URL was re-crawled
    *  - template grouping (≥3 related Medium) and real-time alerts for new Criticals
    */
-  async function ingestFindings(runId: string, outcome: Pick<CrawlOutcome, 'findings' | 'evaluatedChecks' | 'evaluatedTemplates' | 'urls' | 'pageTexts'>) {
+  async function ingestFindings(runId: string, outcome: Pick<CrawlOutcome, 'findings' | 'evaluatedChecks' | 'evaluatedTemplates' | 'urls' | 'pageTexts'> & { answeredUrls?: Set<string> }) {
     const cfg = await r.config.get();
     const tierOfRaw = await tierLookup();
     const tierCache = new Map<string, PageTier>();
@@ -246,7 +246,8 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
     for (const i of live) { const k = issueKeyOf(i); const list = liveByKey.get(k); if (list) list.push(i); else liveByKey.set(k, [i]); }
     const seen = new Set<string>();
     const stats = { newIssues: 0, resolvedIssues: 0, recurringIssues: 0, excludedUrls: 0 };
-    const crawled = new Set(outcome.urls.filter((u) => u.status !== null).map((u) => u.url));
+    // URLs that answered in this run (Go crawls pass the set from their result store instead of every row).
+    const crawled = outcome.answeredUrls ?? new Set(outcome.urls.filter((u) => u.status !== null).map((u) => u.url));
     const primaryTask = async (i: Issue) => {
       // A grouped child shares its parent's task; only the task's own issue drives verification.
       const t = i.taskId ? await r.tasks.get(i.taskId) : undefined;

@@ -719,7 +719,7 @@ async function sizeWithAccept(http: HttpClient, url: string, _opts: CrawlEngineO
   return { status: r.status ?? head.finalStatus, bytes: r.bytes, contentType: r.contentType ?? head.headers['content-type'], error: r.error ?? head.error };
 }
 
-function buildSitemapDiff(pages: ParsedPage[], ctx: SiteContext, invalid: { url: string; problem: string }[]): SitemapDiff | undefined {
+export function buildSitemapDiff(pages: ParsedPage[], ctx: SiteContext, invalid: { url: string; problem: string }[]): SitemapDiff | undefined {
   if (!ctx.sitemap) return undefined;
   const entries = ctx.sitemap.entries;
   const prev = ctx.previous?.sitemapEntries;
@@ -852,16 +852,21 @@ function targetStatus(url: string, byUrl: Map<string, ParsedPage>, ctx: SiteCont
   return { status: null, known: false };
 }
 
-/** Per-page result rows (what the Crawl Center results screen and exports show). */
-export function pageRows(pages: ParsedPage[], ctx: SiteContext): CrawledUrl[] {
+export type TargetLookup = (url: string) => { status: number | null; known: boolean; blocked?: boolean };
+
+/**
+ * Per-page result rows (what the Crawl Center results screen and exports show). `lookup` answers link-target status
+ * from the whole crawl when only a batch of pages is passed (streaming analysis).
+ */
+export function pageRows(pages: ParsedPage[], ctx: SiteContext, lookup?: TargetLookup): CrawledUrl[] {
   const byUrl = new Map<string, ParsedPage>();
-  for (const p of pages) byUrl.set(normalizeUrl(p.url), p);
+  if (!lookup) for (const p of pages) byUrl.set(normalizeUrl(p.url), p);
   // A link is broken or not for every page that carries it: work it out once per distinct link (menus repeat on every page).
   const brokenCache = new Map<string, boolean>();
   const isBroken = (l: string) => {
     let b = brokenCache.get(l);
     if (b === undefined) {
-      const t = targetStatus(l, byUrl, ctx);
+      const t = lookup ? lookup(l) : targetStatus(l, byUrl, ctx);
       b = t.known && !t.blocked && (t.status === null || t.status >= 400);
       brokenCache.set(l, b);
     }

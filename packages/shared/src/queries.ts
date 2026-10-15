@@ -58,6 +58,7 @@ export function paginate<T>(items: T[], page = 1, pageSize = 25): Paged<T> {
 
 export function filterIssues(issues: Issue[], f: IssueFilter, now = new Date()): Paged<Issue> {
   let list = issues.filter((i) => (f.includeSuperseded ? true : i.status !== 'SUPERSEDED'));
+  if (f.crawlRunId) list = list.filter((i) => i.crawlRunId === f.crawlRunId);
   if (f.q) {
     const q = f.q.toLowerCase();
     list = list.filter((i) => i.id.toLowerCase().includes(q) || i.title.toLowerCase().includes(q) || i.checkId.toLowerCase().includes(q) || i.affectedUrls.some((u) => u.toLowerCase().includes(q)));

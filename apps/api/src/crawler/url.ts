@@ -79,6 +79,21 @@ export function productHandle(url: string): string | undefined {
   return m ? decodeURIComponent(m[1]) : undefined;
 }
 
+/**
+ * /collections/{c}/products/{p} → /products/{p} on the same origin: Shopify serves the same product under both paths
+ * and declares /products/{p} canonical, so a link to the scoped path is a link to the product.
+ */
+export function scopedProductCanonical(url: string): string | undefined {
+  if (!url.includes('/collections/')) return undefined;
+  try {
+    const u = new URL(url);
+    const m = /^\/collections\/[^/]+\/products\/([^/?#]+)/.exec(u.pathname);
+    return m ? `${u.origin}/products/${m[1]}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function collectionHandle(url: string): string | undefined {
   const m = pathOf(url).match(/^\/collections\/([^/?#]+)/);
   return m ? decodeURIComponent(m[1]) : undefined;

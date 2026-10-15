@@ -11,7 +11,7 @@ import type { ParsedPage } from '../crawler/types';
 import { pathOf } from '../crawler/url';
 import { groupByTemplate, metricEv, minOf, noun, perTemplate, textEv, trunc, type AnalyzerResult, type Ev, type Prepared } from './context';
 import { modifiedDate } from './aeoGeo';
-import { UTILITY_PAGE } from './technical';
+import { UTILITY_PAGE, restrictClusters } from './technical';
 import { hasType, nodesOfType } from './schema';
 
 /** The page's own copy (product grids and template chrome excluded) — what AI checks read. */
@@ -57,8 +57,9 @@ export function qualityScore(prep: Prepared, p: ParsedPage, dupUrls: Set<string>
 export function analyzeContentQuality(prep: Prepared): AnalyzerResult {
   const min = prep.ctx.thresholds.contentQualityMin ?? 50;
   const pages = prep.content.filter((p) => CONTENT_TEMPLATES.includes(p.template) && !UTILITY_PAGE.test(pathOf(p.url)));
-  const dupUrls = new Set<string>();
-  for (const [, list] of groupByTemplate(pages)) {
+  if (prep.global && !prep.global.qualityDupUrls) return { evaluated: false, findings: [], reason: `the near-duplicate part of the score needs the text core: ${prep.global.nearUnavailable ?? 'not available'}` };
+  const dupUrls = prep.global?.qualityDupUrls ?? new Set<string>();
+  for (const [, list] of prep.global ? [] : groupByTemplate(pages)) {
     const docs = list.filter((p) => prep.uniqueWords(p) >= 30).map((p) => ({ id: p.url, text: prep.uniqueText(p) }));
     for (const c of nearIdenticalClusters(docs, 0.85)) c.forEach((u) => dupUrls.add(u));
   }
@@ -107,15 +108,18 @@ export function analyzeScaledContent(prep: Prepared): AnalyzerResult {
   const minCluster = 3;
   const findings: Finding[] = [];
   const pages = prep.content.filter((p) => ['product', 'collection', 'blog_article', 'page'].includes(p.template));
+  const g = prep.global;
+  if (g && !g.near) return { evaluated: false, findings: [], reason: `needs the text core: ${g.nearUnavailable ?? 'not available'}` };
   for (const [t, list] of groupByTemplate(pages)) {
-    const docs = list
-      .map((p) => ({ p, text: p.html!.descriptionText ?? p.html!.ownBlocks.join('\n') }))
-      .filter((d) => wordCount(d.text) >= 25)
-      .map((d) => ({ id: d.p.url, text: d.text, mask: d.p.html!.h1s[0] || undefined }));
-    const clusters = nearIdenticalClusters(docs, 0.8).filter((c) => c.length >= minCluster);
-    const docById = new Map(docs.map((d) => [d.id, d]));
+    const textOf = (p: ParsedPage) => p.html!.descriptionText ?? p.html!.ownBlocks.join('\n');
+    // Whole crawl: the text core compares the same text (description, else the page's own blocks; ≥ 25 words) with the
+    // H1 masked, so its clusters only need limiting to this template's in-scope pages. Otherwise compare here.
+    const docs = g?.near ? [] : list.map((p) => ({ p, text: textOf(p) })).filter((d) => wordCount(d.text) >= 25).map((d) => ({ id: d.p.url, text: d.text, mask: d.p.html!.h1s[0] || undefined }));
+    const clusters = (g?.near ? restrictClusters(g.near('descMasked', 0.8), new Set(list.map((p) => p.url)), minCluster) : nearIdenticalClusters(docs, 0.8)).filter((c) => c.length >= minCluster);
+    const pageById = new Map(list.map((p) => [p.url, p]));
     for (const c of clusters) {
-      const sample = docById.get(c[0])!;
+      const sp = pageById.get(c[0])!;
+      const sample = { text: textOf(sp), mask: sp.html!.h1s[0] || undefined };
       const masked = sample.mask ? sample.text.split(sample.mask).join('{product}') : sample.text;
       findings.push({
         checkId: 'AIC-01', template: t, key: `AIC-01::${t}::${c.slice().sort()[0]}`,
@@ -172,26 +176,43 @@ export function analyzeExperience(prep: Prepared): AnalyzerResult {
 
 const INCENTIVIZED = /\b(received (this|the) (product|item) (for )?free|in exchange for (my|an) (honest )?review|free product for review|sponsored review|discount in exchange)\b/i;
 
+/** Review bodies as AIC-06 compares them (visible review texts + schema reviewBody, lower-case, ≥ 6 words). */
+export function reviewBodies(p: ParsedPage): string[] {
+  return [...p.html!.reviews.texts, ...nodesOfType(p, 'Review').map((r) => (typeof r.reviewBody === 'string' ? r.reviewBody : ''))]
+    .map((t) => t.toLowerCase().replace(/\s+/g, ' ').trim())
+    .filter((t) => wordCount(t) >= 6);
+}
+
 export function analyzeFakeReviews(prep: Prepared): AnalyzerResult {
   const pages = prep.content.filter((p) => hasType(p, 'Review', 'AggregateRating') || p.html!.reviews.hasVisible);
+  const share = prep.global?.reviewShare;
   const textToPages = new Map<string, Set<string>>();
-  for (const p of pages) {
-    const bodies = [...p.html!.reviews.texts, ...nodesOfType(p, 'Review').map((r) => (typeof r.reviewBody === 'string' ? r.reviewBody : ''))].map((t) => t.toLowerCase().replace(/\s+/g, ' ').trim()).filter((t) => wordCount(t) >= 6);
-    for (const b of new Set(bodies)) textToPages.set(b, (textToPages.get(b) ?? new Set()).add(p.url));
+  for (const p of share ? [] : pages) {
+    for (const b of new Set(reviewBodies(p))) textToPages.set(b, (textToPages.get(b) ?? new Set()).add(p.url));
   }
   // Page → the shared review texts it carries (built once, instead of scanning every shared text for every page).
-  const templatedOf = new Map<string, [string, Set<string>][]>();
-  for (const e of textToPages) {
-    if (e[1].size < 2) continue;
-    for (const u of e[1]) { const list = templatedOf.get(u); if (list) list.push(e); else templatedOf.set(u, [e]); }
+  const templatedOf = new Map<string, { text: string; urls: string[]; pages: number }[]>();
+  for (const [t, set] of textToPages) {
+    if (set.size < 2) continue;
+    const urls = [...set];
+    for (const u of set) { const list = templatedOf.get(u); const e = { text: t, urls: urls.slice(0, 20), pages: set.size }; if (list) list.push(e); else templatedOf.set(u, [e]); }
   }
-  const firstN = (s: Set<string>, n: number) => { const out: string[] = []; for (const x of s) { if (out.length >= n) break; out.push(x); } return out; };
+  // Batch analysis: how many pages of the whole crawl carry each text comes from the crawl-wide count.
+  const sharedOf = (p: ParsedPage) => {
+    if (!share) return templatedOf.get(p.url) ?? [];
+    const out: { text: string; urls: string[]; pages: number }[] = [];
+    for (const b of new Set(reviewBodies(p))) {
+      const s = share(b);
+      if (s && s.pages >= 2) out.push({ text: b, urls: s.urls, pages: s.pages });
+    }
+    return out;
+  };
   return perTemplate(prep, pages, 'AIC-06', 'fake/templated review signals', (p) => {
     const out: { label: string; evidence?: Ev[] }[] = [];
     const marked = [...nodesOfType(p, 'AggregateRating'), ...nodesOfType(p, 'Review')];
     if (marked.length && !p.html!.reviews.hasVisible) out.push({ label: 'carry review schema with no genuine visible reviews behind it', evidence: [{ kind: 'jsonld', label: 'review markup', url: p.url, content: JSON.stringify(marked[0]).slice(0, 600) }] });
-    const mine = templatedOf.get(p.url) ?? [];
-    if (mine.length) out.push({ label: 'show review text duplicated verbatim on other products (templated reviews)', evidence: mine.slice(0, 3).map(([t, s]) => textEv(p.url, `same review on ${s.size} pages`, t, { urls: firstN(s, 20), pageCount: s.size })) });
+    const mine = sharedOf(p);
+    if (mine.length) out.push({ label: 'show review text duplicated verbatim on other products (templated reviews)', evidence: mine.slice(0, 3).map((m) => textEv(p.url, `same review on ${m.pages} pages`, m.text, { urls: m.urls, pageCount: m.pages })) });
     const inc = p.html!.reviews.texts.find((t) => INCENTIVIZED.test(t));
     if (inc) out.push({ label: 'show incentivized-review patterns', evidence: [textEv(p.url, 'incentivized review', inc)] });
     const schemaBodies = nodesOfType(p, 'Review').map((r) => (typeof r.reviewBody === 'string' ? r.reviewBody : '')).filter((b) => wordCount(b) >= 5);
@@ -227,12 +248,16 @@ export function analyzeYmyl(prep: Prepared): AnalyzerResult {
 export function analyzeDoorway(prep: Prepared): AnalyzerResult {
   const pages = prep.content.filter((p) => ['page', 'collection', 'blog_article', 'other'].includes(p.template));
   const findings: Finding[] = [];
-  const docs = pages
-    .map((p) => ({ p, text: prep.uniqueText(p) || p.html!.ownBlocks.join('\n') }))
-    .filter((d) => wordCount(d.text) >= 40);
-  const clusters = nearIdenticalClusters(docs.map((d) => ({ id: d.p.url, text: d.text, mask: d.p.html!.h1s[0] || undefined })), 0.75).filter((c) => c.length >= 3);
+  const g = prep.global;
+  if (g && !g.near) return { evaluated: false, findings: [], reason: `needs the text core: ${g.nearUnavailable ?? 'not available'}` };
+  const textOf = (p: ParsedPage) => prep.uniqueText(p) || p.html!.ownBlocks.join('\n');
+  // Whole crawl: the text core's H1-masked clusters of unique copy, limited to pages with ≥ 40 unique words.
+  const docs = g?.near ? [] : pages.map((p) => ({ p, text: textOf(p) })).filter((d) => wordCount(d.text) >= 40);
+  const clusters = g?.near
+    ? restrictClusters(g.near('h1Masked', 0.75), new Set(pages.filter((p) => prep.uniqueWords(p) >= 40).map((p) => p.url)), 3)
+    : nearIdenticalClusters(docs.map((d) => ({ id: d.p.url, text: d.text, mask: d.p.html!.h1s[0] || undefined })), 0.75).filter((c) => c.length >= 3);
   const pageByUrl = new Map(pages.map((p) => [p.url, p]));
-  const docByUrl = new Map(docs.map((d) => [d.p.url, d]));
+  const docByUrl = new Map(clusters.flat().map((u) => [u, { text: textOf(pageByUrl.get(u)!) }]));
   for (const c of clusters) {
     const cps = c.map((u) => pageByUrl.get(u)!);
     const inCluster = new Set(c);

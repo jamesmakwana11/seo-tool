@@ -15,9 +15,10 @@ import { CRAWL_TRIGGER_LABELS, CRAWL_TYPE_LABELS, CrawlStatusBadge, HttpStatusBa
 import { fmtDuration } from '@/components/crawls/format';
 import { CrawlProgress, ExportButtons, TemporaryResultsNote } from '@/components/crawls/LiveCrawl';
 import { hasPageDetails, IssuesFound, PageResults } from '@/components/crawls/PageResults';
+import { CoverageReport, OutcomeBadge, RunDiagnostics } from '@/components/crawls/Coverage';
 import { fmtDateTime, fmtMs, fmtNum, shortUrl } from '@/lib/format';
 
-type Tab = 'urls' | 'issues' | 'sitemap' | 'reverify';
+type Tab = 'urls' | 'issues' | 'coverage' | 'sitemap' | 'reverify';
 
 export default function CrawlRunPage() {
   const { id = '' } = useParams();
@@ -42,16 +43,17 @@ function Detail({ d }: { d: CrawlDetail }) {
   const [tab, setTab] = useState<Tab>('urls');
   const simulated = run.source === 'simulated';
   const active = run.status === 'running' || run.status === 'queued';
-  const detailed = hasPageDetails(d.urls);
-  const issueCount = useMemo(() => new Set(d.urls.flatMap((u) => (u.issues ?? []).map((i) => i.id))).size, [d.urls]);
+  // Page-level results: live crawls (Go crawler rows are paged on the server; small runs carry them inline too).
+  const detailed = hasPageDetails(d.urls) || !!d.urlsPaged || run.engine === 'go';
+  const rowCount = d.urlCount ?? d.urls.length;
   return (
     <div>
       <BackLink />
       <PageHeader
         title={`${run.options ? 'Live crawl' : CRAWL_TYPE_LABELS[run.type]} ${run.id}`}
         description={`${run.options ? `${run.options.startUrl} · ` : ''}${CRAWL_TRIGGER_LABELS[run.trigger]} trigger · started ${fmtDateTime(run.startedAt ?? run.scheduledFor)} IST`}
-        meta={<><DemoBadge /><CrawlStatusBadge run={run} />{run.source !== 'demo' && <SourceBadge source={run.source} />}</>}
-        actions={d.urls.length > 0 && !simulated ? <ExportButtons run={run} /> : undefined}
+        meta={<><DemoBadge /><CrawlStatusBadge run={run} />{!active && <OutcomeBadge run={run} />}{run.source !== 'demo' && <SourceBadge source={run.source} />}</>}
+        actions={rowCount > 0 && !simulated ? <ExportButtons run={run} /> : undefined}
       />
 
       <div className="space-y-5">
@@ -104,21 +106,25 @@ function Detail({ d }: { d: CrawlDetail }) {
           </Panel>
         </div>
 
+        <RunDiagnostics run={run} />
+
         <Tabs<Tab>
           value={tab}
           onChange={setTab}
           items={[
-            { value: 'urls', label: detailed ? 'Pages' : 'URLs', count: d.urls.length },
-            ...(detailed ? [{ value: 'issues' as Tab, label: 'Issues', count: issueCount }] : []),
+            { value: 'urls', label: detailed ? 'Pages' : 'URLs', count: rowCount },
+            ...(detailed ? [{ value: 'issues' as Tab, label: 'Issues' }] : []),
+            ...(run.engine === 'go' ? [{ value: 'coverage' as Tab, label: 'Coverage' }] : []),
             { value: 'sitemap', label: 'Sitemap diff' },
             { value: 'reverify', label: 'Re-verification', count: d.verification.length },
           ]}
         />
-        {tab === 'urls' && (detailed ? <PageResults urls={d.urls} />
+        {tab === 'urls' && (detailed ? <PageResults runId={run.id} active={active} />
           : active && !d.urls.length ? <Panel><EmptyState title="Results appear when the crawl finishes" description="Pages are listed once the crawl completes or is cancelled. Progress is shown above." /></Panel>
             : run.options && !d.urls.length ? <Panel><EmptyState title="No pages were fetched" description={run.status === 'cancelled' ? 'The crawl was cancelled before its first page was fetched.' : run.error ?? 'This crawl produced no page results.'} /></Panel>
               : <UrlsTab urls={d.urls} simulated={simulated} />)}
-        {tab === 'issues' && <IssuesFound urls={d.urls} />}
+        {tab === 'issues' && <IssuesFound runId={run.id} />}
+        {tab === 'coverage' && <CoverageReport run={run} />}
         {tab === 'sitemap' && <SitemapTab diff={d.sitemapDiff} />}
         {tab === 'reverify' && <ReverifyTab d={d} />}
       </div>

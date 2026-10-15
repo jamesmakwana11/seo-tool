@@ -4,6 +4,7 @@ import { badRequest } from '../lib/errors';
 import type { Container } from '../container';
 import { need, type Actor } from '../services/context';
 import { isSyncId, runSync, SYNC_IDS } from '../sync';
+import { handleOAuthCallback } from '../shopify/service';
 
 export interface ApiRoute {
   method: 'get' | 'post' | 'put' | 'patch' | 'delete';
@@ -34,7 +35,7 @@ const arr = <T = string>(v: unknown): T[] | undefined => (Array.isArray(v) ? (v 
 function issueFilter(q: Request['query']): import('@sentinel/shared').IssueFilter {
   return {
     q: optStr(q.q), severity: arr(q.severity), module: arr<AuditModule>(q.module), status: arr(q.status), team: arr(q.team), allocatorId: optStr(q.allocatorId),
-    template: arr(q.template), tier: arr(q.tier)?.map(Number) as (1 | 2 | 3)[] | undefined, delta: arr(q.delta), checkId: optStr(q.checkId),
+    template: arr(q.template), tier: arr(q.tier)?.map(Number) as (1 | 2 | 3)[] | undefined, delta: arr(q.delta), checkId: optStr(q.checkId), crawlRunId: optStr(q.crawlRunId),
     includeSuperseded: q.includeSuperseded === 'true', sort: optStr(q.sort) as never, dir: optStr(q.dir) as never,
     page: q.page ? num(q.page, 1) : undefined, pageSize: q.pageSize ? num(q.pageSize, 25) : undefined,
   } as import('@sentinel/shared').IssueFilter;
@@ -42,7 +43,7 @@ function issueFilter(q: Request['query']): import('@sentinel/shared').IssueFilte
 /** Register one route per SentinelApi method. Order: auth → dashboard → modules → issues → tasks → crawls → opportunities → off-page → AI → reports → notifications → people → config → audit/system/search/diagnostics. */
 export function registerRoutes(routes: ApiRoute[], c: Container) {
   const { services } = c;
-  const { auth, tasks, issues, rules, crawls, reports, insights, admin } = services;
+  const { auth, tasks, issues, rules, crawls, reports, insights, admin, lighthouse, shopify } = services;
   const add = (r: ApiRoute) => routes.push(r);
 
   // -------------------------------------------------------------- auth
@@ -97,11 +98,69 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
       res.setHeader('Content-Type', f.mimeType);
       res.setHeader('Content-Disposition', `attachment; filename="${f.filename.replace(/[^\w.-]/g, '_')}"`);
       res.setHeader('Cache-Control', 'no-store');
-      res.status(200).send(f.content);
+      if (f.content !== undefined) {
+        res.status(200).send(f.content);
+        return;
+      }
+      // Large runs: streamed in chunks with back-pressure (the file is never built in memory).
+      res.status(200);
+      for await (const chunk of f.stream!) {
+        if (res.destroyed) break;
+        if (!res.write(chunk)) await new Promise<void>((r) => { res.once('drain', () => r()); res.once('close', () => r()); });
+      }
+      res.end();
     },
   });
+  add({
+    method: 'get', path: '/api/crawls/:id/pages', permission: 'crawls.view',
+    description: 'Page rows of a crawl, paged on the server (query: offset, limit ≤ 500, q, status, indexable, problem, crawlState, source, template, sort, dir)',
+    handle: (req) => crawls.pages(actorOf(req), prm(req, 'id'), {
+      offset: num(req.query.offset, 0), limit: num(req.query.limit, 50), q: optStr(req.query.q), status: optStr(req.query.status) as never, indexable: optStr(req.query.indexable) as never,
+      problem: optStr(req.query.problem) as never, crawlState: optStr(req.query.crawlState) as never, source: optStr(req.query.source), template: optStr(req.query.template),
+      sort: optStr(req.query.sort) as never, dir: optStr(req.query.dir) as never,
+    }),
+  });
+  add({ method: 'get', path: '/api/lighthouse/status', permission: 'crawls.view', description: 'Whether Lighthouse / rendered checks can run on this server', handle: (req) => lighthouse.status(actorOf(req)) });
+  add({ method: 'get', path: '/api/lighthouse/runs', permission: 'crawls.view', description: 'Recent Lighthouse audits and rendered checks', handle: (req) => lighthouse.list(actorOf(req)) });
+  add({ method: 'post', path: '/api/lighthouse/runs', permission: 'crawls.run', status: 202, description: 'Queue Lighthouse audits (body: url, formFactors: ["mobile","desktop"], render)', handle: (req) => lighthouse.start(actorOf(req), req.body ?? {}) });
+  add({ method: 'get', path: '/api/crawls/:id/coverage', permission: 'crawls.view', description: 'URL coverage of a crawl: found, crawled, failed, excluded, sitemap vs link graph, duplicates', handle: (req) => crawls.coverage(actorOf(req), prm(req, 'id')) });
   add({ method: 'post', path: '/api/crawls', permission: 'crawls.run', description: 'Start a crawl (body: type, and for a live crawl options: startUrl, maxPages, maxDepth, timeoutMs, concurrency)', handle: (req) => crawls.startManual(actorOf(req), str(req.body.type, 'type') as CrawlType, req.body.options) });
   add({ method: 'post', path: '/api/crawls/:id/cancel', permission: 'crawls.run', description: 'Cancel a running crawl', handle: (req) => crawls.cancel(actorOf(req), prm(req, 'id')) });
+
+  // -------------------------------------------------------------- Shopify connection + SEO editor (token never leaves the server)
+  const ids = (v: unknown): string[] => { const a = arr(v) ?? []; if (!a.every((x) => typeof x === 'string' && x.length < 80)) throw badRequest('ids must be draft ids.'); return a; };
+  const sendFile = (req: Request, f: { filename: string; mimeType: string; content: string }) => {
+    const res = req.res!;
+    res.setHeader('Content-Type', f.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${f.filename.replace(/[^\w.-]/g, '_')}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).send(f.content);
+  };
+  add({ method: 'get', path: '/api/shopify/status', permission: 'integrations.view', description: 'Shopify connection: shop, granted scopes, missing scopes, capabilities (never the token)', handle: (req) => shopify.status(actorOf(req)) });
+  add({ method: 'post', path: '/api/shopify/oauth/start', permission: 'integrations.manage', description: 'Start Shopify OAuth (body: shop) → authorize URL', handle: (req) => shopify.startOAuth(actorOf(req), str(req.body.shop, 'shop')) });
+  add({
+    method: 'get', path: '/api/shopify/oauth/callback', public: true, raw: true, description: 'Shopify OAuth callback (HMAC + single-use state verified; redirects to the app)',
+    handle: async (req) => { const to = await handleOAuthCallback(req, c.env); req.res!.setHeader('Cache-Control', 'no-store'); req.res!.redirect(302, to); },
+  });
+  add({ method: 'post', path: '/api/shopify/disconnect', permission: 'integrations.manage', description: 'Drop the Shopify token from server memory', handle: (req) => shopify.disconnect(actorOf(req)) });
+  add({ method: 'get', path: '/api/shopify/resolve', permission: 'shopify.edit', description: 'Match a crawled URL to its Shopify product / collection / page / article', handle: (req) => shopify.resolveUrl(actorOf(req), str(req.query.url, 'url')) });
+  add({ method: 'get', path: '/api/shopify/resources', permission: 'shopify.edit', description: 'List products, collections, pages or articles (query: kind, q, after)', handle: (req) => shopify.list(actorOf(req), str(req.query.kind, 'kind') as never, optStr(req.query.q), optStr(req.query.after)) });
+  add({ method: 'get', path: '/api/shopify/drafts', permission: 'shopify.edit', description: 'SEO editor drafts', handle: (req) => shopify.listDrafts(actorOf(req)) });
+  add({ method: 'post', path: '/api/shopify/drafts', permission: 'shopify.edit', status: 201, description: 'Create a draft with suggested changes (body: url, or kind + id). Writes nothing to Shopify.', handle: (req) => shopify.createDraft(actorOf(req), { url: optStr(req.body.url), kind: optStr(req.body.kind) as never, id: optStr(req.body.id) }) });
+  add({ method: 'post', path: '/api/shopify/drafts/preview', permission: 'shopify.edit', description: 'Live values, exact changes, conflicts and the confirmation phrase (body: ids)', handle: (req) => shopify.preview(actorOf(req), ids(req.body.ids)) });
+  add({ method: 'get', path: '/api/shopify/drafts/backup', permission: 'shopify.edit', raw: true, description: 'Download the current (original) values of drafts (query: ids)', handle: async (req) => sendFile(req, await shopify.backup(actorOf(req), ids(req.query.ids))) });
+  add({ method: 'post', path: '/api/shopify/drafts/apply', permission: 'shopify.edit', description: 'Apply drafts after confirmation (body: ids, confirm); verifies and re-audits', handle: (req) => shopify.apply(actorOf(req), ids(req.body.ids), String(req.body.confirm ?? '')) });
+  add({ method: 'get', path: '/api/shopify/drafts/:id', permission: 'shopify.edit', description: 'One draft', handle: (req) => shopify.getDraft(actorOf(req), prm(req, 'id')) });
+  add({ method: 'patch', path: '/api/shopify/drafts/:id', permission: 'shopify.edit', description: 'Manual edits (body: fields: { key: { proposed, include } })', handle: (req) => shopify.updateDraft(actorOf(req), prm(req, 'id'), req.body ?? {}) });
+  add({ method: 'delete', path: '/api/shopify/drafts/:id', permission: 'shopify.edit', description: 'Discard a draft', handle: (req) => shopify.deleteDraft(actorOf(req), prm(req, 'id')) });
+  add({ method: 'post', path: '/api/shopify/drafts/:id/refresh', permission: 'shopify.edit', description: 'Rebuild a draft from the live values', handle: (req) => shopify.refreshDraft(actorOf(req), prm(req, 'id')) });
+  add({ method: 'post', path: '/api/shopify/drafts/:id/reaudit', permission: 'shopify.edit', description: 'Fetch the storefront page again and check the applied values', handle: (req) => shopify.reauditDraft(actorOf(req), prm(req, 'id')) });
+  add({ method: 'get', path: '/api/shopify/themes', permission: 'shopify.theme', description: 'Themes and their roles', handle: (req) => shopify.themes(actorOf(req)) });
+  add({ method: 'get', path: '/api/shopify/themes/file', permission: 'shopify.theme', description: 'Read a theme file (query: themeId, filename)', handle: (req) => shopify.themeFile(actorOf(req), str(req.query.themeId, 'themeId'), str(req.query.filename, 'filename')) });
+  add({ method: 'get', path: '/api/shopify/theme-proposals', permission: 'shopify.theme', description: 'Theme change proposals', handle: (req) => shopify.proposalsList(actorOf(req)) });
+  add({ method: 'post', path: '/api/shopify/theme-proposals', permission: 'shopify.theme', status: 201, description: 'Propose a theme file change (body: themeId, filename, content, reason) → diff; writes nothing', handle: (req) => shopify.propose(actorOf(req), req.body ?? {}) });
+  add({ method: 'post', path: '/api/shopify/theme-proposals/:id/apply', permission: 'shopify.theme', description: 'Write a proposal to an UNPUBLISHED theme after confirmation (never publishes)', handle: (req) => shopify.applyProposal(actorOf(req), prm(req, 'id'), String(req.body.confirm ?? '')) });
+  add({ method: 'get', path: '/api/shopify/theme-proposals/:id/backup', permission: 'shopify.theme', raw: true, description: 'Download the original theme file of a proposal', handle: async (req) => sendFile(req, await shopify.proposalBackup(actorOf(req), prm(req, 'id'))) });
 
   // -------------------------------------------------------------- opportunities & content planning
   add({ method: 'get', path: '/api/opportunities', permission: 'opportunities.view', description: 'Opportunity backlog', handle: (req) => insights.listOpportunities(actorOf(req)) });

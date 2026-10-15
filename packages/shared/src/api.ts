@@ -8,6 +8,11 @@ import type {
   SystemComponentHealth, SystemErrorEntry, TeamId, TopicCluster, VerificationAttempt,
   WeeklyReport, AccountStatus, DataSource, FestivalEntry, IssueAction, Website, WebsiteInput, WebsiteSummary,
 } from './types';
+import type { LighthouseFormFactor, LighthouseRun, LighthouseStatus } from './lighthouse';
+import type {
+  ShopifyApplyBatchResult, ShopifyApplyPreview, ShopifyDraft, ShopifyResolveResult, ShopifyResourceKind, ShopifyResourceList, ShopifyStatus,
+  ShopifyTheme, ShopifyThemeFile, ShopifyThemeProposal,
+} from './shopify';
 
 export interface SessionUser {
   id: string;
@@ -40,6 +45,8 @@ export interface IssueFilter {
   tier?: (1 | 2 | 3)[];
   delta?: string[];
   checkId?: string;
+  /** Issues last seen (created, updated or re-opened) by this crawl run. */
+  crawlRunId?: string;
   includeSuperseded?: boolean;
   sort?: 'severity' | 'detected' | 'sla' | 'priority' | 'affected';
   dir?: 'asc' | 'desc';
@@ -100,13 +107,85 @@ export interface CrawlerStatus {
   requestDelayMs: number;
   /** Largest response body read per page (bytes). */
   maxBodyBytes: number;
+  /** Which crawler runs live crawls and whether its native parts are installed. */
+  engine?: {
+    /** 'go' = Go crawler + Rust text core; 'node' = built-in Node.js crawler (fallback / re-verification). */
+    active: 'go' | 'node';
+    goCrawler: { available: boolean; version?: string; problem?: string };
+    textCore: { available: boolean; version?: string; problem?: string };
+    /** Memory budget for all crawl processes together (MB) and where it came from. */
+    memoryBudgetMB?: number;
+    memoryBasis?: string;
+    note?: string;
+  };
 }
 
 export interface CrawlDetail {
   run: CrawlRun;
+  /** Page rows — included only for small runs (≤ CRAWL_DETAIL_ROW_LIMIT). Large runs: use getCrawlPages (server paging). */
   urls: CrawledUrl[];
+  /** Total page rows of the run. */
+  urlCount?: number;
+  /** true when `urls` was left out because the run is large. */
+  urlsPaged?: boolean;
   sitemapDiff?: SitemapDiff;
   verification: VerificationAttempt[];
+}
+
+/** Rows included inline in CrawlDetail; larger runs are paged on the server. */
+export const CRAWL_DETAIL_ROW_LIMIT = 2000;
+
+export type CrawlPageStatusGroup = '2xx' | '3xx' | '4xx' | '5xx' | 'none' | 'robots' | 'not_fetched';
+export type CrawlPageProblem = 'issues' | 'broken' | 'no-title' | 'dup-title' | 'no-meta' | 'dup-meta' | 'h1' | 'alt' | 'noindex';
+
+export interface CrawlPagesQuery {
+  offset?: number;
+  limit?: number;
+  /** Text search in URL and title. */
+  q?: string;
+  status?: CrawlPageStatusGroup;
+  indexable?: 'yes' | 'no';
+  problem?: CrawlPageProblem;
+  crawlState?: NonNullable<CrawledUrl['crawlState']>;
+  source?: string;
+  template?: string;
+  sort?: 'url' | 'status' | 'depth' | 'indexable' | 'issues' | 'links' | 'response' | 'title' | 'inlinks';
+  dir?: 'asc' | 'desc';
+}
+
+export interface CrawlPagesResponse {
+  total: number;
+  offset: number;
+  limit: number;
+  rows: CrawledUrl[];
+  /** Counts over the whole run (not the filtered set): statuses, problems, crawl states, sources, templates. */
+  facets: { status: Record<string, number>; problem: Record<string, number>; crawlState: Record<string, number>; source: Record<string, number>; template: Record<string, number>; indexable: Record<string, number> };
+}
+
+/** URL coverage of one crawl: what was found, crawled, failed, excluded and what the sitemap and link graph disagree on. */
+export interface CrawlCoverageReport {
+  available: boolean;
+  note?: string;
+  counts: Record<string, number>;
+  excludedBy: Record<string, number>;
+  foundVia: Record<string, number>;
+  /** Lists are capped (see `listLimit`); counts are exact. */
+  listLimit: number;
+  sitemapNotCrawled: { count: number; urls: { url: string; state: string; reason?: string; status?: number | null }[] };
+  linkedNotInSitemap: { count: number; urls: string[] };
+  orphanCandidates: { count: number; urls: string[]; evaluated: boolean; note?: string };
+  failed: { count: number; urls: { url: string; status: number | null; error?: string }[] };
+  redirects: { count: number; urls: { url: string; status: number | null; finalUrl?: string; hops: number }[] };
+  /** Several URLs ending on the same final URL, or declaring the same canonical. */
+  variantGroups: { count: number; groups: { target: string; urls: string[]; kind: 'redirect' | 'canonical' }[] };
+  duplicates: {
+    titles: { count: number; groups: { value: string; urls: string[] }[] };
+    metaDescriptions: { count: number; groups: { value: string; urls: string[] }[] };
+    exactContent: { count: number; groups: string[][] };
+    /** Candidates confirmed by exact Jaccard ≥ 0.9 of 4-word shingles; they are evidence for review, not a verdict. */
+    nearContent: { count: number; groups: string[][]; threshold: number };
+  };
+  notProcessed: { count: number; urls: { url: string; state: string }[] };
 }
 
 export interface EmployeeInput {
@@ -197,7 +276,47 @@ export interface SentinelApi {
   /** Whether this website can be crawled live right now, and the limits that apply. */
   getCrawlerStatus(): Promise<CrawlerStatus>;
   /** Current results of a run as a downloadable file (in-memory results only). */
-  exportCrawl(id: string, format: 'csv' | 'json'): Promise<{ filename: string; mimeType: string; content: string }>;
+  exportCrawl(id: string, format: 'csv' | 'json'): Promise<{ filename: string; mimeType: string; content: string | Blob }>;
+  /** One page of a run's page rows (server-side search, filters, sort and paging). */
+  getCrawlPages(id: string, query: CrawlPagesQuery): Promise<CrawlPagesResponse>;
+  /** URL coverage report of a run. */
+  getCrawlCoverage(id: string): Promise<CrawlCoverageReport>;
+  /** Whether Lighthouse / rendered checks can run on this server (package, browser, memory). */
+  getLighthouseStatus(): Promise<LighthouseStatus>;
+  /** Queue Lighthouse audits (mobile, desktop or both) and/or a rendered-vs-raw HTML check of one URL of this website. */
+  startLighthouse(input: { url: string; formFactors: LighthouseFormFactor[]; render?: boolean }): Promise<LighthouseRun[]>;
+  listLighthouseRuns(): Promise<LighthouseRun[]>;
+
+  // Shopify connection + SEO editor (the access token never reaches the browser)
+  getShopifyStatus(): Promise<ShopifyStatus>;
+  /** Starts OAuth: returns the Shopify authorize URL to open (state is single-use and expires in 10 minutes). */
+  startShopifyOAuth(shop: string): Promise<{ authorizeUrl: string }>;
+  disconnectShopify(): Promise<ShopifyStatus>;
+  resolveShopifyUrl(url: string): Promise<ShopifyResolveResult>;
+  listShopifyResources(input: { kind: ShopifyResourceKind; q?: string; after?: string }): Promise<ShopifyResourceList>;
+  /** Builds a draft for one resource (from a crawled URL, or kind + id) with suggested changes. Nothing is written to Shopify. */
+  createShopifyDraft(input: { url?: string; kind?: ShopifyResourceKind; id?: string }): Promise<ShopifyDraft>;
+  listShopifyDrafts(): Promise<ShopifyDraft[]>;
+  getShopifyDraft(id: string): Promise<ShopifyDraft>;
+  /** Manual edits: set proposed values and which fields are included. */
+  updateShopifyDraft(id: string, input: { fields: Record<string, { proposed?: string; include?: boolean }> }): Promise<ShopifyDraft>;
+  deleteShopifyDraft(id: string): Promise<{ ok: true }>;
+  /** Rebuilds a draft from the values in Shopify now (after a conflict). */
+  refreshShopifyDraft(id: string): Promise<ShopifyDraft>;
+  /** Reads the live values again and lists exactly what will be written, with conflicts and the confirmation phrase. */
+  previewShopifyApply(ids: string[]): Promise<ShopifyApplyPreview>;
+  /** Download of the original (live) values of the drafts' fields, taken now. */
+  downloadShopifyBackup(ids: string[]): Promise<{ filename: string; mimeType: string; content: string | Blob }>;
+  /** Writes the included changes after explicit confirmation, verifies each by reading it back, then re-audits the page. */
+  applyShopifyDrafts(ids: string[], confirm: string): Promise<ShopifyApplyBatchResult>;
+  /** Fetches the storefront page again and checks the applied values are visible. */
+  reauditShopifyDraft(id: string): Promise<ShopifyDraft>;
+  listShopifyThemes(): Promise<ShopifyTheme[]>;
+  getShopifyThemeFile(themeId: string, filename: string): Promise<ShopifyThemeFile>;
+  proposeShopifyThemeChange(input: { themeId: string; filename: string; content: string; reason: string }): Promise<ShopifyThemeProposal>;
+  listShopifyThemeProposals(): Promise<ShopifyThemeProposal[]>;
+  applyShopifyThemeProposal(id: string, confirm: string): Promise<ShopifyThemeProposal>;
+  downloadShopifyThemeBackup(id: string): Promise<{ filename: string; mimeType: string; content: string | Blob }>;
   listSchedules(): Promise<CrawlSchedule[]>;
   updateSchedule(id: string, input: { cron?: string; enabled?: boolean }): Promise<CrawlSchedule>;
   listVerifications(): Promise<VerificationAttempt[]>;

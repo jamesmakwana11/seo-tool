@@ -16,14 +16,16 @@ _Last updated: 14 Oct 2026 · Phase 2 gate evaluated: **PASS with documented lim
 | Permissions | Every endpoint checks the role permission matrix server-side; developers may only update the status of issues allocated to their team | `src/services/context.ts`, each service |
 | Issues | Ingestion from crawls and connector syncs: exclusions, delta detection, severity = check × page tier, SLA, regression reopen, auto-resolution only when re-checked, template grouping that supersedes page-level cards, real-time alerts, one-tap allocation, bulk allocation, Not-an-issue → exclusions | `src/services/issues.ts` |
 | Issue workflow | Task management was removed (14 Oct 2026). Issues move Assigned → In progress → Fixed via `POST /api/issues/:id/status`; only `POST /api/issues/:id/verify` (a system re-check) can verify. An internal work record per issue still carries SLA, verification history and regression reopen — it has no API or UI | `src/services/tasks.ts` |
-| Crawler + analysis | Real HTTP crawler (robots, sitemaps, redirects, TLS, host variants, parameter/pagination samples, outbound links, third-party scripts); 54 analyzers; smart / full / re-verify plans; refuses any non-loopback site unless `CRAWLER_ALLOW_LIVE=true` | `src/crawler/`, `src/analysis/`, `src/services/crawls.ts` |
+| Crawler + analysis | **Go crawler** (`services/crawler-go`, child process, NDJSON protocol v1): sitemaps incl. index + gzip, URL normalisation and dedup, bounded queues, retries, adaptive throttle, robots, SSRF guard, cancellation, progress; **Rust text core** (`services/textcore-rs`, binary frame protocol v1): fingerprints, duplicate titles / meta / content, near-duplicate candidates. Node streams the crawl files through 54 analyzers in batches (identical findings to the Node pipeline, parity-tested), memory budget across all three processes, outcomes completed / partial / cancelled / failed / resource-stopped, server-side paged results and streamed exports. The built-in Node crawler remains for re-verification and as a fallback | `src/gocrawl/`, `src/crawler/`, `src/analysis/`, `src/results/`, `src/services/crawls.ts` |
+| Lighthouse | Real Lighthouse 13 mobile / desktop lab audits and a rendered-vs-raw HTML check of one URL, in a separate process, one at a time, memory-gated, own-site URLs only; reports what is missing (package, browser) | `src/lighthouse/`, `runtime/lighthouse-runner.mjs` |
+| Shopify SEO editor | OAuth (HMAC, single-use state, scope check; token in memory only) or env token; URL → product / collection / page / article; drafts from existing text only, validation, manual edits; preview with live values + conflicts, confirmation phrase, batch apply with rate-limit handling and per-field results, read-back verification, storefront re-audit; H1 source detection; theme proposals (diff, backup, unpublished themes only, never publishes) | `src/shopify/` |
 | Connectors | Connection tests for all 14 PDF §15 sources + delivery channels; honest states (not configured / credentials missing / failed / connected / partial / rate limited / sync failed) | `src/connectors/` |
 | Data syncs | GA4 → page value + PDF §3.1 tiers; Search Console → visibility, page impressions/clicks, striking distance; CrUX → Core Web Vitals + PERF-CRUX issues. Run only after a passed connection test | `src/sync/` |
 | Delivery | Email (SMTP), WhatsApp Cloud API, Slack webhook with retries; every attempt recorded; never "delivered" without provider confirmation | `src/notifications/` |
 | Custom rules & QA gate | Rule builder validation (ReDoS guard), 30-day dry run required before enabling, LLM-judged rules only with a provider, rules applied to crawled page text, QA-gate holds with human sign-off | `src/services/rules.ts` |
 | Reports | Daily digest / weekly / monthly from live state, export (JSON/CSV/Markdown), send through configured channels | `src/services/reports.ts` |
 | Jobs | In-process IST scheduler: crawl schedules, 00:30 escalations + 24h auto-allocation + SLA notices, 01:00 connector syncs, 08:00 digest, Monday weekly, monthly | `src/jobs/` |
-| HTTP | 101 routes, request ids, consistent error body `{ error: { code, message, details }, requestId }`, Shopify webhook with HMAC check, diagnostics ring buffer | `src/http/` |
+| HTTP | 120 routes, request ids, consistent error body `{ error: { code, message, details }, requestId }`, Shopify webhook with HMAC check, diagnostics ring buffer | `src/http/` |
 
 Configuration: every variable is documented in `apps/api/.env.example` (names only, no values). Secrets are read from the
 environment only, refused as UI settings, redacted from logs, errors and stored results.
@@ -53,15 +55,17 @@ VITE_API_MODE=mock VITE_ROUTER=memory VITE_HOSTED_REVIEW=true npx vite build --o
 node scripts/package-review.mjs <dir>
 ```
 
-## 3. Verification (last run 14 Oct 2026, after the multi-website / task-removal change)
+## 3. Verification (last run 15 Oct 2026, after the Go/Rust crawler, Lighthouse and Shopify SEO editor)
 
 | Suite | Result |
 |---|---|
-| `apps/api` — 22 files, 260 tests (incl. new website isolation and issue-workflow tests) | ✅ all pass |
-| `packages/shared` — 62 tests | ✅ all pass |
-| `apps/web` — 28 tests (incl. website isolation with a call in flight while switching) | ✅ all pass |
-| Typecheck (`tsc --noEmit`) api, web, shared · ESLint web (0 warnings) | ✅ clean |
-| Route smoke, 56 routes × 3 roles × 3 widths = 504 visits, against the real API **and** the in-browser DEMO adapter | ✅ 0 failures in both; 5 interaction checks pass (allocation, focus, search, new website starts empty, developer denied) |
+| `apps/api` — 37 files, 413 tests (Go bridge: crash / silence / protocol mismatch / cancel → kill / memory stop / no secrets to children; Node vs Go+Rust parity; result store; real Lighthouse + Chromium; Shopify OAuth / drafts / apply / rate limits / conflicts / partial failures / theme safety / no token leaks, against a mock Shopify) | ✅ 412 pass, 1 skipped (opt-in in-process stress test) |
+| Go crawler (`go vet`, `go test ./...`, 13 tests incl. sitemaps, gzip, robots, retries, throttle, SSRF, cancellation) · Rust text core (`cargo test`) | ✅ all pass (`npm run test:native`) |
+| `packages/shared` — 85 tests · `apps/web` — 34 tests | ✅ all pass |
+| Typecheck api, web, shared · ESLint web (0 warnings) · `npm run build:prod` (bundle syntax-checked, started in production mode) | ✅ clean |
+| Windows build path: Go cross-compiled to a Windows PE executable; Rust `cargo check --target x86_64-pc-windows-gnu` | ✅ (not run on a Windows machine) |
+| Route smoke against the in-browser DEMO adapter: 58 routes × 3 roles × 3 widths = 522 visits | ✅ 0 failures; 5 interaction checks pass |
+| Stress, synthetic store on 127.0.0.1: 25,000 products (26,633 pages, 53,491 URL rows) and 50,000 products (53,235 pages, 106,966 rows) | ✅ completed within a 450 MB budget — `docs/measurements/` |
 
 Notable server behaviours covered by tests: developers get 403 on allocation/audit and on updating another team's issue; only the
 system can verify; a FIXED issue closes automatically when the next crawl finds 0 failing URLs and returns to work otherwise;
@@ -86,14 +90,18 @@ test; reports sent with no configured channel claim no delivery; crawls refuse t
 
 **Needs your input or credentials (BLOCKED / unverified):**
 - **Nothing has been run against deodap.in or any live third-party API.** All connector code is tested against stubbed responses only.
+- **Shopify writes have never touched a real store.** OAuth, reads, writes, rate limits and theme writes are tested against an
+  in-memory mock Shopify (`test/shopify/mockShopify.ts`) whose operations follow the Admin GraphQL schema (checked against the
+  2026 schema); the first real use should be a single draft on a test product.
 - **DeoDap Task Ops** — sync is switched off with the removal of task management; the adapter code remains but is not called or shown.
 - **< 5% false positives on Criticals** (PDF §16) needs production feedback data.
 - **Digest arrives by 08:00 IST** can only be confirmed with real SMTP / WhatsApp / Slack credentials.
 
 **Not implemented (PARTIAL):**
-- No headless JS renderer: TECH-JS-RENDER and TECH-MOBILE are reported as "not evaluated"; the weekly full crawl has no JS sample.
-- Data syncs for Ahrefs/Semrush (backlinks, keyword gaps, competitors, toxic links), Google Business Profile, Shopify product data
-  and AI-engine visibility sampling are not built — those screens show labelled DEMO data, or "not available" on a clean start.
+- Crawls fetch raw HTML only: TECH-JS-RENDER and TECH-MOBILE are reported as "not evaluated" in crawl results. A rendered-vs-raw
+  check and Lighthouse mobile/desktop audits run on demand per URL (Crawl Center → Lighthouse) when Chromium is installed.
+- Data syncs for Ahrefs/Semrush (backlinks, keyword gaps, competitors, toxic links), Google Business Profile, a bulk Shopify
+  product-data sync (the SEO editor reads resources one by one) and AI-engine visibility sampling are not built — those screens show labelled DEMO data, or "not available" on a clean start.
 - Search Console analysis beyond visibility / impressions / striking distance (cannibalization, decay, low CTR, rich results) is not
   built; index-coverage counts are not available from the public API and are never fabricated.
 - LLM-written rewrite drafts; title/meta variants are template-based with a heuristic CTR score.
