@@ -222,7 +222,8 @@ skipped by default. Run it with, for example, `STRESS_PAGES=20000` set in the en
 | Message | Fix |
 | --- | --- |
 | `CRAWLER_ALLOW_LIVE is not "true"` | Set `CRAWLER_ALLOW_LIVE=true` in `apps/api/.env` and restart the API |
-| `CRAWLER_BASE_URL is not set` | Set it in `apps/api/.env` (or add the site under Manage websites) |
+| `CRAWLER_BASE_URL is not set` | The API was started without it. Locally: copy `apps/api/local-crawl.env.example` (not `.env.example`) to `apps/api/.env`, keep `CRAWLER_BASE_URL=https://deodap.in`, and start the API with `npm run dev:api:env` (plain `npm run dev:api` does not read `.env`). On Render: add `CRAWLER_BASE_URL` under Environment — see DEPLOYMENT.md |
+| `Invalid environment configuration: CRAWLER_BASE_URL` | Use the full address with `https://`, e.g. `https://deodap.in` — no quotes, no user name or password |
 | `This website holds the labelled DEMO dataset` | Use `SEED_DEMO_DATA=false`, or add the site under Manage websites |
 | `Refusing to crawl …: blocked: … resolves to …` | The site resolves to a private / internal address — such sites are never crawled |
 | `Could not reach the API server` | Terminal 1 is not running, or not on port 4000 |

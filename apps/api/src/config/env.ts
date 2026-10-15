@@ -41,7 +41,19 @@ const schema = z.object({
   AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(20),
 
   // Crawler
-  CRAWLER_BASE_URL: z.string().url().optional(),
+  /**
+   * The primary website — the only host the primary workspace's crawler may request (a security boundary, not just a
+   * default). Must be an http(s) URL such as https://deodap.in, without credentials. Websites added under Manage
+   * websites get their own crawler bound to their own URL.
+   */
+  CRAWLER_BASE_URL: z.string().trim().url().refine((v) => {
+    try {
+      const u = new URL(v);
+      return (u.protocol === 'http:' || u.protocol === 'https:') && !u.username && !u.password;
+    } catch {
+      return false;
+    }
+  }).optional(),
   CRAWLER_USER_AGENT: z.string().optional(),
   /** Must be explicitly true before the crawler sends requests to a live site. */
   CRAWLER_ALLOW_LIVE: bool(false),
@@ -108,6 +120,12 @@ const schema = z.object({
 
 export type Env = z.infer<typeof schema>;
 
+/** How to fix a missing primary website (shown at start-up, in the Crawl Center and by the crawl API). */
+export const CRAWLER_BASE_URL_MISSING =
+  'CRAWLER_BASE_URL is not set on the API server, so live crawling has no allowed website. Set it to the primary website ' +
+  '(for example CRAWLER_BASE_URL=https://deodap.in) in the API server environment — apps/api/.env when running locally, ' +
+  'or the service\'s Environment settings on Render — and restart the API. Start URLs must be on that website.';
+
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
   const clean = Object.fromEntries(Object.entries(source).filter(([, v]) => v !== undefined && v !== ''));
   const parsed = schema.safeParse(clean);
@@ -129,6 +147,11 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
     }
     env.ALLOW_DEV_ROLE_PREVIEW = false;
     env.DEV_EXPOSE_RESET_TOKEN = false;
+  }
+  if (env.NODE_ENV === 'production' && env.CRAWLER_ALLOW_LIVE && !env.CRAWLER_BASE_URL) {
+    // Live crawling was switched on without saying which website it may crawl: fail at start-up with the fix, instead
+    // of starting a server whose Crawl Center can never run. (The crawler never falls back to a built-in website.)
+    throw new Error(CRAWLER_BASE_URL_MISSING);
   }
   if ((env.ADMIN_EMAIL || env.ADMIN_INITIAL_PASSWORD) && !(env.ADMIN_EMAIL && env.ADMIN_INITIAL_PASSWORD)) {
     throw new Error('ADMIN_EMAIL and ADMIN_INITIAL_PASSWORD must be set together.');

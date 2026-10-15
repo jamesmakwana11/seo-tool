@@ -80,11 +80,35 @@ Crawling and scheduling (needed for real audits):
 
 | Variable | Value |
 | --- | --- |
-| `CRAWLER_BASE_URL` | `https://deodap.in` — the primary website |
+| `CRAWLER_BASE_URL` | `https://deodap.in` — the primary website. **Required for live crawling.** It is also the security boundary: the primary website's crawler only requests this host (www and non-www), and every Start URL entered in the Crawl Center must be on it. Use the full `https://` address, no quotes, no path needed |
 | `CRAWLER_ALLOW_LIVE` | `true` once you approve live crawling of that site |
 | `CRAWLER_USER_AGENT` | optional; allow-list it in Shopify bot protection |
 | `SCHEDULER_ENABLED` | `true` for the daily/weekly crawls, escalations and digest |
 | `CRAWLER_MAX_PAGES`, `CRAWLER_REQUEST_DELAY_MS`, `CRAWLER_MAX_BODY_BYTES`, `CRAWLER_MAX_CONCURRENT_JOBS` | crawl limits: optional page cap (unset = no limit) / 250 ms / 5 MB / 2 — see `LOCAL_CRAWLING.md` |
+
+With `CRAWLER_ALLOW_LIVE=true` and no `CRAWLER_BASE_URL`, the production server refuses to start and says so in the
+log, rather than starting with a Crawl Center that shows "Live crawling is not available for this website". The
+crawler never falls back to a built-in website: the name and Start URL shown before configuration are display
+defaults only.
+
+### Render: environment settings for live crawling
+
+Render → your web service → **Environment** → add (then **Save, rebuild and deploy**; Render restarts the service):
+
+| Key | Value |
+| --- | --- |
+| `CRAWLER_BASE_URL` | `https://deodap.in` |
+| `CRAWLER_ALLOW_LIVE` | `true` |
+| `SESSION_SECRET` | a random value of at least 32 characters (keep it secret) |
+| `ALLOW_EPHEMERAL_STORAGE` | `true` |
+| `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD` | your admin sign-in (password: at least 10 characters, letters and numbers) |
+| `APP_BASE_URL` | `https://<service>.onrender.com` (or your custom domain) |
+| optional: `CRAWLER_REQUEST_DELAY_MS`, `CRAWLER_MAX_PAGES`, `CRAWLER_MAX_CONCURRENT_JOBS` | see the table above; leave `CRAWLER_MAX_PAGES` unset for no page limit |
+
+Do not set `NODE_ENV`, `PORT` or `WEB_DIST_DIR` (the image sets them) and do not bake `CRAWLER_BASE_URL` into the
+Dockerfile — the image stays the same for every website, and the environment decides which website it may crawl.
+After the deploy, `https://<service>.onrender.com/api/health` shows `"crawler": {"ready": true, "baseUrl": "https://deodap.in"}`.
+To crawl another website, add it under **Manage websites** (its crawler is restricted to that site's own host).
 
 Set by the image, override only if needed: `PORT=8080`, `WEB_DIST_DIR=/app/apps/web/dist`. Optional: `LOG_LEVEL`,
 `SESSION_TTL_HOURS`, `TRUST_PROXY` (default 1 in production), `AUTH_RATE_LIMIT` (default 20 per IP per 15 min),

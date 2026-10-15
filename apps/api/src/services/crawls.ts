@@ -336,6 +336,11 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     /** Start a crawl. A live crawl from the Crawl Center passes options (type 'full'); they are validated against this website. */
     async startManual(actor: Actor, type: CrawlType, rawOptions?: unknown) {
       await need(ctx, actor, 'crawls.run');
+      // Configuration first: without a configured website (CRAWLER_BASE_URL) or with live crawling off, the start URL
+      // cannot be checked against an allowed website, so the request is refused with the fix rather than validated
+      // against the built-in display default.
+      const ready = ctx.engine.readiness();
+      if (!ready.ready) throw new ApiError(409, 'CRAWLER_NOT_READY', `The crawler cannot run: ${ready.reason}`);
       const options = rawOptions === undefined || rawOptions === null ? undefined : validateCrawlOptions(rawOptions, await siteUrl(), ctx.env.CRAWLER_MAX_PAGES);
       if (options && type !== 'full') throw badRequest('Crawl settings apply to a live (full) crawl only.');
       return start(actor, type, 'manual', options);

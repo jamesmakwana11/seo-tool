@@ -121,7 +121,10 @@ export async function createContainer(o: ContainerOptions) {
   }
   await refreshVerifierInputs();
 
-  log.info({ storage: repos.storage.kind, demoSeed: seeded ?? false, crawler: engine.readiness() }, 'container ready');
+  const crawlerReady = engine.readiness();
+  log.info({ storage: repos.storage.kind, demoSeed: seeded ?? false, crawler: crawlerReady }, 'container ready');
+  // Say at start-up (in the server log) why live crawling will be refused, so a missing setting is not found only in the UI.
+  if (!o.repos && !crawlerReady.ready) log.warn({ reason: crawlerReady.reason }, 'live crawling is not available for the primary website');
   return {
     env, log, clock, repos, ctx, diagnostics, recent,
     /** Injected outbound fetch (tests); undefined in production → adapters use global fetch. */

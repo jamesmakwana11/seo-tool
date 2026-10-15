@@ -16,6 +16,7 @@
  */
 import type { CrawledUrl, CrawlRun, CrawlType, PageTemplate, PageTier, SentinelConfig, SitemapDiff } from '@sentinel/shared';
 import type { CrawlEngine, CrawlOutcome, CrawlPlan, PreviousCrawlState } from '../services/ports';
+import { CRAWLER_BASE_URL_MISSING } from '../config/env';
 import { runAnalyzers, snapshotFromPages } from '../analysis/analyzers';
 import { createHttpClient, createThrottle, mapPool, type HttpClient } from './http';
 import { assertAllowedUrl, createGuardedFetch, type NetPolicy } from './netguard';
@@ -197,7 +198,7 @@ function isPageCandidate(url: string, siteHost: string): boolean {
 }
 
 export function engineReadiness(baseUrl: string | undefined, allowLive: boolean): { ready: boolean; reason?: string; baseUrl?: string } {
-  if (!baseUrl) return { ready: false, reason: 'CRAWLER_BASE_URL is not set — the crawler has no site to crawl.' };
+  if (!baseUrl) return { ready: false, reason: CRAWLER_BASE_URL_MISSING };
   try {
     const u = new URL(baseUrl);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return { ready: false, reason: 'CRAWLER_BASE_URL must be an http(s) URL.', baseUrl };
