@@ -20,6 +20,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	// Mozilla's root certificates, used only when the operating system offers none (e.g. a slim container image
+	// without the ca-certificates package). With system roots present they are ignored.
+	_ "golang.org/x/crypto/x509roots/fallback"
 )
 
 const protocolVersion = 1

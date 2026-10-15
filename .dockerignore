@@ -14,3 +14,5 @@ bin
 **/target
 apps/api/.stress
 apps/web/e2e/results
+services/crawler-go/crawler
+services/crawler-go/crawler.exe

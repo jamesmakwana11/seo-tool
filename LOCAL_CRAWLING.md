@@ -251,5 +251,6 @@ skipped by default. Run it with, for example, `STRESS_PAGES=20000` set in the en
 | `ADMIN_INITIAL_PASSWORD is too weak` | Use at least 10 characters with letters and numbers |
 | `node: bad option: --env-file` | Update Node.js to 20.12 or newer |
 | Crawl Center: “The Go crawler is not installed” | Run `npm run build:native` (needs Go and Rust), then restart the API |
+| `x509: certificate signed by unknown authority` (Go crawler) | Rebuild with `npm run build:native` (the crawler now carries its own root certificates) and, on Docker / Render, redeploy with the current Dockerfile (it installs `ca-certificates`). If a company proxy or antivirus inspects HTTPS on your computer, set `SSL_CERT_FILE` to its root certificate file |
 | `go` / `cargo` is not recognized | Install Go / Rust, then open a **new** terminal so the PATH is updated |
 | Outcome “Stopped for memory” | The API + crawler + text core reached `CRAWLER_MEMORY_BUDGET_MB`. Raise it (and the host's memory), or crawl with exclusions / a Smart crawl |

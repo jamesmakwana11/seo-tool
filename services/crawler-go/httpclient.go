@@ -257,7 +257,8 @@ func newHTTPClient(o clientOpts) *httpClient {
 }
 
 var retryStatus = map[int]bool{429: true, 502: true, 503: true, 504: true}
-var noRetryErr = regexp.MustCompile(`(?i)^(cancelled|blocked:|could not resolve|more than \d+ redirects)|no such host|invalid Location|server misbehaving`)
+// Certificate problems are not transient: retrying them only slows the crawl down.
+var noRetryErr = regexp.MustCompile(`(?i)^(cancelled|blocked:|could not resolve|more than \d+ redirects)|no such host|invalid Location|server misbehaving|x509:|tls: failed to verify|certificate`)
 
 func retryAfter(v string, now time.Time) (time.Duration, bool) {
 	v = strings.TrimSpace(v)

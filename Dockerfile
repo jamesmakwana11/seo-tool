@@ -41,9 +41,11 @@ FROM node:20-bookworm-slim AS runtime
 ARG INSTALL_CHROMIUM=false
 WORKDIR /app
 # Chromium only when asked for: a browser needs 250–400 MB per run, more than a 512 MB plan can spare next to a crawl.
-RUN if [ "$INSTALL_CHROMIUM" = "true" ]; then \
-      apt-get update && apt-get install -y --no-install-recommends chromium fonts-liberation ca-certificates && rm -rf /var/lib/apt/lists/*; \
-    fi
+# ca-certificates: the Go crawler verifies HTTPS with the system trust store (node:*-slim ships without one — Node.js
+# carries its own, Go does not). The crawler also has Mozilla's roots built in as a fallback.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && if [ "$INSTALL_CHROMIUM" = "true" ]; then apt-get install -y --no-install-recommends chromium fonts-liberation; fi \
+    && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production \
     PORT=8080 \
     WEB_DIST_DIR=/app/apps/web/dist \

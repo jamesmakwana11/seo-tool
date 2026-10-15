@@ -12,3 +12,5 @@ playwright-report
 bin/
 services/textcore-rs/target/
 apps/api/.stress/
+services/crawler-go/crawler
+services/crawler-go/crawler.exe

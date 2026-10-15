@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/x509"
+	"fmt"
 	"net/netip"
 	"strings"
 	"testing"
@@ -180,5 +182,31 @@ func TestExtract(t *testing.T) {
 	}
 	if len(p.InternalLinks) != 2 || len(p.ExternalLinks) != 1 || p.Links[0].InMain {
 		t.Fatalf("links %v %v", p.InternalLinks, p.ExternalLinks)
+	}
+}
+
+// The crawler must verify HTTPS certificates even where the OS has no CA bundle (slim container images): the Mozilla
+// fallback roots are compiled in. SetFallbackRoots may be called only once, so a second call panics when they are.
+func TestFallbackRootCertificatesAreBuiltIn(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil || !strings.Contains(fmt.Sprint(r), "already") {
+			t.Fatalf("fallback root certificates are not registered (recover: %v)", r)
+		}
+	}()
+	x509.SetFallbackRoots(x509.NewCertPool())
+}
+
+func TestCertificateErrorsAreNotRetried(t *testing.T) {
+	for _, e := range []string{
+		`Get "https://deodap.in/sitemap.xml": tls: failed to verify certificate: x509: certificate signed by unknown authority`,
+		"x509: certificate has expired or is not yet valid",
+	} {
+		if !noRetryErr.MatchString(e) {
+			t.Errorf("certificate error would be retried: %s", e)
+		}
+	}
+	if noRetryErr.MatchString("read tcp 1.2.3.4:443: connection reset by peer") {
+		t.Error("a dropped connection must still be retried")
 	}
 }
