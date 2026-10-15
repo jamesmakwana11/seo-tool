@@ -137,10 +137,16 @@ export interface AnalysisResult {
   evaluatedTemplates: Record<string, PageTemplate[]>;
   notEvaluated: Record<string, string>;
   sitemapInvalid: { url: string; problem: string }[];
+  /** Milliseconds per analyzer (and 'prepare'), for spotting slow checks on large crawls. */
+  timings?: Record<string, number>;
+  /** The prepared page index, reused by snapshotFromPages so a large crawl is not indexed twice. */
+  prepared?: Prepared;
 }
 
 export function runAnalyzers(pages: ParsedPage[], ctx: SiteContext, only?: string[]): AnalysisResult {
+  const tPrep = Date.now();
   const prep = prepare(pages, ctx);
+  const timings: Record<string, number> = { prepare: Date.now() - tPrep };
   const findings: Finding[] = [];
   const evaluatedChecks: string[] = [];
   const evaluatedTemplates: Record<string, PageTemplate[]> = {};
@@ -149,8 +155,10 @@ export function runAnalyzers(pages: ParsedPage[], ctx: SiteContext, only?: strin
   for (const a of ANALYZERS) {
     if (only && !only.includes(a.checkId)) continue;
     let r: AnalyzerResult;
+    const t0 = Date.now();
     try {
       r = a.run(prep);
+      timings[a.checkId] = (timings[a.checkId] ?? 0) + Date.now() - t0;
     } catch (e) {
       notEvaluated[a.checkId] = `analyzer error: ${(e as Error).message}`;
       continue;
@@ -168,13 +176,13 @@ export function runAnalyzers(pages: ParsedPage[], ctx: SiteContext, only?: strin
     }
   }
   if (!only) for (const [k, v] of Object.entries(NOT_EVALUATED)) notEvaluated[k] ??= v;
-  return { findings, evaluatedChecks, evaluatedTemplates, notEvaluated, sitemapInvalid };
+  return { findings, evaluatedChecks, evaluatedTemplates, notEvaluated, sitemapInvalid, timings, prepared: prep };
 }
 
 /** Build the state the NEXT run diffs against. URLs not re-crawled in this run keep their previous state. */
-export function snapshotFromPages(pages: ParsedPage[], ctx: SiteContext): PreviousCrawlState {
+export function snapshotFromPages(pages: ParsedPage[], ctx: SiteContext, prepared?: Prepared): PreviousCrawlState {
   const prev = ctx.previous ?? {};
-  const prep = prepare(pages, ctx);
+  const prep = prepared ?? prepare(pages, ctx);
   const crawledKeys = new Set(prep.requested.map((p) => normalizeUrl(p.url)));
   const keep = (list?: string[]) => (list ?? []).filter((u) => !crawledKeys.has(normalizeUrl(u)));
   const okNow = prep.requested.filter((p) => p.status === 200).map((p) => p.url);

@@ -12,7 +12,7 @@ COPY apps/web/package.json apps/web/
 RUN npm ci --no-audit --no-fund
 COPY . .
 # The web bundle MUST talk to the real API: VITE_API_MODE=http (the default "mock" mode is the in-browser DEMO adapter).
-RUN VITE_API_MODE=http npm run build -w @sentinel/web && npm run build -w @sentinel/api
+RUN npm run build:prod
 
 # ---------------------------------------------------------------- runtime
 FROM node:20-bookworm-slim AS runtime

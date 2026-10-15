@@ -84,6 +84,7 @@ Crawling and scheduling (needed for real audits):
 | `CRAWLER_ALLOW_LIVE` | `true` once you approve live crawling of that site |
 | `CRAWLER_USER_AGENT` | optional; allow-list it in Shopify bot protection |
 | `SCHEDULER_ENABLED` | `true` for the daily/weekly crawls, escalations and digest |
+| `CRAWLER_MAX_PAGES`, `CRAWLER_REQUEST_DELAY_MS`, `CRAWLER_MAX_BODY_BYTES`, `CRAWLER_MAX_CONCURRENT_JOBS` | crawl limits: optional page cap (unset = no limit) / 250 ms / 5 MB / 2 — see `LOCAL_CRAWLING.md` |
 
 Set by the image, override only if needed: `PORT=8080`, `WEB_DIST_DIR=/app/apps/web/dist`. Optional: `LOG_LEVEL`,
 `SESSION_TTL_HOURS`, `TRUST_PROXY` (default 1 in production), `AUTH_RATE_LIMIT` (default 20 per IP per 15 min),

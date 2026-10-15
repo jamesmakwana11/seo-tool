@@ -9,7 +9,7 @@ import {
 import type { Finding } from '../services/ports';
 import type { ParsedPage } from '../crawler/types';
 import { pathOf } from '../crawler/url';
-import { groupByTemplate, metricEv, noun, perTemplate, textEv, trunc, type AnalyzerResult, type Ev, type Prepared } from './context';
+import { groupByTemplate, metricEv, minOf, noun, perTemplate, textEv, trunc, type AnalyzerResult, type Ev, type Prepared } from './context';
 import { modifiedDate } from './aeoGeo';
 import { UTILITY_PAGE } from './technical';
 import { hasType, nodesOfType } from './schema';
@@ -62,14 +62,20 @@ export function analyzeContentQuality(prep: Prepared): AnalyzerResult {
     const docs = list.filter((p) => prep.uniqueWords(p) >= 30).map((p) => ({ id: p.url, text: prep.uniqueText(p) }));
     for (const c of nearIdenticalClusters(docs, 0.85)) c.forEach((u) => dupUrls.add(u));
   }
+  const scoreCache = new Map<ParsedPage, ReturnType<typeof qualityScore>>();
+  const scoreOf = (p: ParsedPage) => {
+    let q = scoreCache.get(p);
+    if (!q) { q = qualityScore(prep, p, dupUrls); scoreCache.set(p, q); }
+    return q;
+  };
   return perTemplate(prep, pages, 'CONT-QUALITY', 'low content quality', (p) => {
     if (p.tier > 2) return [];
-    const q = qualityScore(prep, p, dupUrls);
+    const q = scoreOf(p);
     if (q.score >= min) return [];
     return [{ label: `score below ${min}/100 on content quality`, evidence: [metricEv(`content quality ${q.score}/100`, { score: q.score, ...q.parts, notes: q.notes }, p.url)] }];
   }, (_t, list) => {
-    const scores = list.filter((p) => p.tier <= 2).map((p) => qualityScore(prep, p, dupUrls).score);
-    return scores.length ? { severityContext: { metric: Math.min(...scores) } } : {};
+    const scores = list.filter((p) => p.tier <= 2).map((p) => scoreOf(p).score);
+    return scores.length ? { severityContext: { metric: minOf(scores) } } : {};
   });
 }
 
@@ -107,8 +113,9 @@ export function analyzeScaledContent(prep: Prepared): AnalyzerResult {
       .filter((d) => wordCount(d.text) >= 25)
       .map((d) => ({ id: d.p.url, text: d.text, mask: d.p.html!.h1s[0] || undefined }));
     const clusters = nearIdenticalClusters(docs, 0.8).filter((c) => c.length >= minCluster);
+    const docById = new Map(docs.map((d) => [d.id, d]));
     for (const c of clusters) {
-      const sample = docs.find((d) => d.id === c[0])!;
+      const sample = docById.get(c[0])!;
       const masked = sample.mask ? sample.text.split(sample.mask).join('{product}') : sample.text;
       findings.push({
         checkId: 'AIC-01', template: t, key: `AIC-01::${t}::${c.slice().sort()[0]}`,
@@ -116,7 +123,7 @@ export function analyzeScaledContent(prep: Prepared): AnalyzerResult {
         summary: `${c.length} pages are ≥80% identical after masking the product/page name. Publish dates (7-day window) need Shopify data; the metric is the cluster size.`,
         urls: c,
         severityContext: { metric: c.length },
-        evidence: [textEv(c[0], 'shared template passage (name masked as {product})', trunc(masked, 800), { clusterSize: c.length, urls: c })],
+        evidence: [textEv(c[0], 'shared template passage (name masked as {product})', trunc(masked, 800), { clusterSize: c.length, urls: c.slice(0, 200) })],
       });
     }
   }
@@ -172,13 +179,19 @@ export function analyzeFakeReviews(prep: Prepared): AnalyzerResult {
     const bodies = [...p.html!.reviews.texts, ...nodesOfType(p, 'Review').map((r) => (typeof r.reviewBody === 'string' ? r.reviewBody : ''))].map((t) => t.toLowerCase().replace(/\s+/g, ' ').trim()).filter((t) => wordCount(t) >= 6);
     for (const b of new Set(bodies)) textToPages.set(b, (textToPages.get(b) ?? new Set()).add(p.url));
   }
-  const templated = [...textToPages.entries()].filter(([, s]) => s.size >= 2);
+  // Page → the shared review texts it carries (built once, instead of scanning every shared text for every page).
+  const templatedOf = new Map<string, [string, Set<string>][]>();
+  for (const e of textToPages) {
+    if (e[1].size < 2) continue;
+    for (const u of e[1]) { const list = templatedOf.get(u); if (list) list.push(e); else templatedOf.set(u, [e]); }
+  }
+  const firstN = (s: Set<string>, n: number) => { const out: string[] = []; for (const x of s) { if (out.length >= n) break; out.push(x); } return out; };
   return perTemplate(prep, pages, 'AIC-06', 'fake/templated review signals', (p) => {
     const out: { label: string; evidence?: Ev[] }[] = [];
     const marked = [...nodesOfType(p, 'AggregateRating'), ...nodesOfType(p, 'Review')];
     if (marked.length && !p.html!.reviews.hasVisible) out.push({ label: 'carry review schema with no genuine visible reviews behind it', evidence: [{ kind: 'jsonld', label: 'review markup', url: p.url, content: JSON.stringify(marked[0]).slice(0, 600) }] });
-    const mine = templated.filter(([, s]) => s.has(p.url));
-    if (mine.length) out.push({ label: 'show review text duplicated verbatim on other products (templated reviews)', evidence: mine.slice(0, 3).map(([t, s]) => textEv(p.url, `same review on ${s.size} pages`, t, { urls: [...s] })) });
+    const mine = templatedOf.get(p.url) ?? [];
+    if (mine.length) out.push({ label: 'show review text duplicated verbatim on other products (templated reviews)', evidence: mine.slice(0, 3).map(([t, s]) => textEv(p.url, `same review on ${s.size} pages`, t, { urls: firstN(s, 20), pageCount: s.size })) });
     const inc = p.html!.reviews.texts.find((t) => INCENTIVIZED.test(t));
     if (inc) out.push({ label: 'show incentivized-review patterns', evidence: [textEv(p.url, 'incentivized review', inc)] });
     const schemaBodies = nodesOfType(p, 'Review').map((r) => (typeof r.reviewBody === 'string' ? r.reviewBody : '')).filter((b) => wordCount(b) >= 5);
@@ -218,11 +231,14 @@ export function analyzeDoorway(prep: Prepared): AnalyzerResult {
     .map((p) => ({ p, text: prep.uniqueText(p) || p.html!.ownBlocks.join('\n') }))
     .filter((d) => wordCount(d.text) >= 40);
   const clusters = nearIdenticalClusters(docs.map((d) => ({ id: d.p.url, text: d.text, mask: d.p.html!.h1s[0] || undefined })), 0.75).filter((c) => c.length >= 3);
+  const pageByUrl = new Map(pages.map((p) => [p.url, p]));
+  const docByUrl = new Map(docs.map((d) => [d.p.url, d]));
   for (const c of clusters) {
-    const cps = c.map((u) => pages.find((p) => p.url === u)!);
+    const cps = c.map((u) => pageByUrl.get(u)!);
+    const inCluster = new Set(c);
     // Destination = most common in-content internal link (excluding the cluster pages themselves).
     const counts = new Map<string, number>();
-    for (const p of cps) for (const l of new Set(p.html!.links.filter((x) => x.internal && x.inMain && !c.includes(x.url)).map((x) => pathOf(x.url)))) counts.set(l, (counts.get(l) ?? 0) + 1);
+    for (const p of cps) for (const l of new Set(p.html!.links.filter((x) => x.internal && x.inMain && !inCluster.has(x.url)).map((x) => pathOf(x.url)))) counts.set(l, (counts.get(l) ?? 0) + 1);
     const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
     if (!top || top[1] < c.length) continue;
     const variable = cps.map((p) => p.html!.h1s[0] ?? p.html!.title ?? p.url);
@@ -231,7 +247,7 @@ export function analyzeDoorway(prep: Prepared): AnalyzerResult {
       title: `${c.length} near-duplicate keyword/location landing pages all funnel to ${top[0]}`,
       summary: `These pages are ≥75% identical after masking their heading (${variable.slice(0, 4).join(' / ')}…) and every one links to ${top[0]} — a doorway-page pattern.`,
       urls: c,
-      evidence: [textEv(c[0], 'shared passage', trunc(docs.find((d) => d.p.url === c[0])!.text, 600), { clusterSize: c.length, destination: top[0], headings: variable })],
+      evidence: [textEv(c[0], 'shared passage', trunc(docByUrl.get(c[0])!.text, 600), { clusterSize: c.length, destination: top[0], headings: variable.slice(0, 50) })],
     });
   }
   return { evaluated: true, templates: [...new Set(pages.map((p) => p.template))], findings };

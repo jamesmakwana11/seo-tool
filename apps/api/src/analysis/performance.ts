@@ -19,7 +19,19 @@ const KNOWN_APPS: [RegExp, string][] = [
   [/shopifycloud|cdn\.shopify\.com\/shopifycloud/i, 'Shopify platform'], [/cdn\.shopify\.com\/extensions/i, 'Shopify app extension'],
 ];
 
+/** Script URLs repeat on every page of a crawl: the app name is worked out once per distinct URL. */
+const APP_NAME_CACHE = new Map<string, string>();
+
 export function appNameFor(src: string): string {
+  const hit = APP_NAME_CACHE.get(src);
+  if (hit !== undefined) return hit;
+  const name = appNameUncached(src);
+  if (APP_NAME_CACHE.size >= 50000) APP_NAME_CACHE.clear();
+  APP_NAME_CACHE.set(src, name);
+  return name;
+}
+
+function appNameUncached(src: string): string {
   for (const [re, name] of KNOWN_APPS) if (re.test(src)) return name;
   const m = pathOf(src).match(/\/extensions\/[^/]+\/([^/]+)\//);
   if (m) return `Shopify app extension (${m[1]})`;

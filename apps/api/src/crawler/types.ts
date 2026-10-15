@@ -32,6 +32,8 @@ export interface FetchResult {
   contentType?: string;
   body?: string;
   bytes?: number;
+  /** The body was larger than the read limit: only the first part was read. */
+  truncated?: boolean;
 }
 
 export interface SchemaNode {
@@ -142,6 +144,8 @@ export interface SitemapFile {
   kind: 'urlset' | 'sitemapindex' | 'invalid' | 'unreachable';
   count: number;
   error?: string;
+  /** Larger than the read limit: entries after the limit were not read. */
+  truncated?: boolean;
 }
 
 export interface SitemapInfo {

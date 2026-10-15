@@ -13,9 +13,11 @@ import { SourceBadge } from '@/components/domain/badges';
 import { UrlList } from '@/components/domain/lists';
 import { CRAWL_TRIGGER_LABELS, CRAWL_TYPE_LABELS, CrawlStatusBadge, HttpStatusBadge, VERIFICATION_METHOD_LABELS, VerificationOutcomeBadge } from '@/components/crawls/crawlBadges';
 import { fmtDuration } from '@/components/crawls/format';
+import { CrawlProgress, ExportButtons, TemporaryResultsNote } from '@/components/crawls/LiveCrawl';
+import { hasPageDetails, IssuesFound, PageResults } from '@/components/crawls/PageResults';
 import { fmtDateTime, fmtMs, fmtNum, shortUrl } from '@/lib/format';
 
-type Tab = 'urls' | 'sitemap' | 'reverify';
+type Tab = 'urls' | 'issues' | 'sitemap' | 'reverify';
 
 export default function CrawlRunPage() {
   const { id = '' } = useParams();
@@ -23,7 +25,7 @@ export default function CrawlRunPage() {
   const siteKey = useSiteKey();
   const cached = qc.getQueryData<CrawlDetail>(siteKey(['crawl', id]));
   const active = cached?.run.status === 'running' || cached?.run.status === 'queued';
-  const q = useApiQuery(['crawl', id], () => api.getCrawl(id), { refetchInterval: active ? 3000 : undefined });
+  const q = useApiQuery(['crawl', id], () => api.getCrawl(id), { refetchInterval: active ? 2000 : undefined });
 
   if (q.isLoading) return <LoadingBlock rows={10} />;
   if (q.error) return <DetailError error={q.error} what="Crawl run" id={id} back={{ to: '/crawls', label: 'Back to the Crawl Center' }} onRetry={() => q.refetch()} />;
@@ -40,13 +42,16 @@ function Detail({ d }: { d: CrawlDetail }) {
   const [tab, setTab] = useState<Tab>('urls');
   const simulated = run.source === 'simulated';
   const active = run.status === 'running' || run.status === 'queued';
+  const detailed = hasPageDetails(d.urls);
+  const issueCount = useMemo(() => new Set(d.urls.flatMap((u) => (u.issues ?? []).map((i) => i.id))).size, [d.urls]);
   return (
     <div>
       <BackLink />
       <PageHeader
-        title={`${CRAWL_TYPE_LABELS[run.type]} ${run.id}`}
-        description={`${CRAWL_TRIGGER_LABELS[run.trigger]} trigger · started ${fmtDateTime(run.startedAt ?? run.scheduledFor)} IST`}
+        title={`${run.options ? 'Live crawl' : CRAWL_TYPE_LABELS[run.type]} ${run.id}`}
+        description={`${run.options ? `${run.options.startUrl} · ` : ''}${CRAWL_TRIGGER_LABELS[run.trigger]} trigger · started ${fmtDateTime(run.startedAt ?? run.scheduledFor)} IST`}
         meta={<><DemoBadge /><CrawlStatusBadge run={run} />{run.source !== 'demo' && <SourceBadge source={run.source} />}</>}
+        actions={d.urls.length > 0 && !simulated ? <ExportButtons run={run} /> : undefined}
       />
 
       <div className="space-y-5">
@@ -55,13 +60,19 @@ function Detail({ d }: { d: CrawlDetail }) {
             {run.error ?? 'This run is simulated: mock mode makes no HTTP requests.'} The counts below are what a real run would plan — no URLs were fetched and no findings were produced.
           </Notice>
         )}
-        {!simulated && run.error && <Notice tone={run.status === 'failed' ? 'crit' : 'med'} title={run.status === 'failed' ? 'Run failed' : 'Run notice'}>{run.error}</Notice>}
-        {active && <Notice tone="signal">This run is {run.status}. The page refreshes every 3 seconds until it finishes.</Notice>}
+        {!simulated && run.error && !run.options && <Notice tone={run.status === 'failed' ? 'crit' : 'med'} title={run.status === 'failed' ? 'Run failed' : 'Run notice'}>{run.error}</Notice>}
+        {active && !run.options && <Notice tone="signal">This run is {run.status}. The page refreshes every 2 seconds until it finishes.</Notice>}
+        {run.options && (
+          <Panel title="Progress">
+            <CrawlProgress run={run} showLink={false} />
+            <div className="mt-4"><TemporaryResultsNote compact /></div>
+          </Panel>
+        )}
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
           <Panel title="Summary">
             <KV cols={3} items={[
-              { k: 'Type', v: CRAWL_TYPE_LABELS[run.type] },
+              { k: 'Type', v: run.options ? `Live crawl (${run.options.maxPages === null ? 'all pages' : `max ${fmtNum(run.options.maxPages)} pages`}, ${run.options.maxDepth === null ? 'any depth' : `depth ${run.options.maxDepth}`}, ${run.options.concurrency} parallel, ${run.options.timeoutMs / 1000}s timeout)` : CRAWL_TYPE_LABELS[run.type] },
               { k: 'Trigger', v: CRAWL_TRIGGER_LABELS[run.trigger] },
               { k: 'Status', v: <CrawlStatusBadge run={run} /> },
               { k: 'Started', v: run.startedAt ? `${fmtDateTime(run.startedAt)} IST` : '—' },
@@ -97,12 +108,17 @@ function Detail({ d }: { d: CrawlDetail }) {
           value={tab}
           onChange={setTab}
           items={[
-            { value: 'urls', label: 'URLs', count: d.urls.length },
+            { value: 'urls', label: detailed ? 'Pages' : 'URLs', count: d.urls.length },
+            ...(detailed ? [{ value: 'issues' as Tab, label: 'Issues', count: issueCount }] : []),
             { value: 'sitemap', label: 'Sitemap diff' },
             { value: 'reverify', label: 'Re-verification', count: d.verification.length },
           ]}
         />
-        {tab === 'urls' && <UrlsTab urls={d.urls} simulated={simulated} />}
+        {tab === 'urls' && (detailed ? <PageResults urls={d.urls} />
+          : active && !d.urls.length ? <Panel><EmptyState title="Results appear when the crawl finishes" description="Pages are listed once the crawl completes or is cancelled. Progress is shown above." /></Panel>
+            : run.options && !d.urls.length ? <Panel><EmptyState title="No pages were fetched" description={run.status === 'cancelled' ? 'The crawl was cancelled before its first page was fetched.' : run.error ?? 'This crawl produced no page results.'} /></Panel>
+              : <UrlsTab urls={d.urls} simulated={simulated} />)}
+        {tab === 'issues' && <IssuesFound urls={d.urls} />}
         {tab === 'sitemap' && <SitemapTab diff={d.sitemapDiff} />}
         {tab === 'reverify' && <ReverifyTab d={d} />}
       </div>

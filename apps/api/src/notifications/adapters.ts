@@ -34,16 +34,22 @@ export function renderHtml(msg: OutboundMessage): string {
 
 // ---------------------------------------------------------------------------------------------- email
 
+const SMTP_TRANSPORT_VARS = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM'];
+/** True when the SMTP transport itself is configured (recipients aside). */
+export const emailTransportReady = (env: Env) => missing(env, SMTP_TRANSPORT_VARS).length === 0;
+
 export function createEmailAdapter(env: Env, transport: MailTransportFactory = defaultMailTransport): DeliveryChannelAdapter & { missingVars(): string[] } {
-  const envVars = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM', 'DIGEST_RECIPIENTS'];
+  const envVars = [...SMTP_TRANSPORT_VARS, 'DIGEST_RECIPIENTS'];
   const missingVars = () => missing(env, envVars);
+  // A message with explicit recipients goes to them only; everything else goes to the digest list.
+  const recipients = (msg?: OutboundMessage) => (msg?.to?.length ? msg.to : splitList(env.DIGEST_RECIPIENTS));
   return {
     channel: 'email',
     envVars,
     missingVars,
-    isConfigured: () => missingVars().length === 0 && splitList(env.DIGEST_RECIPIENTS).length > 0,
+    isConfigured: (msg?: OutboundMessage) => emailTransportReady(env) && recipients(msg).length > 0,
     async send(msg): Promise<SendResult> {
-      const to = splitList(env.DIGEST_RECIPIENTS);
+      const to = recipients(msg);
       try {
         const info = await transport(smtpOptions(env)).sendMail({ from: env.SMTP_FROM!, to: to.join(', '), subject: msg.subject, text: renderTextWithLinks(msg), html: renderHtml(msg) });
         const accepted = Array.isArray(info.accepted) ? info.accepted.length : undefined;

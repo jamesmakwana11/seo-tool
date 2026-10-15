@@ -203,7 +203,7 @@ export function buildDailyDigest(v: SentinelView, now: Date): DailyDigest {
   const newCriticals = live.filter((i) => i.severity === 'critical' && recent(i.detectedAt) && i.issueClass !== 'opportunity').map((i) => ({ issueId: i.id, title: i.title, summary: i.summary.slice(0, 160), recommendedTeam: i.recommendedTeam, allocatedTeam: i.allocatedTeam }));
   const mediums = live.filter((i) => i.severity === 'medium' && recent(i.detectedAt));
   const byMod = new Map<AuditModule, DailyDigest['newMediumsByModule'][number]['items']>();
-  for (const i of mediums) byMod.set(i.module, [...(byMod.get(i.module) ?? []), { issueId: i.id, title: i.title, recommendedTeam: i.recommendedTeam, allocatedTeam: i.allocatedTeam }]);
+  for (const i of mediums) { const list = byMod.get(i.module); if (list) list.push({ issueId: i.id, title: i.title, recommendedTeam: i.recommendedTeam, allocatedTeam: i.allocatedTeam }); else byMod.set(i.module, [{ issueId: i.id, title: i.title, recommendedTeam: i.recommendedTeam, allocatedTeam: i.allocatedTeam }]); }
   const allAlloc = v.issues.flatMap((i) => i.allocation).filter((a) => recent(a.at));
   const unalloc = v.issues.filter((i) => i.status === 'NEW' && !i.allocatedTeam && i.issueClass !== 'opportunity').map((i) => ({ issueId: i.id, title: i.title, severity: i.severity, hours: Math.round((now.getTime() - +new Date(i.detectedAt)) / 360000) / 10 })).filter((x) => x.hours > v.config.escalation.unallocatedCriticalHours);
   const watch: DailyDigest['watchlist'] = [];

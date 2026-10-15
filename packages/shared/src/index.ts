@@ -16,5 +16,6 @@ export * from './fixcards/generate';
 export * from './queries';
 export * from './integrations';
 export * from './websites';
+export * from './crawlOptions';
 export { createSeed, DEMO_PASSWORD, PREVIEW_USER_BY_ROLE, type SeedData, type PageText } from './seed/index';
 export { rng } from './seed/rng';

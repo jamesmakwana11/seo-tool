@@ -583,6 +583,44 @@ export interface CrawlRun {
   error?: string;
   scope: { label: string; count: number }[];
   source: DataSource;
+  /** Settings of a live crawl started from the Crawl Center (absent for smart / re-verify / DEMO runs). */
+  options?: CrawlOptions;
+  /** Same-site page URLs found so far (start URL, sitemap entries, internal links), within the crawl's scope. */
+  urlsDiscovered?: number;
+  /** Pages fetched with a final 2xx/3xx response. */
+  urlsSucceeded?: number;
+  /** Who cancelled the run (status 'cancelled'). */
+  cancelledBy?: string;
+  /** How the crawl paced itself: current gap between requests, robots.txt Crawl-delay, retries and slow-downs. */
+  politeness?: { delayMs: number; crawlDelayMs?: number; retries: number; slowDowns: number };
+  /** The address the crawl actually used after following redirects (e.g. http://example.com → https://www.example.com/). */
+  resolvedStartUrl?: string;
+  /** The address that was entered, when it redirected. */
+  resolvedFrom?: string;
+  /** What a running crawl is doing now: fetching pages, analysing them, or saving results and issues. */
+  phase?: 'crawling' | 'analysing' | 'saving';
+}
+
+/** Live-crawl settings chosen in the Crawl Center. Validated server-side (see CRAWL_LIMITS). */
+export interface CrawlOptions {
+  startUrl: string;
+  /** Pages to fetch at most; null = every page the site has (no limit). */
+  maxPages: number | null;
+  /** Link depth from the start URL (0 = start URL only); null = no depth limit. Sitemap URLs are always included. */
+  maxDepth: number | null;
+  timeoutMs: number;
+  concurrency: number;
+  /** Gap between requests for this crawl (ms). Optional: the server default applies when absent. */
+  requestDelayMs?: number;
+}
+
+/** One issue seen on a crawled page in this run (issue tracker record + its Fix Card). */
+export interface CrawledUrlIssue {
+  id: string;
+  checkId: string;
+  title: string;
+  severity: Severity;
+  summary: string;
 }
 
 export interface CrawledUrl {
@@ -592,6 +630,32 @@ export interface CrawledUrl {
   responseMs?: number;
   error?: string;
   changed?: boolean;
+  // ---- page details (live crawls; absent on DEMO / older runs)
+  finalUrl?: string;
+  finalStatus?: number | null;
+  redirects?: number;
+  /** Set when this row is the destination of another URL's redirect. */
+  redirectedFrom?: string;
+  contentType?: string;
+  depth?: number;
+  bytes?: number;
+  skippedByRobots?: boolean;
+  title?: string;
+  metaDescription?: string;
+  h1?: string[];
+  h2Count?: number;
+  canonical?: string;
+  metaRobots?: string;
+  xRobotsTag?: string;
+  indexable?: boolean;
+  indexabilityReason?: string;
+  internalLinks?: number;
+  /** Internal links on this page whose target answered ≥ 400 or not at all (first 20). */
+  brokenLinks?: string[];
+  images?: number;
+  imagesMissingAlt?: number;
+  inSitemap?: boolean;
+  issues?: CrawledUrlIssue[];
 }
 
 export interface SitemapDiff {

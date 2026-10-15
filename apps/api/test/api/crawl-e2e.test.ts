@@ -16,7 +16,7 @@ async function setup(initial?: Parameters<typeof startFixtureSite>[0]) {
   site = await startFixtureSite(initial);
   const env = loadEnv({
     NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'y'.repeat(40), LOG_LEVEL: 'silent',
-    CRAWLER_BASE_URL: site.origin, CRAWLER_USER_AGENT: 'DeoDapSEOSentinel/1.0 (+test)', CRAWLER_ALLOW_LIVE: 'false', // loopback is allowed without live
+    CRAWLER_BASE_URL: site.origin, CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_USER_AGENT: 'DeoDapSEOSentinel/1.0 (+test)', CRAWLER_ALLOW_LIVE: 'false', // loopback is allowed without live
   });
   container = await createContainer({ env }); // real fetch — loopback only
   return { site, container };
@@ -56,7 +56,7 @@ describe('Shopify webhook → smart crawl (PDF §16: pages changed in the last 4
     const secret = 'whsec-test-secret';
     const env = loadEnv({
       NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'w'.repeat(40), LOG_LEVEL: 'silent', SHOPIFY_WEBHOOK_SECRET: secret,
-      SHOPIFY_STORE_DOMAIN: new URL(site.origin).host, CRAWLER_BASE_URL: site.origin, CRAWLER_ALLOW_LIVE: 'false',
+      SHOPIFY_STORE_DOMAIN: new URL(site.origin).host, CRAWLER_BASE_URL: site.origin, CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_ALLOW_LIVE: 'false',
     });
     container = await createContainer({ env });
     const app = createApp(container);

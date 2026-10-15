@@ -36,20 +36,22 @@ export default function ForgotPasswordPage() {
 
   if (result) {
     return (
-      <AuthFrame title="Check your email" subtitle="Password recovery">
+      <AuthFrame title={result.emailConfigured ? 'Check your email' : 'No email was sent'} subtitle="Password recovery">
         <div className="space-y-4">
-          <div className="flex items-start gap-3">
-            <MailCheck className="mt-0.5 h-5 w-5 shrink-0 text-signal" aria-hidden />
-            <p className="text-sm text-ink-soft" role="status">
-              If an account exists for <span className="font-medium text-ink">{email.trim()}</span>, a password reset link {result.sent ? 'has been sent to it' : 'would be sent to it'}. The link expires after a short time.
-            </p>
-          </div>
-          {!result.sent && <Notice tone="demo">{result.note}</Notice>}
-          {result.sent && result.note && <p className="text-sm text-muted">{result.note}</p>}
-          {result.devResetToken && API_MODE === 'mock' && (
+          {result.emailConfigured ? (
+            <div className="flex items-start gap-3">
+              <MailCheck className="mt-0.5 h-5 w-5 shrink-0 text-signal" aria-hidden />
+              <p className="text-sm text-ink-soft" role="status">
+                If an account exists for <span className="font-medium text-ink">{email.trim()}</span>, a password reset link has been sent to it. The link expires after 1 hour.
+              </p>
+            </div>
+          ) : (
+            <Notice tone={API_MODE === 'mock' ? 'demo' : 'med'}><span role="status">{result.note}</span></Notice>
+          )}
+          {result.devResetToken && (
             <div className="demo-hatch rounded-ctl border border-demo/30 p-3">
-              <p className="text-sm font-semibold text-[#8A5408]">Development only — not shown in production</p>
-              <p className="mt-0.5 text-xs text-[#8A5408]">Mock mode cannot send email, so the reset link is shown here instead.</p>
+              <p className="text-sm font-semibold text-[#8A5408]">Development only — never shown in production</p>
+              <p className="mt-0.5 text-xs text-[#8A5408]">This server cannot send email, so the reset link is shown here instead.</p>
               <Link to={`/reset-password?token=${encodeURIComponent(result.devResetToken)}`} className="mt-2 inline-block text-sm font-medium text-signal hover:underline">Open development reset link</Link>
             </div>
           )}

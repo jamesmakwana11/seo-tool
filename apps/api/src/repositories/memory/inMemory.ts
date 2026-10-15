@@ -9,7 +9,17 @@ import { defaultConfig, DEFAULT_PERMISSIONS } from '@sentinel/shared';
 export class InMemoryRepository<T extends { id: string }> implements Repository<T> {
   private readonly items = new Map<string, T>();
   private seq = 0;
+  /** Highest numeric suffix per id prefix seen so far (computed once per prefix, then kept up to date on writes). */
+  private readonly prefixMax = new Map<string, number>();
   constructor(private readonly name: string) {}
+
+  private track(id: string) {
+    for (const [p, m] of this.prefixMax) {
+      if (!id.startsWith(`${p}-`)) continue;
+      const rest = id.slice(p.length + 1);
+      if (/^\d+$/.test(rest) && Number(rest) > m) this.prefixMax.set(p, Number(rest));
+    }
+  }
 
   async get(id: string) {
     const v = this.items.get(id);
@@ -25,6 +35,7 @@ export class InMemoryRepository<T extends { id: string }> implements Repository<
   async insert(item: T) {
     if (this.items.has(item.id)) throw new Error(`${this.name}: duplicate id ${item.id}`);
     this.items.set(item.id, structuredClone(item));
+    this.track(item.id);
     return structuredClone(item);
   }
   async update(item: T) {
@@ -34,6 +45,7 @@ export class InMemoryRepository<T extends { id: string }> implements Repository<
   }
   async upsert(item: T) {
     this.items.set(item.id, structuredClone(item));
+    this.track(item.id);
     return structuredClone(item);
   }
   async delete(id: string) {
@@ -44,12 +56,18 @@ export class InMemoryRepository<T extends { id: string }> implements Repository<
   }
   /** Next sequential id with a prefix, never colliding with existing (e.g. seeded) ids. */
   async nextId(prefix: string, width = 4) {
-    let max = this.seq;
-    for (const id of this.items.keys()) {
-      const m = id.match(new RegExp(`^${prefix}-(\\d+)$`));
-      if (m) max = Math.max(max, Number(m[1]));
+    let known = this.prefixMax.get(prefix);
+    if (known === undefined) {
+      // First id for this prefix: scan once; later writes keep the maximum current (no scan per insert).
+      known = 0;
+      const re = new RegExp(`^${prefix}-(\\d+)$`);
+      for (const id of this.items.keys()) {
+        const m = re.exec(id);
+        if (m) known = Math.max(known, Number(m[1]));
+      }
+      this.prefixMax.set(prefix, known);
     }
-    this.seq = max + 1;
+    this.seq = Math.max(this.seq, known) + 1;
     return `${prefix}-${String(this.seq).padStart(width, '0')}`;
   }
 }

@@ -6,10 +6,10 @@ import { nearIdenticalClusters } from '@sentinel/shared';
 import type { Finding } from '../services/ports';
 import { diffRobots, isAllowed } from '../crawler/robots';
 import type { ParsedPage } from '../crawler/types';
-import { collectionHandle, hostOf, isSameSite, normalizeUrl, pageParam, pathOf, productHandle, sameUrl, stripQuery, templateOf } from '../crawler/url';
+import { collectionHandle, hostOf, isSameSite, normalizeUrl, pageParam, pathOf, productHandle, sameUrl, stripQuery, templateOf, urlKey } from '../crawler/url';
 import {
-  aggregate, canonicalOf, escapeHtml, groupByTemplate, htmlEv, httpEv, inlinksOf, isIntentionalNoindex, isNoindex, metricEv, noun, perTemplate,
-  textEv, trunc, type AnalyzerResult, type Ev, type Prepared, type Problem,
+  aggregate, canonicalOf, escapeHtml, groupByTemplate, htmlEv, httpEv, inlinksOf, isIntentionalNoindex, isNoindex, MAX_KEPT_EVIDENCE, maxOf, metricEv, minOf, noun, perTemplate,
+  problemCollector, textEv, trunc, type AnalyzerResult, type Ev, type Prepared, type Problem,
 } from './context';
 
 const NOT = (reason: string): AnalyzerResult => ({ evaluated: false, findings: [], reason });
@@ -92,18 +92,18 @@ export function analyzeRobots(prep: Prepared): AnalyzerResult {
 
 export function analyzeNoindex(prep: Prepared): AnalyzerResult {
   const prevIdx = prep.ctx.previous?.indexableUrls;
-  const prevSet = prevIdx ? new Set(prevIdx.map(normalizeUrl)) : undefined;
-  const wasIndexable = (u: string) => !!prevSet && (prevSet.has(normalizeUrl(u)) || [...prevSet].some((x) => sameUrl(x, u)));
+  const prevKeys = prevIdx ? new Set(prevIdx.map(urlKey)) : undefined;
+  const wasIndexable = (u: string) => !!prevKeys && prevKeys.has(urlKey(u));
   const pages = prep.all.filter((p) => p.status === 200 && p.html && !p.skippedByRobots && !p.budgetSample && !p.paginated && !p.scopedSample);
   const MONEY: PageTemplate[] = ['home', 'collection', 'product', 'blog_article'];
   return perTemplate(prep, pages, 'TECH-NOINDEX', 'new noindex', (p) => {
     const n = isNoindex(p);
     if (!n.noindex || isIntentionalNoindex(p.url, prep.ctx)) return [];
-    if (prevSet ? !wasIndexable(p.url) : !MONEY.includes(p.template)) return [];
+    if (prevKeys ? !wasIndexable(p.url) : !MONEY.includes(p.template)) return [];
     const ev: Ev = n.via === 'meta robots'
       ? htmlEv(p.url, 'meta robots', `<meta name="robots" content="${escapeHtml(n.value ?? '')}">`)
       : { kind: 'http_response', label: 'X-Robots-Tag header', url: p.url, content: `HTTP ${p.status}\nX-Robots-Tag: ${n.value}` };
-    return [{ label: prevSet ? `newly noindexed (were indexable last run) via ${n.via}` : `noindexed via ${n.via} (no previous baseline — first run)`, evidence: [ev] }];
+    return [{ label: prevKeys ? `newly noindexed (were indexable last run) via ${n.via}` : `noindexed via ${n.via} (no previous baseline — first run)`, evidence: [ev] }];
   }, () => ({ businessImpact: 'Noindexed pages drop out of Google\'s index — lost rankings and revenue on these URLs until removed.' }));
 }
 
@@ -113,14 +113,10 @@ export function analyzeSitemap(prep: Prepared): AnalyzerResult & { invalid: { ur
   const sm = prep.ctx.sitemap;
   if (!sm) return { ...NOT('sitemap was not fetched'), invalid: [] };
   const max = prep.ctx.thresholds.sitemapMaxUrls ?? 50000;
-  const problems: Problem[] = [];
+  const collector = problemCollector();
+  const problems: Problem[] = collector.problems;
   const invalid: { url: string; problem: string }[] = [];
-  const add = (label: string, url: string, ev?: Ev) => {
-    let p = problems.find((x) => x.label === label);
-    if (!p) problems.push((p = { label, urls: [], evidence: [] }));
-    if (!p.urls.includes(url)) p.urls.push(url);
-    if (ev) p.evidence!.push(ev);
-  };
+  const add = (label: string, url: string, ev?: Ev) => { collector.add(label, url, ev); };
   const reachable = sm.files.filter((f) => f.kind === 'urlset' || f.kind === 'sitemapindex');
   if (!reachable.length) {
     for (const f of sm.files) add(f.kind === 'invalid' ? 'sitemap file is not valid XML' : 'sitemap unreachable', f.url, { kind: 'http_response', label: `${f.url}`, url: f.url, content: `HTTP ${f.status ?? 'no response'} — ${f.error ?? ''}` });
@@ -202,7 +198,10 @@ export function analyzeCrawlDepth(prep: Prepared): AnalyzerResult {
   const res = perTemplate(prep, pages, 'TECH-CRAWL-DEPTH', 'excess depth', (p) => (p.tier <= 2 && (p.depth ?? 0) > max
     ? [{ label: `are deeper than ${max} clicks from the homepage`, evidence: [metricEv('click depth', { depth: p.depth, max, tier: p.tier }, p.url)] }]
     : []));
-  for (const f of res.findings) f.severityContext = { ...f.severityContext, metric: Math.max(...pages.filter((p) => f.urls.includes(p.url)).map((p) => p.depth ?? 0)) };
+  for (const f of res.findings) {
+    const inF = new Set(f.urls);
+    f.severityContext = { ...f.severityContext, metric: maxOf(pages.filter((p) => inF.has(p.url)).map((p) => p.depth ?? 0)) };
+  }
   return res;
 }
 
@@ -250,14 +249,11 @@ export function analyze4xx(prep: Prepared): AnalyzerResult {
   const prevSet = prevOk ? new Set(prevOk.map(normalizeUrl)) : undefined;
   const findings: Finding[] = [];
   const pages = prep.requested.filter((p) => !p.budgetSample);
-  const problemsByT = new Map<PageTemplate, Map<string, Problem>>();
+  const problemsByT = new Map<PageTemplate, ReturnType<typeof problemCollector>>();
   const add = (t: PageTemplate, label: string, url: string, ev: Ev) => {
-    const m = problemsByT.get(t) ?? new Map<string, Problem>();
-    problemsByT.set(t, m);
-    const p = m.get(label) ?? { label, urls: [], evidence: [] };
-    m.set(label, p);
-    if (!p.urls.includes(url)) p.urls.push(url);
-    p.evidence!.push(ev);
+    let c = problemsByT.get(t);
+    if (!c) { c = problemCollector(); problemsByT.set(t, c); }
+    c.add(label, url, ev);
   };
   for (const p of pages) {
     const st = p.chain.length ? p.finalStatus : p.status;
@@ -297,7 +293,7 @@ export function analyze4xx(prep: Prepared): AnalyzerResult {
     });
   }
   for (const [t, m] of problemsByT) {
-    const f = aggregate({ checkId: 'TECH-4XX', template: t, noun: '4xx responses', problems: [...m.values()], severityContext: m.has('return 429 Too Many Requests') ? {} : {} });
+    const f = aggregate({ checkId: 'TECH-4XX', template: t, noun: '4xx responses', problems: m.problems });
     if (f) findings.push(f);
   }
   return { evaluated: true, templates: [...new Set(pages.map((p) => p.template))], findings };
@@ -323,7 +319,7 @@ export function analyze5xx(prep: Prepared): AnalyzerResult {
     return out;
   }, (_t, list) => {
     const slow = list.filter((p) => (p.responseMs ?? 0) > maxMs).map((p) => p.responseMs ?? 0);
-    return slow.length ? { severityContext: { metric: Math.max(...slow) } } : {};
+    return slow.length ? { severityContext: { metric: maxOf(slow) } } : {};
   });
 }
 
@@ -341,14 +337,11 @@ export function analyzeRedirects(prep: Prepared): AnalyzerResult {
   const byT = groupByTemplate(items);
   const findings: Finding[] = [];
   for (const [t, list] of byT) {
-    const probs = new Map<string, Problem>();
+    const collector = problemCollector();
     const add = (label: string, r: R) => {
-      const p = probs.get(label) ?? { label, urls: [], evidence: [] };
-      probs.set(label, p);
-      if (!p.urls.includes(r.url)) {
-        p.urls.push(r.url);
-        p.evidence!.push(httpEv(r.url, r, `${r.source}: ${r.chain.map((h) => h.status).join(' → ')}${r.finalStatus ? ` → ${r.finalStatus}` : ''}`));
-      }
+      const p = collector.get(label);
+      const ev = p && (p.evidence!.length >= MAX_KEPT_EVIDENCE) ? undefined : httpEv(r.url, r, `${r.source}: ${r.chain.map((h) => h.status).join(' → ')}${r.finalStatus ? ` → ${r.finalStatus}` : ''}`);
+      collector.add(label, r.url, ev, true);
     };
     for (const r of list) {
       if (r.redirectLoop) add('are caught in a redirect loop', r);
@@ -359,9 +352,10 @@ export function analyzeRedirects(prep: Prepared): AnalyzerResult {
       if (r.chain.length > maxHops) add(`redirect through a chain of more than ${maxHops} hop`, r);
       if (r.finalStatus !== null && r.finalStatus >= 400) add(`redirect to a ${r.finalStatus >= 500 ? '5xx' : '4xx'} page`, r);
     }
-    const f = aggregate({ checkId: 'TECH-REDIRECTS', template: t, noun: 'redirect problems', problems: [...probs.values()] });
+    const f = aggregate({ checkId: 'TECH-REDIRECTS', template: t, noun: 'redirect problems', problems: collector.problems });
     if (f) {
-      f.severityContext = { ...f.severityContext, metric: Math.max(...list.filter((x) => f.urls.includes(x.url)).map((x) => x.chain.length)) };
+      const inF = new Set(f.urls);
+      f.severityContext = { ...f.severityContext, metric: maxOf(list.filter((x) => inF.has(x.url)).map((x) => x.chain.length)) };
       findings.push(f);
     }
   }
@@ -372,10 +366,16 @@ export function analyzeRedirects(prep: Prepared): AnalyzerResult {
 
 export function analyzeBrokenInternal(prep: Prepared): AnalyzerResult {
   let unchecked = 0;
+  const hostCache = new Map<string, string>();
+  const host = (l: string) => {
+    let h = hostCache.get(l);
+    if (h === undefined) { h = hostOf(l); hostCache.set(l, h); }
+    return h;
+  };
   const res = perTemplate(prep, prep.ok, 'TECH-BROKEN-INTERNAL', 'broken internal links', (p) => {
     const broken: { target: string; status: number | null; error?: string }[] = [];
     for (const l of p.html!.internalLinks) {
-      if (hostOf(l) !== prep.ctx.host) continue;
+      if (host(l) !== prep.ctx.host) continue;
       const s = prep.statusOf(l);
       if (!s) {
         unchecked++;
@@ -426,16 +426,30 @@ export function analyzeDiscontinued(prep: Prepared): AnalyzerResult {
   if (!dead.size) return { evaluated: true, templates: ['product'], findings: [] };
   const evidence: Ev[] = [];
   const urls: string[] = [];
+  // Product handle → collection pages linking to it, built once (not one scan of every collection per dead product).
+  const wanted = new Set<string>();
+  for (const url of dead.keys()) { const h = productHandle(url); if (h) wanted.add(h); }
+  const collectionsByHandle = new Map<string, string[]>();
+  for (const p of prep.ok) {
+    if (p.template !== 'collection') continue;
+    const here = new Set<string>();
+    for (const l of p.html!.internalLinks) {
+      if (!l.includes('/products/')) continue;
+      const h = productHandle(l);
+      if (h && wanted.has(h)) here.add(h);
+    }
+    for (const h of here) { const list = collectionsByHandle.get(h); if (list) list.push(stripQuery(p.url)); else collectionsByHandle.set(h, [stripQuery(p.url)]); }
+  }
   for (const [url, d] of dead) {
     urls.push(url);
     const handle = productHandle(url);
-    const linkingCollections = prep.ok.filter((p) => p.template === 'collection' && p.html!.internalLinks.some((l) => productHandle(l) === handle)).map((p) => stripQuery(p.url));
+    const linkingCollections = (handle && collectionsByHandle.get(handle)) || [];
     const fromPath = collectionHandle(url) ? `${prep.ctx.origin}/collections/${collectionHandle(url)}` : undefined;
     const suggested = fromPath ?? linkingCollections[0] ?? `${prep.ctx.origin}/collections/all`;
     evidence.push({
       kind: 'http_response', label: `HTTP ${d.status} — suggest 301 → ${suggested}`, url,
       content: `${url} → ${d.status}\nSuggested redirect target (parent collection): ${suggested}`,
-      data: { status: d.status, suggestedRedirect: suggested, basis: fromPath ? 'collection in URL path' : linkingCollections.length ? 'collection page linking to the product' : 'no linking collection found — fallback /collections/all', linkingCollections, internalInlinks: inlinksOf(prep, url) },
+      data: { status: d.status, suggestedRedirect: suggested, basis: fromPath ? 'collection in URL path' : linkingCollections.length ? 'collection page linking to the product' : 'no linking collection found — fallback /collections/all', linkingCollections: linkingCollections.slice(0, 50), linkingCollectionCount: linkingCollections.length, internalInlinks: inlinksOf(prep, url).slice(0, 50), internalInlinkCount: inlinksOf(prep, url).length },
     });
   }
   return {
@@ -520,7 +534,7 @@ export function duplicateGroups(pages: ParsedPage[], get: (p: ParsedPage) => str
   for (const p of pages) {
     const v = get(p);
     if (!v) continue;
-    m.set(v, [...(m.get(v) ?? []), p.url]);
+    { const list = m.get(v); if (list) list.push(p.url); else m.set(v, [p.url]); }
   }
   return [...m.values()].filter((g) => g.length > 1);
 }
@@ -571,7 +585,7 @@ export function analyzeThin(prep: Prepared): AnalyzerResult {
       label: `have fewer than ${min} words of unique content`,
       evidence: [{ kind: 'metric', label: `${w} unique words (threshold ${min})`, url: p.url, content: first ? trunc(first, 300) : '(no unique copy beyond template chrome / product grid)', data: { uniqueWords: w, totalMainWords: p.html!.wordCount, threshold: min, templateBoilerplateRemoved: prep.boilerplateKnown(p.template) } }],
     }];
-  }, (_t, list) => ({ severityContext: { metric: Math.min(...list.map((p) => prep.uniqueWords(p))) } }));
+  }, (_t, list) => ({ severityContext: { metric: minOf(list.map((p) => prep.uniqueWords(p))) } }));
 }
 
 // ------------------------------------------------------------------------------------------------ TECH-HOST

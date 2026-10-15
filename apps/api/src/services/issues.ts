@@ -10,6 +10,8 @@ import type { CrawlOutcome, Finding } from './ports';
 import type { TaskService } from './tasks';
 
 const CLOSED_FOR_ALLOCATION = ['NOT_AN_ISSUE', 'SUPERSEDED', 'CLOSED', 'VERIFIED'];
+/** An absolute URL whose path is "/" (the homepage), without parsing it. */
+const HOMEPAGE_URL = /^https?:\/\/[^/?#]+\/?(?:[?#]|$)/i;
 
 /** Exclusion patterns are site paths; `*` matches any run of characters. */
 export function exclusionMatches(ex: Pick<Exclusion, 'checkId' | 'urlPattern'>, checkId: string, url: string): boolean {
@@ -20,6 +22,45 @@ export function exclusionMatches(ex: Pick<Exclusion, 'checkId' | 'urlPattern'>, 
   if (!pat.includes('*')) return path === pat || path === pat.replace(/\/$/, '');
   const re = new RegExp(`^${pat.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`);
   return re.test(path);
+}
+
+/**
+ * exclusionMatches for a whole ingest at once: patterns compiled once, grouped by check, and each URL's path parsed once.
+ * A finding whose check has no exclusions is not filtered at all (the common case on a 50,000-page crawl).
+ */
+export function compileExclusions(list: Pick<Exclusion, 'checkId' | 'urlPattern'>[]) {
+  type C = { exact?: [string, string]; re?: RegExp };
+  const byCheck = new Map<string, C[]>();
+  for (const ex of list) {
+    const pat = ex.urlPattern.trim();
+    const c: C = pat.includes('*')
+      ? { re: new RegExp(`^${pat.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`) }
+      : { exact: [pat, pat.replace(/\/$/, '')] };
+    const k = ex.checkId ?? '';
+    const arr = byCheck.get(k);
+    if (arr) arr.push(c); else byCheck.set(k, [c]);
+  }
+  const paths = new Map<string, string>();
+  const pathOfUrl = (url: string) => {
+    let p = paths.get(url);
+    if (p === undefined) {
+      try { p = new URL(url).pathname; } catch { p = url; }
+      paths.set(url, p);
+    }
+    return p;
+  };
+  const match = (cs: C[], path: string) => cs.some((c) => (c.exact ? path === c.exact[0] || path === c.exact[1] : c.re!.test(path)));
+  return {
+    /** True when this check has any exclusion (or a global one). */
+    applies: (checkId: string) => byCheck.has(checkId) || byCheck.has(''),
+    matches(checkId: string, url: string): boolean {
+      const own = byCheck.get(checkId);
+      const global = byCheck.get('');
+      if (!own && !global) return false;
+      const path = pathOfUrl(url);
+      return (!!own && match(own, path)) || (!!global && match(global, path));
+    },
+  };
 }
 
 /** Default identity of an issue across runs: one issue per check × template (site-level checks: "site"). */
@@ -189,12 +230,20 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
    */
   async function ingestFindings(runId: string, outcome: Pick<CrawlOutcome, 'findings' | 'evaluatedChecks' | 'evaluatedTemplates' | 'urls' | 'pageTexts'>) {
     const cfg = await r.config.get();
-    const tierOf = await tierLookup();
-    const exclusions = await r.exclusions.list();
+    const tierOfRaw = await tierLookup();
+    const tierCache = new Map<string, PageTier>();
+    const tierOf = (u: string) => {
+      let t = tierCache.get(u);
+      if (t === undefined) { t = tierOfRaw(u); tierCache.set(u, t); }
+      return t;
+    };
+    const exclusions = compileExclusions(await r.exclusions.list());
     const now = ctx.clock();
     const all = await r.issues.list();
     // Page/finding-level issues (superseded group children included — they keep tracking their own URLs).
     const live = all.filter((i) => i.source !== 'demo' && !i.isTemplateGroup);
+    const liveByKey = new Map<string, Issue[]>();
+    for (const i of live) { const k = issueKeyOf(i); const list = liveByKey.get(k); if (list) list.push(i); else liveByKey.set(k, [i]); }
     const seen = new Set<string>();
     const stats = { newIssues: 0, resolvedIssues: 0, recurringIssues: 0, excludedUrls: 0 };
     const crawled = new Set(outcome.urls.filter((u) => u.status !== null).map((u) => u.url));
@@ -206,18 +255,18 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
 
     for (const f of outcome.findings) {
       if (!CHECKS_BY_ID[f.checkId]) { ctx.log.warn({ checkId: f.checkId }, 'finding for unknown check ignored'); continue; }
-      const urls = f.urls.filter((u) => !exclusions.some((ex) => exclusionMatches(ex, f.checkId, u)));
+      const urls = exclusions.applies(f.checkId) ? f.urls.filter((u) => !exclusions.matches(f.checkId, u)) : f.urls;
       stats.excludedUrls += f.urls.length - urls.length;
       if (f.urls.length > 0 && urls.length === 0) continue; // every URL is excluded
       const key = findingKeyOf(f);
       seen.add(key);
       const tiers = urls.map(tierOf);
-      const highestTier = (tiers.length ? Math.min(...tiers) : 1) as PageTier;
+      const highestTier = (tiers.length ? tiers.reduce((a, b) => (b < a ? b : a)) : 1) as PageTier;
       const tierBreakdown: Record<PageTier, number> = { 1: 0, 2: 0, 3: 0 };
       for (const t of tiers) tierBreakdown[t]++;
-      const sevCtx = { ...f.severityContext, checkId: f.checkId, highestTier, isHomepage: urls.some((u) => { try { return new URL(u).pathname === '/'; } catch { return false; } }) };
+      const sevCtx = { ...f.severityContext, checkId: f.checkId, highestTier, isHomepage: urls.some((u) => HOMEPAGE_URL.test(u)) };
       const decision = classifySeverity(sevCtx, cfg);
-      const existing = live.filter((i) => issueKeyOf(i) === key);
+      const existing = liveByKey.get(key) ?? [];
       const open = existing.find((i) => isIssueOpen(i.status) || i.status === 'SUPERSEDED');
       const closed = existing.filter((i) => i.status === 'VERIFIED' || i.status === 'CLOSED').sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))[0];
       const dismissed = existing.find((i) => i.status === 'NOT_AN_ISSUE');
@@ -291,6 +340,7 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
       };
       await r.issues.insert(issue);
       live.push(issue); // a later finding with the same key in this run updates it instead of duplicating
+      { const k = issueKeyOf(issue); const list = liveByKey.get(k); if (list) list.push(issue); else liveByKey.set(k, [issue]); }
       stats.newIssues++;
       await realtimeAlert(issue, f.severityContext, cfg);
     }
@@ -369,7 +419,7 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
       const parent: Issue = {
         ...children[0], id: parentId, title: `Template-level: ${CHECKS_BY_ID[p.checkId]?.name ?? p.checkId} on ${p.template} pages`, summary: p.reason,
         severity: 'critical', severityRationale: p.reason, issueClass: 'critical', status: 'NEW', delta: 'new', affectedUrls: urls, affectedCount: urls.length,
-        highestTier: Math.min(...tiers) as PageTier, detectedAt: now.toISOString(), firstSeenAt: now.toISOString(), lastSeenAt: now.toISOString(),
+        highestTier: tiers.reduce((a, b) => (b < a ? b : a)) as PageTier, detectedAt: now.toISOString(), firstSeenAt: now.toISOString(), lastSeenAt: now.toISOString(),
         slaDueAt: slaDueAt('critical', now, cfg).toISOString(), occurrences: 1, groupId, isTemplateGroup: true, childIssueIds: children.map((c) => c.id),
         findingKey: `GROUP::${p.checkId}::${p.template}`, supersededById: undefined,
         allocation: [], allocatedTeam: undefined, taskId: undefined, severityHistory: [{ at: now.toISOString(), from: 'medium', to: 'critical', reason: p.reason, rule: 'template_grouping' }],

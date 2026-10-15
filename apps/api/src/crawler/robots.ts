@@ -14,6 +14,8 @@ export interface RobotsRule {
 export interface RobotsGroup {
   agents: string[];
   rules: RobotsRule[];
+  /** Crawl-delay in seconds (non-standard but widely used; Google ignores it, polite crawlers honour it). */
+  crawlDelay?: number;
 }
 
 export interface ParsedRobots {
@@ -63,7 +65,13 @@ export function parseRobots(text: string): ParsedRobots {
       current.rules.push({ type: key, path: value, line: i + 1 });
       return;
     }
-    // crawl-delay, host, clean-param … are accepted but not used.
+    if (key === 'crawl-delay') {
+      const v = Number(value.replace(',', '.'));
+      if (current && Number.isFinite(v) && v >= 0) current.crawlDelay = v;
+      else invalidLines.push({ line: i + 1, text: raw });
+      return;
+    }
+    // host, clean-param … are accepted but not used.
   });
   return { groups, sitemaps, invalidLines };
 }
@@ -73,22 +81,26 @@ export function productToken(userAgent: string): string {
   return (userAgent.trim().split(/[\s/]/)[0] || userAgent).toLowerCase();
 }
 
-/** Rules applicable to `userAgent` (a product token such as "GPTBot" or a full UA string). */
-export function groupFor(robots: ParsedRobots, userAgent: string): { agent: string; rules: RobotsRule[] } {
+/** Rules (and crawl-delay) applicable to `userAgent` (a product token such as "GPTBot" or a full UA string). */
+export function groupFor(robots: ParsedRobots, userAgent: string): { agent: string; rules: RobotsRule[]; crawlDelay?: number } {
   const token = productToken(userAgent);
-  let best: { agent: string; rules: RobotsRule[] } | undefined;
+  let best: { agent: string; rules: RobotsRule[]; crawlDelay?: number } | undefined;
   for (const g of robots.groups) {
     for (const a of g.agents) {
       if (a === '*') continue;
       if (token === a || token.includes(a)) {
         if (!best || a.length > best.agent.length) best = { agent: a, rules: [] };
-        if (best.agent === a) best.rules.push(...g.rules);
+        if (best.agent === a) {
+          best.rules.push(...g.rules);
+          if (g.crawlDelay !== undefined) best.crawlDelay = Math.max(best.crawlDelay ?? 0, g.crawlDelay);
+        }
       }
     }
   }
   if (best) return best;
-  const star = robots.groups.filter((g) => g.agents.includes('*')).flatMap((g) => g.rules);
-  return { agent: '*', rules: star };
+  const starGroups = robots.groups.filter((g) => g.agents.includes('*'));
+  const delays = starGroups.map((g) => g.crawlDelay).filter((d): d is number => d !== undefined);
+  return { agent: '*', rules: starGroups.flatMap((g) => g.rules), crawlDelay: delays.length ? Math.max(...delays) : undefined };
 }
 
 function patternToRegExp(pattern: string): RegExp {

@@ -44,12 +44,17 @@ export function createRuleService(ctx: Ctx) {
   async function applyToPages(pages: PageTextDoc[]) {
     const rules = (await r.rules.list()).filter((x) => x.enabled);
     let flagged = 0;
+    if (!rules.length || !pages.length) return { rules: rules.length, flagged };
+    // Existing flags looked up from one read (not one full-collection scan per flagged page).
+    const flagKey = (checkId: string, url: string) => `${checkId}\u0000${url}`;
+    const existingFlags = new Map<string, AiComplianceFlag>();
+    for (const f of await r.aiFlags.list()) if (!existingFlags.has(flagKey(f.checkId, f.url))) existingFlags.set(flagKey(f.checkId, f.url), f);
     for (const rule of rules) {
       for (const page of pages) {
         if (!ruleAppliesTo(rule, page, ctx.clock())) continue;
         const res = await evaluate(rule, page);
         if (!res.evaluated || !res.flagged) continue;
-        const existing = (await r.aiFlags.where({ checkId: rule.id, url: page.url }))[0];
+        const existing = existingFlags.get(flagKey(rule.id, page.url));
         if (existing && existing.qaHoldStatus !== 'rejected') continue;
         const flag: AiComplianceFlag = {
           id: await r.aiFlags.nextId('AIF'), checkId: rule.id, ruleName: rule.name, url: page.url, template: page.template, passage: res.passage ?? '',
@@ -57,6 +62,7 @@ export function createRuleService(ctx: Ctx) {
           detectedAt: iso(), source: page.source === 'demo' ? 'demo' : 'live',
         };
         await r.aiFlags.insert(flag);
+        if (!existingFlags.has(flagKey(flag.checkId, flag.url))) existingFlags.set(flagKey(flag.checkId, flag.url), flag);
         flagged++;
         if (flag.qaHold) await notify(ctx, [await seoLead(ctx), await teamLead(ctx, rule.defaultTeam)], { type: 'review', title: `QA gate hold: ${rule.name}`, body: page.url, link: '/ai-compliance/qa-gate', severity: rule.severity });
       }

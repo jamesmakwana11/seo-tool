@@ -15,11 +15,15 @@
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "traceability": "tsx tools/traceability/generate.mjs",
-    "build:prod": "VITE_API_MODE=http npm run build -w @sentinel/web && npm run build -w @sentinel/api",
-    "start": "node apps/api/dist/server.js"
+    "build:prod": "npm run build:http -w @sentinel/web && npm run build -w @sentinel/api",
+    "start": "node apps/api/dist/server.js",
+    "dev:web:http": "npm run dev:http -w @sentinel/web",
+    "dev:api:env": "npm run dev:env -w @sentinel/api",
+    "start:api:env": "npm run start:env -w @sentinel/api",
+    "start:api:large": "npm run start:env:large -w @sentinel/api"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.12"
   },
   "devDependencies": {
     "tsx": "^4.19.2",

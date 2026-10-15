@@ -8,12 +8,16 @@ import { errorMessage } from '@/api/hooks';
 import { Button, Field, Input, Notice } from '@/components/ui/primitives';
 import { AuthFrame } from './AuthFrame';
 
+/** In-browser demo build only: the form starts filled with the demo Admin, so "Sign in" works with one click. */
+const DEMO_MODE = API_MODE === 'mock';
+const DEMO_ADMIN_EMAIL = 'aarav.admin@demo.deodap.local';
+
 export default function LoginPage() {
   const { user, login, previewAs } = useAuth();
   const [params] = useSearchParams();
   const nav = useNavigate();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState(DEMO_MODE ? DEMO_ADMIN_EMAIL : '');
+  const [password, setPassword] = useState(DEMO_MODE ? DEMO_PASSWORD : '');
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [busy, setBusy] = useState<string | null>(null);
   const next = params.get('next') || '/';
@@ -22,13 +26,13 @@ export default function LoginPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const errs: typeof errors = {};
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errs.email = 'Enter your work email address.';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) errs.email = 'Enter your work email address.';
     if (!password) errs.password = 'Enter your password.';
     setErrors(errs);
     if (Object.keys(errs).length) return;
     setBusy('login');
     try {
-      await login(email, password);
+      await login(email.trim(), password);
       nav(next, { replace: true });
     } catch (err) {
       setErrors({ form: errorMessage(err) });
@@ -65,7 +69,7 @@ export default function LoginPage() {
         </div>
       </form>
 
-      {(API_MODE === 'mock' || import.meta.env.DEV) && (
+      {(DEMO_MODE || import.meta.env.DEV) && (
         <div className="mt-6 border-t border-line pt-5">
           <div className="demo-hatch rounded-ctl border border-demo/30 p-3">
             <p className="text-sm font-semibold text-[#8A5408]">Development role preview</p>
@@ -77,7 +81,7 @@ export default function LoginPage() {
                 </Button>
               ))}
             </div>
-            <p className="mt-2 text-xs text-[#8A5408]">Or sign in as any demo employee (e.g. <span className="font-mono">ritesh.seo@demo.deodap.local</span>) with password <span className="font-mono">{DEMO_PASSWORD}</span>.</p>
+            <p className="mt-2 text-xs text-[#8A5408]">{DEMO_MODE ? 'The form above is already filled with the demo Admin — just click Sign in. ' : 'These buttons work only when the server was started with SEED_DEMO_DATA=true. '}Any demo employee (e.g. <span className="font-mono">ritesh.seo@demo.deodap.local</span>) uses the password <span className="font-mono">{DEMO_PASSWORD}</span>.</p>
           </div>
         </div>
       )}

@@ -6,6 +6,7 @@ import { createInMemoryRepositories } from './repositories/memory/inMemory';
 import { seedDemoData } from './repositories/seedDemo';
 import type { Repositories } from './repositories/types';
 import { createCrawlEngine, type CrawlEngineOptions } from './crawler/engine';
+import { isLocalHost } from './crawler/url';
 import { createReverifier } from './analysis/reverify';
 import { createConnectors, createDeliveryAdapters, createDeliveryService, createIntegrationRegistry, createLlmAdapter, createTaskOpsAdapter, type FetchLike, type MailTransportFactory } from './connectors';
 import type { RetryPolicy } from './notifications/delivery';
@@ -71,6 +72,11 @@ export async function createContainer(o: ContainerOptions) {
   const engineOpts: CrawlEngineOptions = {
     baseUrl: env.CRAWLER_BASE_URL, allowLive: env.CRAWLER_ALLOW_LIVE, userAgent: env.CRAWLER_USER_AGENT ?? cfg0.crawl.userAgent,
     timeoutMs: cfg0.crawl.requestTimeoutMs, concurrency: cfg0.crawl.maxConcurrency, respectRobots: cfg0.crawl.respectRobots,
+    // SSRF policy: loopback only for a local fixture site outside production; private / metadata addresses never.
+    allowLoopback: !!env.CRAWLER_BASE_URL && isLocalHost(env.CRAWLER_BASE_URL) && env.NODE_ENV !== 'production',
+    requestDelayMs: env.CRAWLER_REQUEST_DELAY_MS, maxBodyBytes: env.CRAWLER_MAX_BODY_BYTES,
+    retries: env.CRAWLER_RETRIES, maxRetryWaitMs: env.CRAWLER_MAX_RETRY_WAIT_MS, maxCrawlDelayMs: env.CRAWLER_MAX_CRAWL_DELAY_MS,
+    maxSitemapFiles: env.CRAWLER_MAX_SITEMAP_FILES, maxSitemapBytes: env.CRAWLER_MAX_SITEMAP_MB * 1024 * 1024,
     thresholds: { ...cfg0.thresholds }, config: structuredClone(cfg0), fetchImpl: fetchImpl as typeof fetch | undefined, log: { info: (...a: unknown[]) => log.info(a), warn: (...a: unknown[]) => log.warn(a), error: (...a: unknown[]) => log.error(a) }, now: clock,
   };
   const baseEngine = createCrawlEngine(engineOpts);

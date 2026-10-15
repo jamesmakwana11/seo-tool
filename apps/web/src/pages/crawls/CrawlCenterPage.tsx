@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, Layers, Pencil, Play, RefreshCcw, ShieldCheck, Zap } from 'lucide-react';
+import { CalendarClock, Pencil, Play, RefreshCcw, ShieldCheck, Zap } from 'lucide-react';
 import type { CrawlRun, CrawlSchedule, CrawlType } from '@sentinel/shared';
 import { api, API_MODE } from '@/api/client';
 import { useApiMutation, useApiQuery, useSiteKey } from '@/api/hooks';
@@ -14,6 +14,7 @@ import { SourceBadge } from '@/components/domain/badges';
 import { CRAWL_TRIGGER_LABELS, CRAWL_TYPE_LABELS, CrawlStatusBadge } from '@/components/crawls/crawlBadges';
 import { describeCron, nextRuns, parseCron } from '@/components/crawls/cron';
 import { fmtDuration } from '@/components/crawls/format';
+import { CrawlProgress, LiveCrawlForm, TemporaryResultsNote } from '@/components/crawls/LiveCrawl';
 import { fmtDateTime, fmtNum, fmtRelative } from '@/lib/format';
 
 const isActive = (r: CrawlRun) => r.status === 'running' || r.status === 'queued';
@@ -21,21 +22,23 @@ const isActive = (r: CrawlRun) => r.status === 'running' || r.status === 'queued
 export default function CrawlCenterPage() {
   const qc = useQueryClient();
   const siteKey = useSiteKey();
-  // Poll every 3s while any run is running/queued (cached data from the previous fetch decides).
+  // Poll every 2s while any run is running/queued (cached data from the previous fetch decides).
   const cached = qc.getQueryData<CrawlRun[]>(siteKey(['crawls']));
   const polling = !!cached?.some(isActive);
-  const q = useApiQuery(['crawls'], () => api.listCrawls(), { refetchInterval: polling ? 3000 : undefined });
+  const q = useApiQuery(['crawls'], () => api.listCrawls(), { refetchInterval: polling ? 2000 : undefined });
   const running = q.data?.find(isActive);
+  const latestLive = q.data?.find((r) => !!r.options);
 
   return (
     <div>
       <PageHeader
         title="Crawl Center"
-        description="Weekly full crawls, daily smart crawls and re-verification crawls — what was crawled, when, and what changed (PDF §2.1)."
+        description="Crawl the selected website live, watch progress, and review every page and issue found. Smart and re-verification crawls are below."
         meta={<><DemoBadge />{API_MODE === 'mock' && <DemoBadge label="Crawls are SIMULATED" title="Mock mode makes no HTTP requests. Runs you start here are simulated and produce no findings." />}</>}
         actions={<Link to="/verification" className="inline-flex h-9 items-center gap-1.5 rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card transition-colors hover:border-signal/40 hover:text-signal-dark"><ShieldCheck className="h-4 w-4" /> Verification results</Link>}
       />
       <div className="space-y-5">
+        <LiveCrawlPanel running={running} latest={latestLive} />
         <StartCrawlPanel running={running} loading={q.isLoading} />
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <StrategyPanel />
@@ -49,9 +52,36 @@ export default function CrawlCenterPage() {
 
 // ------------------------------------------------------------------ start a crawl
 
+function LiveCrawlPanel({ running, latest }: { running?: CrawlRun; latest?: CrawlRun }) {
+  const status = useApiQuery(['crawls', 'status'], () => api.getCrawlerStatus());
+  const showLatest = latest && (!running || running.id !== latest.id);
+  return (
+    <Panel title="Crawl a website" subtitle="Fetches real pages from the selected website and checks status codes, redirects, titles, meta descriptions, headings, canonicals, robots directives, indexability, links and image alt text.">
+      <Async q={status} rows={4}>
+        {(st) => (
+          <div className="space-y-5">
+            {running && (
+              <div className="rounded-ctl border border-signal/30 bg-raised/40 p-4">
+                <CrawlProgress run={running} />
+              </div>
+            )}
+            <LiveCrawlForm status={st} running={running} onStarted={() => undefined} />
+            {showLatest && (
+              <div className="border-t border-line pt-4">
+                <h3 className="mb-2 text-sm font-semibold">Latest live crawl</h3>
+                <CrawlProgress run={latest} />
+              </div>
+            )}
+            <TemporaryResultsNote />
+          </div>
+        )}
+      </Async>
+    </Panel>
+  );
+}
+
 const START_OPTIONS: { type: CrawlType; icon: typeof Play; blurb: string }[] = [
-  { type: 'smart', icon: Zap, blurb: 'Homepage, all collections, top products, URLs changed in the last 48h and yesterday’s issue URLs.' },
-  { type: 'full', icon: Layers, blurb: 'Every indexable URL, with JavaScript rendering on a sample. Normally runs weekly.' },
+  { type: 'smart', icon: Zap, blurb: 'Homepage, all collections, top products, URLs changed in the last 48h and yesterday’s issue URLs (from earlier live crawls).' },
   { type: 'reverify', icon: RefreshCcw, blurb: 'Re-checks only the URLs of issues marked Fixed. Closes issues that now show 0 failing pages.' },
 ];
 
@@ -68,17 +98,17 @@ function StartCrawlPanel({ running, loading }: { running?: CrawlRun; loading: bo
   const disabledReason = !allowed ? 'Your role cannot start crawls (needs crawls.run).' : running ? `${running.id} is still ${running.status}. Wait for it to finish.` : undefined;
 
   return (
-    <Panel title="Start a crawl" subtitle="Manual runs are logged in the audit trail. Only one crawl can run at a time.">
-      {running && (
+    <Panel title="Other crawl types" subtitle="Manual runs are logged in the audit trail. Only one crawl can run at a time per website.">
+      {running && !running.options && (
         <div className="mb-4">
           <Notice tone="signal" title={`${CRAWL_TYPE_LABELS[running.type]} ${running.id} is ${running.status}`}>
-            Started {fmtRelative(running.startedAt)} by {CRAWL_TRIGGER_LABELS[running.trigger].toLowerCase()} trigger. This page refreshes every 3 seconds until it finishes.{' '}
+            Started {fmtRelative(running.startedAt)} by {CRAWL_TRIGGER_LABELS[running.trigger].toLowerCase()} trigger. This page refreshes every 2 seconds until it finishes.{' '}
             {running.source === 'simulated' && 'This is a simulated run: no URLs are being fetched. '}
             <button className="font-medium underline" onClick={() => nav(`/crawls/${running.id}`)}>Open run</button>
           </Notice>
         </div>
       )}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {START_OPTIONS.map((o) => (
           <div key={o.type} className="flex flex-col rounded-ctl border border-line p-3">
             <div className="flex items-center gap-2">
@@ -150,6 +180,7 @@ function StrategyPanel() {
 
 function SchedulesPanel() {
   const { can } = useAuth();
+  const status = useApiQuery(['crawls', 'status'], () => api.getCrawlerStatus());
   const q = useApiQuery(['crawls', 'schedules'], () => api.listSchedules());
   const [editing, setEditing] = useState<CrawlSchedule | null>(null);
   const toggle = useApiMutation((v: { id: string; enabled: boolean }) => api.updateSchedule(v.id, { enabled: v.enabled }), {
@@ -199,6 +230,9 @@ function SchedulesPanel() {
       </Async>
       {!canConfigure && <p className="border-t border-line px-4 py-2 text-xs text-muted">Only admins can change crawl schedules.</p>}
       <p className="border-t border-line px-4 py-2 text-xs text-muted">Next run is computed from the cron expression in IST.{API_MODE === 'mock' && ' In mock mode schedules are stored but nothing fires on them.'}</p>
+      {status.data && !status.data.schedulerEnabled && API_MODE !== 'mock' && (
+        <p className="border-t border-line px-4 py-2 text-xs font-medium text-med-ink">Scheduled crawls are disabled on this server (SCHEDULER_ENABLED is off), so schedules never fire. Start crawls manually.</p>
+      )}
       <EditCronDialog schedule={editing} onClose={() => setEditing(null)} />
     </Panel>
   );
@@ -280,7 +314,7 @@ function History({ runs }: { runs: CrawlRun[] }) {
               key: 'run', header: 'Run', cell: (r) => (
                 <div className="min-w-[150px]">
                   <Link to={`/crawls/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-mono text-xs text-signal hover:underline">{r.id}</Link>
-                  <div className="text-sm font-medium">{CRAWL_TYPE_LABELS[r.type]}</div>
+                  <div className="text-sm font-medium">{r.options ? "Live crawl" : CRAWL_TYPE_LABELS[r.type]}</div>{r.options && <p className="max-w-[260px] truncate font-mono text-xs text-muted" title={r.options.startUrl}>{r.options.startUrl}</p>}
                   {r.source === 'simulated' && r.error && <p className="mt-0.5 max-w-[320px] text-xs text-demo">{r.error}</p>}
                   {r.source === 'simulated' && !r.error && <p className="mt-0.5 max-w-[320px] text-xs text-demo">Simulated run in progress — no HTTP requests are made.</p>}
                   {r.source !== 'simulated' && r.error && <p className="mt-0.5 max-w-[320px] text-xs text-crit-ink">{r.error}</p>}

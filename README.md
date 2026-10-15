@@ -9,7 +9,7 @@ Specification: `docs/seotooldocs.pdf` · Build brief: `docs/MASTER_BUILD_PROMPT.
 | `apps/web` | React frontend — talks to the API (`VITE_API_MODE=http`) or to an in-browser DEMO adapter (`VITE_API_MODE=mock`, default) |
 | `apps/api` | Express backend (Phase 2): auth, permissions, issues/tasks workflow, real HTTP crawler + 54 analyzers, connectors + GA4/GSC/CrUX syncs, delivery, scheduler. **Temporary in-memory storage** |
 
-Deployment (Docker, env vars, production checks, PostgreSQL status): `DEPLOYMENT.md`.
+Run locally with live crawling: `LOCAL_CRAWLING.md`. Deployment (Docker, env vars, production checks, PostgreSQL status): `DEPLOYMENT.md`.
 
 Status documents: `FEATURE_TRACEABILITY.md` (generated: `npm run traceability`), `FRONTEND_STATUS.md`, `BACKEND_STATUS.md`.
 

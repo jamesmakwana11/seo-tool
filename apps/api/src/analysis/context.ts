@@ -2,7 +2,7 @@ import type { Evidence, PageTemplate } from '@sentinel/shared';
 import { wordCount } from '@sentinel/shared';
 import type { Finding } from '../services/ports';
 import type { LinkStatus, ParsedPage, SiteContext } from '../crawler/types';
-import { normalizeUrl, pathOf, sameUrl } from '../crawler/url';
+import { normalizeUrl, pathOf, sameUrl, urlKey } from '../crawler/url';
 
 export type Ev = Omit<Evidence, 'id' | 'capturedAt' | 'source'>;
 
@@ -49,6 +49,8 @@ export interface Prepared {
   boilerplateKnown(t: PageTemplate): boolean;
   /** Internal inlinks (source page URLs) per normalized target URL. */
   inlinks: Map<string, string[]>;
+  /** Same lists keyed by urlKey (trailing-slash-insensitive): the first list per key, for inlinksOf's fallback. */
+  inlinksByKey?: Map<string, string[]>;
 }
 
 export const TEMPLATE_NOUN: Record<PageTemplate, [string, string]> = {
@@ -96,24 +98,45 @@ export function prepare(pages: ParsedPage[], ctx: SiteContext): Prepared {
   const budgetSamples = pages.filter((p) => p.budgetSample && !p.skippedByRobots);
   const content = ok.filter((p) => !p.paginated && p.template !== 'search' && isSelfCanonical(p) && !isIntentionalNoindex(p.url, ctx));
   const byTemplate = new Map<PageTemplate, ParsedPage[]>();
-  for (const p of ok) byTemplate.set(p.template, [...(byTemplate.get(p.template) ?? []), p]);
+  for (const p of ok) { const list = byTemplate.get(p.template); if (list) list.push(p); else byTemplate.set(p.template, [p]); }
 
+  // Indexed lookups (no per-link scans), so analysis stays fast on crawls of tens of thousands of pages.
   const pageIndex = new Map<string, ParsedPage>();
-  for (const p of pages) if (!p.skippedByRobots) pageIndex.set(normalizeUrl(p.url), p);
+  const pageKeyIndex = new Map<string, ParsedPage>();
+  const derivedOf = new Map<string, ParsedPage>();
+  for (const p of pages) {
+    if (p.derivedFrom && !derivedOf.has(p.derivedFrom)) derivedOf.set(p.derivedFrom, p);
+    if (p.skippedByRobots) continue;
+    pageIndex.set(normalizeUrl(p.url), p);
+    pageKeyIndex.set(urlKey(p.url), p);
+  }
+  const linkKeyIndex = new Map<string, LinkStatus>();
+  for (const l of ctx.linkTargets.values()) if (!linkKeyIndex.has(urlKey(l.url))) linkKeyIndex.set(urlKey(l.url), l);
+  // Links repeat on most pages: normalise each distinct link string once.
+  const normCache = new Map<string, string>();
+  const norm = (u: string) => {
+    let v = normCache.get(u);
+    if (v === undefined) { v = normalizeUrl(u); normCache.set(u, v); }
+    return v;
+  };
+  const statusCache = new Map<string, StatusInfo | undefined>();
   const statusOf = (url: string): StatusInfo | undefined => {
-    const k = normalizeUrl(url);
-    let p = pageIndex.get(k);
-    if (!p) {
-      for (const [kk, pp] of pageIndex) if (sameUrl(kk, k)) p = pp;
-    }
+    if (statusCache.has(url)) return statusCache.get(url);
+    const s = statusOfUncached(url);
+    statusCache.set(url, s);
+    return s;
+  };
+  const statusOfUncached = (url: string): StatusInfo | undefined => {
+    const k = norm(url);
+    const p = pageIndex.get(k) ?? pageKeyIndex.get(urlKey(url));
     if (p) {
-      const target = p.chain.length ? pages.find((x) => x.derivedFrom === p!.url) : p;
+      const target = p.chain.length ? derivedOf.get(p.url) : p;
       return {
         url: p.url, status: p.status, finalStatus: p.finalStatus, finalUrl: p.finalUrl, chain: p.chain, redirectLoop: p.redirectLoop, error: p.error,
         noindex: target ? isNoindex(target).noindex : undefined, page: p,
       };
     }
-    const l = ctx.linkTargets.get(k) ?? [...ctx.linkTargets.values()].find((x) => sameUrl(x.url, url));
+    const l = ctx.linkTargets.get(k) ?? linkKeyIndex.get(urlKey(url));
     if (l) return { url: l.url, status: l.status, finalStatus: l.finalStatus, finalUrl: l.finalUrl, chain: l.chain, redirectLoop: l.redirectLoop, error: l.error };
     return undefined;
   };
@@ -139,18 +162,38 @@ export function prepare(pages: ParsedPage[], ctx: SiteContext): Prepared {
   };
 
   const inlinks = new Map<string, string[]>();
+  const keyCache = new Map<string, string>();
+  const keyOf = (u: string) => {
+    let v = keyCache.get(u);
+    if (v === undefined) { v = urlKey(u); keyCache.set(u, v); }
+    return v;
+  };
   for (const p of ok) {
-    for (const l of new Set(p.html!.internalLinks.map(normalizeUrl))) {
-      if (sameUrl(l, p.url)) continue;
-      inlinks.set(l, [...(inlinks.get(l) ?? []), p.url]);
+    const self = urlKey(p.url);
+    const seen = new Set<string>();
+    for (const raw of p.html!.internalLinks) {
+      const l = norm(raw);
+      if (seen.has(l)) continue;
+      seen.add(l);
+      if (keyOf(l) === self) continue;
+      { const list = inlinks.get(l); if (list) list.push(p.url); else inlinks.set(l, [p.url]); }
     }
   }
+  const inlinksByKey = new Map<string, string[]>();
+  for (const [k, v] of inlinks) { const kk = keyOf(k); if (!inlinksByKey.has(kk)) inlinksByKey.set(kk, v); }
+  keyCache.clear();
 
+  const wordsCache = new Map<ParsedPage, number>();
   return {
     ctx, all: pages, requested, ok, indexable, content, budgetSamples, byTemplate, statusOf, uniqueText,
-    uniqueWords: (p) => wordCount(uniqueText(p)),
+    uniqueWords: (p) => {
+      let n = wordsCache.get(p);
+      if (n === undefined) { n = wordCount(uniqueText(p)); wordsCache.set(p, n); }
+      return n;
+    },
     boilerplateKnown: (t) => boiler.has(t),
     inlinks,
+    inlinksByKey,
   };
 }
 
@@ -158,13 +201,14 @@ export function inlinksOf(prep: Prepared, url: string): string[] {
   const k = normalizeUrl(url);
   const direct = prep.inlinks.get(k);
   if (direct) return direct;
+  if (prep.inlinksByKey) return prep.inlinksByKey.get(urlKey(k)) ?? [];
   for (const [kk, v] of prep.inlinks) if (sameUrl(kk, k)) return v;
   return [];
 }
 
 export function groupByTemplate<T extends { template: PageTemplate }>(items: T[]): Map<PageTemplate, T[]> {
   const m = new Map<PageTemplate, T[]>();
-  for (const i of items) m.set(i.template, [...(m.get(i.template) ?? []), i]);
+  for (const i of items) { const list = m.get(i.template); if (list) list.push(i); else m.set(i.template, [i]); }
   return m;
 }
 
@@ -237,6 +281,40 @@ export function aggregate(o: AggregateOpts): Finding | undefined {
   };
 }
 
+/** Evidence items kept per problem while collecting (aggregate() shows at most 15 per finding). */
+export const MAX_KEPT_EVIDENCE = 30;
+
+/**
+ * Collects problems by label with O(1) URL de-duplication and a cap on kept evidence — for analyzers that add URLs one
+ * at a time (sitemap entries, 4xx pages, redirects), which can number in the tens of thousands on a large crawl.
+ */
+export function problemCollector() {
+  const problems: Problem[] = [];
+  const byLabel = new Map<string, { p: Problem; urls: Set<string> }>();
+  /** Adds the URL (once) and its evidence (capped). Returns true when the URL was new for this label. */
+  const add = (label: string, url: string, ev?: Ev, evidenceOnlyIfNew = false): boolean => {
+    let e = byLabel.get(label);
+    if (!e) { e = { p: { label, urls: [], evidence: [] }, urls: new Set() }; byLabel.set(label, e); problems.push(e.p); }
+    const isNew = !e.urls.has(url);
+    if (isNew) { e.urls.add(url); e.p.urls.push(url); }
+    if (ev && (isNew || !evidenceOnlyIfNew) && e.p.evidence!.length < MAX_KEPT_EVIDENCE) e.p.evidence!.push(ev);
+    return isNew;
+  };
+  return { problems, add, get: (label: string) => byLabel.get(label)?.p };
+}
+
+/** Largest / smallest of a list without spreading it into arguments (a spread of 100k+ values overflows the stack). */
+export function maxOf(values: Iterable<number>, empty = -Infinity): number {
+  let m = -Infinity;
+  for (const v of values) if (v > m) m = v;
+  return m === -Infinity ? empty : m;
+}
+export function minOf(values: Iterable<number>, empty = Infinity): number {
+  let m = Infinity;
+  for (const v of values) if (v < m) m = v;
+  return m === Infinity ? empty : m;
+}
+
 /** Run a per-page predicate over pages grouped by template and aggregate. */
 export function perTemplate(
   prep: Prepared,
@@ -250,12 +328,16 @@ export function perTemplate(
   const groups = groupByTemplate(pages);
   for (const [t, list] of groups) {
     const probs = new Map<string, Problem>();
+    // Sets for membership and a cap on kept evidence: aggregate() shows at most `maxEvidence` (15) items, so a problem
+    // shared by tens of thousands of pages does not hold evidence for every one of them.
+    const seen = new Map<string, Set<string>>();
     for (const p of list) {
       for (const r of evaluate(p)) {
-        const pr = probs.get(r.label) ?? { label: r.label, urls: [], evidence: [] };
-        if (!pr.urls.includes(p.url)) pr.urls.push(p.url);
-        pr.evidence!.push(...(r.evidence ?? []));
-        probs.set(r.label, pr);
+        let pr = probs.get(r.label);
+        if (!pr) { pr = { label: r.label, urls: [], evidence: [] }; probs.set(r.label, pr); seen.set(r.label, new Set()); }
+        const s = seen.get(r.label)!;
+        if (!s.has(p.url)) { s.add(p.url); pr.urls.push(p.url); }
+        if (r.evidence?.length && pr.evidence!.length < MAX_KEPT_EVIDENCE) pr.evidence!.push(...r.evidence.slice(0, MAX_KEPT_EVIDENCE - pr.evidence!.length));
       }
     }
     const f = aggregate({ checkId, template: t, noun: nounText, problems: [...probs.values()], examined: list.length, ...(extra?.(t, list) ?? {}) });

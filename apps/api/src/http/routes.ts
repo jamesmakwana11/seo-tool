@@ -87,8 +87,21 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
   add({ method: 'get', path: '/api/crawls/schedules', permission: 'crawls.view', description: 'Crawl schedules', handle: (req) => crawls.listSchedules(actorOf(req)) });
   add({ method: 'patch', path: '/api/crawls/schedules/:id', permission: 'crawls.configure', description: 'Update a crawl schedule', handle: (req) => crawls.updateSchedule(actorOf(req), prm(req, 'id'), req.body ?? {}) });
   add({ method: 'get', path: '/api/crawls/verifications', permission: 'crawls.view', description: 'Verification attempts', handle: (req) => crawls.listVerifications(actorOf(req)) });
+  add({ method: 'get', path: '/api/crawls/status', permission: 'crawls.view', description: 'Whether this website can be crawled live, and the limits that apply', handle: (req) => crawls.status(actorOf(req)) });
   add({ method: 'get', path: '/api/crawls/:id', permission: 'crawls.view', description: 'Crawl detail', handle: (req) => crawls.get(actorOf(req), prm(req, 'id')) });
-  add({ method: 'post', path: '/api/crawls', permission: 'crawls.run', description: 'Start a crawl', handle: (req) => crawls.startManual(actorOf(req), str(req.body.type, 'type') as CrawlType) });
+  add({
+    method: 'get', path: '/api/crawls/:id/export', permission: 'crawls.view', description: 'Download the current (in-memory) results of a crawl as CSV or JSON', raw: true,
+    handle: async (req) => {
+      const f = await crawls.exportResults(actorOf(req), prm(req, 'id'), String(req.query.format ?? 'csv'));
+      const res = req.res!;
+      res.setHeader('Content-Type', f.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${f.filename.replace(/[^\w.-]/g, '_')}"`);
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(200).send(f.content);
+    },
+  });
+  add({ method: 'post', path: '/api/crawls', permission: 'crawls.run', description: 'Start a crawl (body: type, and for a live crawl options: startUrl, maxPages, maxDepth, timeoutMs, concurrency)', handle: (req) => crawls.startManual(actorOf(req), str(req.body.type, 'type') as CrawlType, req.body.options) });
+  add({ method: 'post', path: '/api/crawls/:id/cancel', permission: 'crawls.run', description: 'Cancel a running crawl', handle: (req) => crawls.cancel(actorOf(req), prm(req, 'id')) });
 
   // -------------------------------------------------------------- opportunities & content planning
   add({ method: 'get', path: '/api/opportunities', permission: 'opportunities.view', description: 'Opportunity backlog', handle: (req) => insights.listOpportunities(actorOf(req)) });

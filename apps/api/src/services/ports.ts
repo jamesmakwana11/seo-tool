@@ -74,13 +74,24 @@ export interface CrawlPlan {
   urls?: { url: string; reason: CrawledUrl['reason'] }[];
   maxPages: number;
   tierOf: (url: string) => PageTier;
+  /** Live crawl from the Crawl Center: link discovery starts here (must be on the website). */
+  startUrl?: string;
+  maxDepth?: number;
+  timeoutMs?: number;
+  concurrency?: number;
+  /** Gap between requests for this crawl (ms); robots.txt Crawl-delay and 429 / 503 can raise it. */
+  requestDelayMs?: number;
+  /** Told when the engine moves from fetching pages to analysing them (large crawls analyse for a while). */
+  onPhase?: (phase: 'analysing') => void;
+  /** Cancels the crawl; the engine stops sending requests and returns the pages fetched so far. */
+  signal?: AbortSignal;
 }
 
 /** Runs a crawl + analysis. Implementations must make REAL HTTP requests and report failures honestly. */
 export interface CrawlEngine {
   /** Whether the engine may contact the configured site (CRAWLER_ALLOW_LIVE + base URL). */
   readiness(): { ready: boolean; reason?: string; baseUrl?: string };
-  run(plan: CrawlPlan, onProgress?: (crawled: number, failed: number) => void): Promise<Omit<CrawlOutcome, 'run'> & { stats: Partial<CrawlRun> }>;
+  run(plan: CrawlPlan, onProgress?: (crawled: number, failed: number, discovered: number, succeeded: number, politeness?: CrawlRun['politeness']) => void): Promise<Omit<CrawlOutcome, 'run'> & { stats: Partial<CrawlRun>; cancelled?: boolean; memoryStopped?: boolean }>;
 }
 
 /** Re-runs one check against specific URLs to verify a fix. */
@@ -126,6 +137,11 @@ export interface OutboundMessage {
   html?: string;
   /** Deep links for one-tap allocation (rendered as links/buttons where the channel supports it). */
   links?: { label: string; url: string }[];
+  /**
+   * Explicit email recipients. When set, the email channel sends ONLY to these addresses (never to DIGEST_RECIPIENTS),
+   * e.g. a password reset goes to the account owner alone. Other channels ignore it.
+   */
+  to?: string[];
 }
 
 export type SendResult = { ok: true; providerMessageId?: string } | { ok: false; error: string; retryable: boolean };
@@ -133,7 +149,8 @@ export type SendResult = { ok: true; providerMessageId?: string } | { ok: false;
 export interface DeliveryChannelAdapter {
   channel: DeliveryAttempt['channel'];
   envVars: string[];
-  isConfigured(): boolean;
+  /** With a message, answers for that message (e.g. explicit recipients); without one, for the default recipients. */
+  isConfigured(msg?: OutboundMessage): boolean;
   send(msg: OutboundMessage): Promise<SendResult>;
 }
 

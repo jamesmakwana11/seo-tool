@@ -117,6 +117,53 @@ export function pageParam(url: string): number | undefined {
   }
 }
 
+/** N when the URL's only query parameter is ?page=N with N ≥ 2 (plain pagination); otherwise undefined. */
+export function paginationPage(url: string): number | undefined {
+  if (!url.includes('?')) return undefined;
+  try {
+    const u = new URL(url);
+    const keys = [...u.searchParams.keys()];
+    if (keys.length !== 1 || keys[0] !== 'page') return undefined;
+    const v = u.searchParams.get('page')!;
+    if (!/^\d+$/.test(v)) return undefined;
+    const n = Number(v);
+    return n >= 2 ? n : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Limits that tell an endless URL space (calendar pages, session paths, relative-link loops) from real pages. */
+export const TRAP_LIMITS = { maxUrlLength: 2048, maxSegments: 25, maxRepeatsOfOneSegment: 3, maxPaginationPage: 10000 };
+
+/**
+ * Why a link looks like a crawl trap, or undefined. Used during link discovery so an unlimited crawl cannot run forever
+ * on generated URLs: very long URLs, very deep paths, the same path segment repeated (e.g. /a/b/a/b/a/b from a broken
+ * relative link), or absurd ?page= numbers.
+ */
+export function crawlTrapReason(url: string): string | undefined {
+  if (url.length > TRAP_LIMITS.maxUrlLength) return `URL longer than ${TRAP_LIMITS.maxUrlLength} characters`;
+  let path: string;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    return undefined;
+  }
+  const segs = path.split('/').filter(Boolean);
+  if (segs.length > TRAP_LIMITS.maxSegments) return `more than ${TRAP_LIMITS.maxSegments} path segments`;
+  if (segs.length >= TRAP_LIMITS.maxRepeatsOfOneSegment) {
+    const counts = new Map<string, number>();
+    for (const s of segs) {
+      const n = (counts.get(s) ?? 0) + 1;
+      if (n >= TRAP_LIMITS.maxRepeatsOfOneSegment) return `path segment "${s.slice(0, 40)}" repeated ${n} times`;
+      counts.set(s, n);
+    }
+  }
+  const pg = paginationPage(url);
+  if (pg !== undefined && pg > TRAP_LIMITS.maxPaginationPage) return `?page=${pg} is beyond ${TRAP_LIMITS.maxPaginationPage}`;
+  return undefined;
+}
+
 /** True when the URL is the canonical crawl target itself (not a parameterised duplicate). */
 export function hasQuery(url: string): boolean {
   try {
@@ -137,18 +184,20 @@ export function stripQuery(url: string): string {
   }
 }
 
+/** Identity key of a URL ignoring the fragment and a trailing slash on the path (use for Set / Map lookups). */
+export function urlKey(x: string): string {
+  try {
+    const u = new URL(x);
+    u.hash = '';
+    let s = u.toString();
+    if (u.pathname !== '/' && s.endsWith('/') && !u.search) s = s.slice(0, -1);
+    return s.replace(/\/\?/, '?');
+  } catch {
+    return x;
+  }
+}
+
 /** Compare two URLs ignoring trailing slash differences on the path. */
 export function sameUrl(a: string, b: string): boolean {
-  const n = (x: string) => {
-    try {
-      const u = new URL(x);
-      u.hash = '';
-      let s = u.toString();
-      if (u.pathname !== '/' && s.endsWith('/') && !u.search) s = s.slice(0, -1);
-      return s.replace(/\/\?/, '?');
-    } catch {
-      return x;
-    }
-  };
-  return n(a) === n(b);
+  return urlKey(a) === urlKey(b);
 }

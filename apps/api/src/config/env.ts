@@ -45,8 +45,27 @@ const schema = z.object({
   CRAWLER_USER_AGENT: z.string().optional(),
   /** Must be explicitly true before the crawler sends requests to a live site. */
   CRAWLER_ALLOW_LIVE: bool(false),
-  /** Page cap for a full crawl (smart crawls are bounded by the plan). */
-  CRAWLER_MAX_PAGES: z.coerce.number().int().positive().default(5000),
+  /**
+   * OPTIONAL server-wide page cap. Unset (the default) = no cap: a crawl can fetch every page the site has. Set it only
+   * to protect a small server; the Crawl Center then refuses crawls above it.
+   */
+  CRAWLER_MAX_PAGES: z.coerce.number().int().positive().optional(),
+  /** Minimum gap between requests to the crawled site, per crawl (politeness throttle). */
+  CRAWLER_REQUEST_DELAY_MS: z.coerce.number().int().min(0).max(10000).default(250),
+  /** Largest response body read per request; bigger pages are truncated (bytes). */
+  CRAWLER_MAX_BODY_BYTES: z.coerce.number().int().min(65536).max(20 * 1024 * 1024).default(5 * 1024 * 1024),
+  /** Retries per request after a transient failure (429 / 502 / 503 / 504, timeout, dropped connection). */
+  CRAWLER_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+  /** Longest Retry-After / backoff wait per retry; a site asking for longer gets its answer recorded instead. */
+  CRAWLER_MAX_RETRY_WAIT_MS: z.coerce.number().int().min(0).max(300000).default(30000),
+  /** Highest robots.txt Crawl-delay honoured (ms). */
+  CRAWLER_MAX_CRAWL_DELAY_MS: z.coerce.number().int().min(0).max(300000).default(30000),
+  /** Most sitemap files read per crawl (sitemap index files included). */
+  CRAWLER_MAX_SITEMAP_FILES: z.coerce.number().int().min(1).max(50000).default(1000),
+  /** Largest sitemap file read, after decompression (MB). The sitemaps.org limit is 50 MB. */
+  CRAWLER_MAX_SITEMAP_MB: z.coerce.number().int().min(1).max(200).default(50),
+  /** Crawls that may run at the same time across all websites on this server. */
+  CRAWLER_MAX_CONCURRENT_JOBS: z.coerce.number().int().min(1).max(10).default(2),
   /** Public URL of the web app, used for deep links in alerts/Task Ops. */
   APP_BASE_URL: z.string().url().optional(),
 

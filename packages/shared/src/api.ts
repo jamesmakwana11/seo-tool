@@ -1,6 +1,6 @@
 import type {
   AiComplianceFlag, AiVisibilityPrompt, AiVisibilityTrendPoint, AlertRule, AuditLogEntry, AuditModule, Backlink,
-  BrandMention, CheckDefinition, ContentBrief, ContentScore, CrawlRun, CrawlSchedule, CrawlType, CrawledUrl,
+  BrandMention, CheckDefinition, ContentBrief, ContentScore, CrawlOptions, CrawlRun, CrawlSchedule, CrawlType, CrawledUrl,
   CtrRewrite, CustomRule, CwvTemplateMetric, DailyDigest, DeliveryAttempt, DisavowCandidate, DryRunResult, Employee,
   Exclusion, FixCard, HealthPoint, HealthScore, IntegrationId, IntegrationStatus, Issue, IssueGroup, IssueStatus,
   KeywordGap, LinkProspect, MonthlyReport, Notification, OpportunityItem, PageTemplate, Paged, PermissionMatrix,
@@ -83,6 +83,25 @@ export interface ModuleData {
   dataNotes: string[];
 }
 
+export interface CrawlerStatus {
+  /** Live crawling may start for this website. */
+  ready: boolean;
+  /** Why not, in plain words (when ready is false). */
+  reason?: string;
+  /** The website URL crawls are restricted to. */
+  siteUrl: string;
+  /** Optional server-wide page cap (CRAWLER_MAX_PAGES); null = no cap, every page can be crawled. */
+  maxPagesCap: number | null;
+  /** Crawl jobs and results live in server memory only. */
+  temporaryStorage: boolean;
+  schedulerEnabled: boolean;
+  respectsRobots: boolean;
+  /** Minimum gap between requests to the site (ms). */
+  requestDelayMs: number;
+  /** Largest response body read per page (bytes). */
+  maxBodyBytes: number;
+}
+
 export interface CrawlDetail {
   run: CrawlRun;
   urls: CrawledUrl[];
@@ -130,7 +149,8 @@ export interface SentinelApi {
   previewAs(role: Role): Promise<AuthResult>;
   logout(): Promise<void>;
   me(): Promise<SessionUser>;
-  requestPasswordReset(email: string): Promise<{ sent: boolean; devResetToken?: string; note: string }>;
+  /** `sent` = the email provider accepted the message; `emailConfigured` = this server can send email at all. */
+  requestPasswordReset(email: string): Promise<{ sent: boolean; emailConfigured: boolean; devResetToken?: string; note: string }>;
   resetPassword(token: string, newPassword: string): Promise<{ ok: true }>;
   updateProfile(input: { name?: string; title?: string; currentPassword?: string; newPassword?: string }): Promise<SessionUser>;
 
@@ -171,7 +191,13 @@ export interface SentinelApi {
   // crawls
   listCrawls(): Promise<CrawlRun[]>;
   getCrawl(id: string): Promise<CrawlDetail>;
-  startCrawl(type: CrawlType): Promise<CrawlRun>;
+  /** Starts a crawl. `options` (live crawl from the Crawl Center) is required for type 'full' started by a person. */
+  startCrawl(type: CrawlType, options?: CrawlOptions): Promise<CrawlRun>;
+  cancelCrawl(id: string): Promise<CrawlRun>;
+  /** Whether this website can be crawled live right now, and the limits that apply. */
+  getCrawlerStatus(): Promise<CrawlerStatus>;
+  /** Current results of a run as a downloadable file (in-memory results only). */
+  exportCrawl(id: string, format: 'csv' | 'json'): Promise<{ filename: string; mimeType: string; content: string }>;
   listSchedules(): Promise<CrawlSchedule[]>;
   updateSchedule(id: string, input: { cron?: string; enabled?: boolean }): Promise<CrawlSchedule>;
   listVerifications(): Promise<VerificationAttempt[]>;

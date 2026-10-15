@@ -47,6 +47,10 @@ export interface FixtureOptions {
   linkErrorRoutes: boolean;
   /** Delay of /pages/slow in ms. */
   slowMs: number;
+  /** Footer link to /pages/internal, which redirects to the cloud metadata endpoint (SSRF probe). */
+  ssrfRedirect: boolean;
+  /** Footer link to a page that answers 200 with a malformed (unclosed, binary-ish) HTML body. */
+  malformedPage: boolean;
   /** Sitemap lists an extra product page that no page links to. */
   orphanInSitemap: boolean;
   /** /collections/x/products/y pages canonicalize to themselves instead of /products/y. */
@@ -57,7 +61,7 @@ export const defaultFixtureOptions = (): FixtureOptions => ({
   noindex: [], xRobotsNoindex: [], deletedProducts: [], missingCanonical: [], duplicateTitle: [], thinCollections: [], longTitle: [], missingMeta: [],
   multipleH1: [], missingAlt: [], largeImage: [], noOffers: [], productTemplateNoOffers: false, priceMismatch: {}, reviewMarkupWithoutReviews: [],
   robotsDisallowCollections: false, robotsBlockGptBot: false, aiBoilerplate: [], ymylClaim: [], newHeadScriptOnProducts: false, linkErrorRoutes: false,
-  slowMs: 1500, orphanInSitemap: false, scopedSelfCanonical: false,
+  slowMs: 1500, ssrfRedirect: false, malformedPage: false, orphanInSitemap: false, scopedSelfCanonical: false,
 });
 
 interface Product { handle: string; name: string; price: number; collection: string; material: string; size: string; use: string; detail: string; more: string; review: string }
@@ -171,7 +175,9 @@ export async function startFixtureSite(initial?: Partial<FixtureOptions>): Promi
       `<script src="/cdn/shop/t/1/assets/global.js" defer></script>`,
       ...(opts.newHeadScriptOnProducts && path.startsWith('/products/') ? ['<script src="/apps/upsell-pro/widget.js"></script>'] : []),
     ].join('\n');
-    const errorLinks = opts.linkErrorRoutes ? '<li><a href="/pages/slow">Track order</a></li><li><a href="/pages/broken">Bulk enquiry</a></li>' : '';
+    const errorLinks = (opts.linkErrorRoutes ? '<li><a href="/pages/slow">Track order</a></li><li><a href="/pages/broken">Bulk enquiry</a></li>' : '')
+      + (opts.ssrfRedirect ? '<li><a href="/pages/internal">Internal</a></li>' : '')
+      + (opts.malformedPage ? '<li><a href="/pages/malformed">Malformed</a></li>' : '');
     const extraH1 = opts.multipleH1.includes(path) ? `<h1>${esc(p.h1)} – Wholesale</h1>` : '';
     return `<!doctype html>
 <html lang="en"><head>
@@ -401,6 +407,8 @@ ${a.sections.map(([h, t]) => `<h2>${esc(h)}</h2><p>${esc(t)}</p>`).join('\n')}
       return;
     }
     if (path === '/pages/broken') return send(res, 500, '<h1>Internal Server Error</h1>', {}, method);
+    if (path === '/pages/internal') return redirect(res, 302, 'http://169.254.169.254/latest/meta-data/');
+    if (path === '/pages/malformed') return send(res, 200, '<html><head><title>Broken <b>markup<div><<<\u0000\u0001 <a href="/pages/nowhere"', {}, method);
     if (path === '/old-chopper') return redirect(res, 301, '/products/old-chopper-v2');
     if (path === '/products/old-chopper-v2') return redirect(res, 301, '/products/vegetable-chopper');
     if (path === '/promo') return redirect(res, 302, '/collections/toys');

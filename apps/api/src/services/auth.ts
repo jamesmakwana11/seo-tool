@@ -1,6 +1,7 @@
 import { PREVIEW_USER_BY_ROLE, ROLE_LABELS, type AuthResult, type Role, type SessionUser } from '@sentinel/shared';
 import { ApiError, badRequest, conflict, forbidden, unauthorized } from '../lib/errors';
 import { hashPassword, passwordPolicyError, randomToken, sha256, signToken, verifyPassword, verifyToken } from '../lib/passwords';
+import { emailTransportReady } from '../notifications/adapters';
 import { actorFromEmployee, audit, toSessionUser, SYSTEM_ACTOR, type Actor, type Ctx } from './context';
 
 interface TokenPayload { sid: string; sub: string; exp: number }
@@ -79,18 +80,29 @@ export function createAuthService(ctx: Ctx) {
     async requestPasswordReset(email: string) {
       const key = (email ?? '').trim().toLowerCase();
       const cred = key ? await r.credentials.get(key) : undefined;
-      const generic = 'If that account exists, a reset link has been sent.';
-      if (!cred) return { sent: false, note: generic };
+      // Known and unknown emails get the same answer, so the response never reveals which accounts exist.
+      const emailReady = emailTransportReady(ctx.env);
+      const generic = { sent: false, emailConfigured: true, note: 'If an account exists for this email, a reset link has been sent to it.' };
+      const noEmail = { sent: false, emailConfigured: false, note: 'This server cannot send email yet (SMTP is not configured), so no reset link was sent. Contact your administrator.' };
+      if (!cred) return emailReady ? generic : noEmail;
       const token = randomToken(24);
       await r.resetTokens.upsert({ id: sha256(token), email: key, expiresAt: new Date(ctx.clock().getTime() + 3600_000).toISOString() });
       await audit(ctx, SYSTEM_ACTOR, 'auth.reset_requested', 'auth', cred.employeeId, 'Password reset requested');
-      const attempts = await ctx.delivery.deliver('allocation', ['email'], { subject: 'Reset your DeoDap SEO Sentinel password', text: `Use this one-time token within 1 hour: ${token}` });
-      const sent = attempts.some((a) => a.outcome === 'delivered');
-      if (sent) return { sent: true, note: generic };
-      if (ctx.env.DEV_EXPOSE_RESET_TOKEN && ctx.env.NODE_ENV !== 'production') {
-        return { sent: false, devResetToken: token, note: 'Email is not configured on this server. DEVELOPMENT ONLY: use the reset link below.' };
+      if (emailReady) {
+        const link = ctx.env.APP_BASE_URL ? `${ctx.env.APP_BASE_URL.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}` : undefined;
+        // Sent to the account owner ONLY — never to the digest list.
+        const attempts = await ctx.delivery.deliver('allocation', ['email'], {
+          to: [key],
+          subject: 'Reset your DeoDap SEO Sentinel password',
+          text: link ? 'Use the link below within 1 hour to choose a new password. If you did not ask for this, ignore this email.' : `Use this one-time reset token within 1 hour: ${token}`,
+          links: link ? [{ label: 'Choose a new password', url: link }] : undefined,
+        });
+        return { ...generic, sent: attempts.some((a) => a.outcome === 'delivered') };
       }
-      return { sent: false, note: 'Email delivery is not configured on this server. Ask an admin to reset your password.' };
+      if (ctx.env.DEV_EXPOSE_RESET_TOKEN && ctx.env.NODE_ENV !== 'production') {
+        return { ...noEmail, devResetToken: token, note: 'Email is not configured on this server. DEVELOPMENT ONLY: use the reset link below.' };
+      }
+      return noEmail;
     },
 
     async resetPassword(token: string, newPassword: string) {

@@ -170,7 +170,7 @@ type Item = { item: string; pass: boolean | null; detail?: string };
 
 function checklistFinding(checkId: string, t: PageTemplate, pages: ParsedPage[], results: Map<string, Item[]>, prep: Prepared): Finding | undefined {
   const failingByItem = new Map<string, string[]>();
-  for (const [url, items] of results) for (const i of items) if (i.pass === false) failingByItem.set(i.item, [...(failingByItem.get(i.item) ?? []), url]);
+  for (const [url, items] of results) for (const i of items) if (i.pass === false) { const list = failingByItem.get(i.item); if (list) list.push(url); else failingByItem.set(i.item, [url]); }
   const problems: Problem[] = [...failingByItem.entries()].map(([item, urls]) => ({ label: `fail: ${item}`, urls }));
   const itemNames = [...new Set([...results.values()].flat().map((i) => i.item))];
   const summaryTable = itemNames.map((name) => {
@@ -226,10 +226,15 @@ export function analyzeTplCollection(prep: Prepared): AnalyzerResult {
   const results = new Map<string, Item[]>();
   const descs = new Map<string, string>();
   for (const p of cols) descs.set(p.url, prep.uniqueText(p));
+  // Description → collection URLs carrying it (in crawl order), to find identical descriptions without comparing every pair.
+  const byDesc = new Map<string, string[]>();
+  for (const [u, d] of descs) { if (d.length <= 80) continue; const list = byDesc.get(d); if (list) list.push(u); else byDesc.set(d, [u]); }
   for (const p of cols) {
     const h = p.html!;
     const words = wordCount(descs.get(p.url) ?? '');
-    const dupOf = [...descs.entries()].find(([u, d]) => u !== p.url && d.length > 80 && d === descs.get(p.url));
+    const sameDesc = byDesc.get(descs.get(p.url) ?? '');
+    const dupUrl = sameDesc?.find((u) => u !== p.url);
+    const dupOf = dupUrl !== undefined ? [dupUrl] : undefined;
     const handleWords = tokens((collectionHandle(p.url) ?? '').replace(/-/g, ' '));
     const h1 = (h.h1s[0] ?? '').toLowerCase();
     const filtered = prep.budgetSamples.filter((s) => collectionHandle(s.url) === collectionHandle(p.url) && s.status === 200 && s.html);

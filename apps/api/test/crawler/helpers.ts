@@ -10,7 +10,8 @@ export function makeEngine(baseUrl: string | undefined, over: Partial<CrawlEngin
   const config = defaultConfig(new Date('2026-10-12T00:00:00Z'));
   cfgOver?.(config);
   return createCrawlEngine({
-    baseUrl, allowLive: false, userAgent: UA, timeoutMs: 800, concurrency: 6, respectRobots: true,
+    // retries: 0 — these tests check detection; retry behaviour has its own tests (resilience.test.ts).
+    baseUrl, allowLive: false, userAgent: UA, timeoutMs: 800, concurrency: 6, respectRobots: true, retries: 0,
     thresholds: config.thresholds, config, log: silentLog, now: () => new Date('2026-10-12T00:00:00Z'), ...over,
   });
 }

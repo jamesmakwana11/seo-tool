@@ -57,7 +57,7 @@ export function createDeliveryService(deps: {
         const a = byChannel.get(channel);
         const base = { channel, kind, subject: msg.subject, issueId: refs?.issueId, taskId: refs?.taskId };
         let attempt: DeliveryAttempt;
-        if (!a || !a.isConfigured()) {
+        if (!a || !a.isConfigured(msg)) {
           const names = a ? missingNames(a) : [];
           attempt = {
             ...base,

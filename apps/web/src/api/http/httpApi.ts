@@ -6,7 +6,7 @@
 import {
   ApiError,
   type AiComplianceFlag, type AlertRule, type ApiDiagnostics, type AuditLogEntry, type AuditModule, type AuthResult,
-  type BrandMention, type CheckDefinition, type ContentBrief, type ContentScore, type CrawlRun, type CrawlSchedule, type CrawlType,
+  type BrandMention, type CheckDefinition, type ContentBrief, type ContentScore, type CrawlRun, type CrawlerStatus, type CrawlSchedule, type CrawlType,
   type CrawlDetail, type CtrRewrite, type CustomRule, type CwvTemplateMetric, type DailyDigest, type DashboardData,
   type DeliveryAttempt, type DisavowCandidate, type DryRunResult, type Employee, type EmployeeInput, type HealthPoint, type HealthScore,
   type IntegrationId, type IntegrationStatus, type IntegrationSyncResult, type Issue, type IssueDetail, type IssueFilter, type IssueGroup, type KeywordGap,
@@ -60,6 +60,29 @@ export function createHttpApi(baseUrl = '/api', websiteId: () => string | undefi
     }
     return data as T;
   }
+  /** A file response (export): text plus the file name the server suggested. */
+  async function download(path: string): Promise<{ filename: string; mimeType: string; content: string }> {
+    const headers: Record<string, string> = {};
+    const site = websiteId();
+    if (site) headers[WEBSITE_HEADER] = site;
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    let res: Response;
+    try {
+      res = await fetch(`${baseUrl}${path}`, { headers });
+    } catch {
+      throw new ApiError(0, 'NETWORK', 'Could not reach the API server. Check that it is running.');
+    }
+    const content = await res.text();
+    if (!res.ok) {
+      let err: { code?: string; message?: string } | undefined;
+      try { err = (JSON.parse(content) as { error?: { code: string; message: string } }).error; } catch { /* not JSON */ }
+      throw new ApiError(res.status, err?.code ?? 'ERROR', err?.message ?? `Download failed (${res.status}).`);
+    }
+    const cd = res.headers.get('content-disposition') ?? '';
+    const filename = /filename="([^"]+)"/.exec(cd)?.[1] ?? 'export';
+    return { filename, mimeType: res.headers.get('content-type') ?? 'application/octet-stream', content };
+  }
   const get = <T>(p: string) => req<T>('GET', p);
   const post = <T>(p: string, b?: unknown) => req<T>('POST', p, b ?? {});
   const patch = <T>(p: string, b?: unknown) => req<T>('PATCH', p, b ?? {});
@@ -111,7 +134,10 @@ export function createHttpApi(baseUrl = '/api', websiteId: () => string | undefi
     // crawls
     listCrawls: () => get<CrawlRun[]>('/crawls'),
     getCrawl: (id) => get<CrawlDetail>(`/crawls/${id}`),
-    startCrawl: (type: CrawlType) => post<CrawlRun>('/crawls', { type }),
+    startCrawl: (type: CrawlType, options) => post<CrawlRun>('/crawls', options ? { type, options } : { type }),
+    cancelCrawl: (id) => post<CrawlRun>(`/crawls/${encodeURIComponent(id)}/cancel`),
+    getCrawlerStatus: () => get<CrawlerStatus>('/crawls/status'),
+    exportCrawl: (id, format) => download(`/crawls/${encodeURIComponent(id)}/export?format=${format}`),
     listSchedules: () => get<CrawlSchedule[]>('/crawls/schedules'),
     updateSchedule: (id, input) => patch<CrawlSchedule>(`/crawls/schedules/${id}`, input),
     listVerifications: () => get<VerificationAttempt[]>('/crawls/verifications'),

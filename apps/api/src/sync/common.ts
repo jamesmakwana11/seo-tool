@@ -170,7 +170,7 @@ export async function livePagesByPath(ctx: Ctx): Promise<Map<string, SitePage[]>
     if (p.source === 'demo') continue;
     const key = normalizePath(p.path || p.url);
     if (!key) continue;
-    out.set(key, [...(out.get(key) ?? []), p]);
+    { const list = out.get(key); if (list) list.push(p); else out.set(key, [p]); }
   }
   return out;
 }

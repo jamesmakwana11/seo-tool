@@ -11,6 +11,7 @@
  *   "skipped — not configured", integrations can't connect from the browser.
  */
 import {
+  crawlExportFilename, crawlResultsCsv, crawlResultsJson,
   ApiError, CHECKS_BY_ID, DEMO_PASSWORD, INTEGRATION_CATALOG, PREVIEW_USER_BY_ROLE, TEAMS, ROLE_LABELS, buildDailyDigest,
   buildDashboard, buildModuleData, buildMonthlyReport, buildWeeklyReport, canTransition, computeHealthScore,
   createSeed, evaluateRule, exportReport, filterIssues, generateFixCard, globalSearch, hasPermission,
@@ -38,6 +39,8 @@ const WEBSITE_METHODS = new Set(['listWebsites', 'createWebsite', 'updateWebsite
 
 let counter = 1000;
 const nid = (p: string) => `${p}-${++counter}`;
+
+const MOCK_NO_LIVE_CRAWL = 'This is the in-browser DEMO version: it cannot fetch websites. Start the API server with live crawling enabled (see LOCAL_CRAWLING.md) to crawl a real site.';
 
 export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => Date; websiteId?: () => string } = {}): SentinelApi & { __state: MockState; __recent: ApiDiagnostics['recent']; __sites: Map<string, SiteState> } {
   const now = opts.now ?? (() => new Date());
@@ -260,10 +263,10 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
         const token = Math.random().toString(36).slice(2, 10);
         s.resetTokens[token] = e.email;
         audit('auth.reset_requested', 'auth', e.id, 'Password reset requested');
-        return { sent: false, devResetToken: token, note: 'Mock mode cannot send email. Use the development reset link below (shown only in mock mode).' };
+        return { sent: false, emailConfigured: false, devResetToken: token, note: 'Mock mode cannot send email. Use the development reset link below (shown only in mock mode).' };
       }
       // Same response for unknown emails — do not reveal which accounts exist.
-      return { sent: false, note: 'If that account exists, a reset link would be emailed. Mock mode cannot send email.' };
+      return { sent: false, emailConfigured: false, note: 'Mock mode cannot send email, so no reset link was sent.' };
     }),
     resetPassword: (token, pw) => call('resetPassword', () => {
       const email = s.resetTokens[token];
@@ -467,8 +470,9 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
       if (!run) throw new ApiError(404, 'NOT_FOUND', `Crawl ${id} not found.`);
       return { run, urls: s.crawlUrls[id] ?? [], sitemapDiff: s.sitemapDiffs[id], verification: s.verifications.filter((v) => v.method === 'automated_recrawl' && run.startedAt && v.at >= run.startedAt && (!run.finishedAt || v.at <= new Date(new Date(run.finishedAt).getTime() + 86400000).toISOString())) };
     }),
-    startCrawl: (type) => call('startCrawl', () => {
+    startCrawl: (type, options) => call('startCrawl', () => {
       need('crawls.run');
+      if (options) throw new ApiError(409, 'CRAWLER_NOT_READY', MOCK_NO_LIVE_CRAWL);
       if (s.crawls.some((c) => c.status === 'running' || c.status === 'queued')) throw new ApiError(409, 'CONFLICT', 'A crawl is already running. Wait for it to finish.');
       const planned = type === 'full' ? s.siteSize : type === 'reverify' ? s.issues.filter((i) => i.status === 'FIXED').reduce((a, i) => a + i.affectedCount, 0) || 1 : 1 + s.catalog.collections.length + s.config.crawl.smartTopProducts + 120;
       const run: CrawlRun = { id: nid('CRL'), type, status: 'running', trigger: 'manual', startedAt: iso(), urlsPlanned: planned, urlsCrawled: 0, urlsFailed: 0, jsRenderedSample: 0, newIssues: 0, resolvedIssues: 0, recurringIssues: 0, scope: [{ label: 'SIMULATED run — mock mode makes no HTTP requests', count: planned }], source: 'simulated' };
@@ -482,6 +486,30 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
         run.error = 'Simulated completion: no URLs were actually fetched and no findings were produced. Run the real crawler from the API server (Phase 2).';
       }, 6000);
       return run;
+    }),
+    cancelCrawl: (id) => call('cancelCrawl', () => {
+      need('crawls.run');
+      const run = s.crawls.find((c) => c.id === id);
+      if (!run) throw new ApiError(404, 'NOT_FOUND', `Crawl ${id} not found.`);
+      if (run.status !== 'running' && run.status !== 'queued') throw new ApiError(409, 'NOT_RUNNING', `Crawl ${id} is ${run.status}, so it cannot be cancelled.`);
+      run.status = 'cancelled';
+      run.finishedAt = iso();
+      run.error = 'Simulated run cancelled. Mock mode makes no HTTP requests.';
+      audit('crawl.cancel', 'crawl', id, `Cancelled ${run.type} crawl (SIMULATED)`);
+      return run;
+    }),
+    getCrawlerStatus: () => call('getCrawlerStatus', () => {
+      need('crawls.view');
+      return { ready: false, reason: MOCK_NO_LIVE_CRAWL, siteUrl: s.config.site.baseUrl, maxPagesCap: null, temporaryStorage: true, schedulerEnabled: false, respectsRobots: true, requestDelayMs: 0, maxBodyBytes: 0 };
+    }),
+    exportCrawl: (id, format) => call('exportCrawl', () => {
+      need('crawls.view');
+      const run = s.crawls.find((c) => c.id === id);
+      if (!run) throw new ApiError(404, 'NOT_FOUND', `Crawl ${id} not found.`);
+      const d = { run, urls: s.crawlUrls[id] ?? [], sitemapDiff: s.sitemapDiffs[id], verification: [] };
+      return format === 'csv'
+        ? { filename: crawlExportFilename(d, 'csv'), mimeType: 'text/csv;charset=utf-8', content: crawlResultsCsv(d) }
+        : { filename: crawlExportFilename(d, 'json'), mimeType: 'application/json;charset=utf-8', content: crawlResultsJson(d, iso()) };
     }),
     listSchedules: () => call('listSchedules', () => { need('crawls.view'); return s.schedules; }),
     updateSchedule: (id, input) => call('updateSchedule', () => {
