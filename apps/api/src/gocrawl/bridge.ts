@@ -34,7 +34,11 @@ export interface GoProgress {
   notProcessed: number;
   pagesPerMin: number;
   sitemapUrls: number;
-  politeness?: { delayMs: number; floorMs?: number; crawlDelayMs?: number; slowDowns: number; retries: number; rateLimited?: number; waitedMs?: number; avgLatencyMs?: number };
+  politeness?: { delayMs: number; floorMs?: number; crawlDelayMs?: number; slowDowns: number; retries: number; rateLimited?: number; waitedMs?: number; avgLatencyMs?: number; unavailable503?: number; limitedAnswers?: number };
+  requests?: number;
+  requestsPerMin?: number;
+  lastRequestAt?: string | null;
+  checks?: { total: number; done: number; groups: Record<string, { total: number; done: number }> };
   memory?: { goRssMB: number; goHeapMB: number; textCoreRssMB: number; goPeakMB: number; textCorePeakMB: number };
   elapsedMs: number;
 }
@@ -66,6 +70,8 @@ export interface GoRunOptions {
   signal?: AbortSignal;
   /** Called every second while the crawler runs; return a reason to stop the crawl for resources (results are kept). */
   resourceCheck?: () => string | undefined;
+  /** Called every second; return a reason to stop a crawl that has stopped making progress (results are kept, outcome partial). */
+  stallCheck?: () => string | undefined;
   startTimeoutMs?: number;
   cancelGraceMs?: number;
   /** Kill the crawler if it sends nothing at all for this long (it reports progress every second). */
@@ -81,8 +87,9 @@ export interface GoRunResult {
   stderrTail: string;
   /** Why the bridge (not the crawler) ended the run. */
   bridgeError?: string;
-  stoppedFor?: 'user' | 'resource';
+  stoppedFor?: 'user' | 'resource' | 'stalled';
   resourceReason?: string;
+  stallReason?: string;
   errors: { code: string; message: string }[];
 }
 
@@ -103,7 +110,7 @@ export function runGoCrawler(o: GoRunOptions): Promise<GoRunResult> {
       res.bridgeError ??= why;
       try { child.kill('SIGKILL'); } catch { /* gone */ }
     };
-    const cancel = (reason: 'user' | 'resource') => {
+    const cancel = (reason: 'user' | 'resource' | 'stalled') => {
       if (res.stoppedFor) return;
       res.stoppedFor = reason;
       send({ type: 'cancel', reason });
@@ -180,6 +187,12 @@ export function runGoCrawler(o: GoRunOptions): Promise<GoRunResult> {
       if (why && !res.stoppedFor) {
         res.resourceReason = why;
         cancel('resource');
+        return;
+      }
+      const stall = o.stallCheck?.();
+      if (stall && !res.stoppedFor) {
+        res.stallReason = stall;
+        cancel('stalled');
       }
     }, 1000));
   });

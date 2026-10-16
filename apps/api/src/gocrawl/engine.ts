@@ -28,6 +28,8 @@ import { readNdjsonGz } from './files';
 import { analyzablePages, memoryPlan, nodeMemory } from './memoryBudget';
 
 export interface GoEngineOptions {
+  /** Write Change Monitor snapshots during analysis (default true). */
+  changeSnapshots?: boolean;
   baseUrl?: string;
   allowLive: boolean;
   userAgent: string;
@@ -54,6 +56,8 @@ export interface GoEngineOptions {
   goMemoryMB?: number;
   /** Pages a smart crawl may fetch (its budget). */
   smartMaxPages?: number;
+  /** Stop a crawl with no answered request for this long (ms). Default 20 min. */
+  stallTimeoutMs?: number;
   /** Full pages analysed together (memory vs. speed; default 250). */
   analysisBatchSize?: number;
   /** Most pages the API may analyse (default: worked out from the Node.js heap limit). */
@@ -151,6 +155,7 @@ export function createGoCrawlEngine(o: GoEngineOptions): CrawlEngine & { binarie
       discovered: p.discovered, queued: p.queued, waiting: p.waiting, active: p.active, processed: p.processed, succeeded: p.succeeded, failed: p.failed,
       robots: p.robots, depthLimited: p.depthLimited, pageLimited: p.pageLimited, excluded: p.excluded, excludedBy: p.excludedBy ?? {}, notProcessed: p.notProcessed,
       sitemapUrls: p.sitemapUrls, pagesPerMin: p.pagesPerMin, politeness: p.politeness,
+      requests: p.requests, requestsPerMin: p.requestsPerMin, lastRequestAt: p.lastRequestAt ?? undefined, checks: p.checks, phase: p.phase,
     });
     const t0 = Date.now();
     const go = await runGoCrawler({
@@ -172,6 +177,17 @@ export function createGoCrawlEngine(o: GoEngineOptions): CrawlEngine & { binarie
           plan.onLive?.({ warning: { code: e.code, message: e.message } });
           log.warn({ code: e.code, message: e.message }, 'crawler warning');
         }
+      },
+      // A crawl that gets no answer at all for a long time (site down, endless rate limiting, a hung connection) ends as
+      // "partial" with what it fetched, instead of showing "Running" forever. Phases without requests are exempt.
+      stallCheck: () => {
+        const p = lastProgress;
+        if (!p?.lastRequestAt) return undefined;
+        if (p.phase === 'text_analysis' || p.phase === 'finalizing' || p.phase === 'preflight') return undefined;
+        const idle = Date.now() - Date.parse(p.lastRequestAt);
+        const limit = o.stallTimeoutMs ?? 20 * 60_000;
+        if (idle > limit) return `No request was answered for ${Math.round(idle / 60_000)} minutes during the "${p.phase ?? 'crawl'}" phase (current gap between requests ${p.politeness?.delayMs ?? '?'} ms). The crawl was stopped and everything fetched until then is kept.`;
+        return undefined;
       },
       resourceCheck: () => {
         const m = memNow();
@@ -203,6 +219,9 @@ export function createGoCrawlEngine(o: GoEngineOptions): CrawlEngine & { binarie
       failed = done?.reason || go.bridgeError || err || `the crawler stopped unexpectedly (${exit})${go.stderrTail ? `: ${go.stderrTail.trim().split('\n').slice(-3).join(' | ').slice(0, 400)}` : ''}`;
       if (!done && !go.bridgeError) failed = `The crawler process ended without finishing (${exit}). ${failed}`;
       outcomeReason = failed;
+    } else if (go.stoppedFor === 'stalled') {
+      outcome = 'partial';
+      outcomeReason = go.stallReason ?? done.reason ?? 'Stopped: no request was answered for a long time.';
     } else if (done.state === 'resource_stopped' || go.stoppedFor === 'resource') {
       outcome = 'resource_stopped';
       outcomeReason = go.resourceReason ?? done.reason ?? 'Stopped taking new pages because the memory limit was close.';
@@ -221,7 +240,7 @@ export function createGoCrawlEngine(o: GoEngineOptions): CrawlEngine & { binarie
     let analysis: Awaited<ReturnType<typeof analyzeGoCrawl>>;
     try {
       analysis = await analyzeGoCrawl({
-        workDir, resultsDir, ctx, tierOf: plan.tierOf, textCore, rowsOnly, batchSize: o.analysisBatchSize,
+        workDir, resultsDir, ctx, tierOf: plan.tierOf, textCore, rowsOnly, batchSize: o.analysisBatchSize, snapshot: o.changeSnapshots !== false,
         // Every page's text when custom rules will read it; otherwise a sample for rule dry runs.
         collectTexts: plan.collectTexts ? true : 1000,
         onPhase: (ph) => plan.onPhase?.(ph),
@@ -273,12 +292,12 @@ export function createGoCrawlEngine(o: GoEngineOptions): CrawlEngine & { binarie
       }
     };
     if (rowsOnly) {
-      return { urls: [], findings: [], evaluatedChecks: [], evaluatedTemplates: {}, stats, cancelled: outcome === 'cancelled', failed, store: analysis.store, coverageReport: analysis.coverage, answeredUrls: analysis.store.answeredUrls(), cleanup };
+      return { urls: [], findings: [], evaluatedChecks: [], evaluatedTemplates: {}, stats, cancelled: outcome === 'cancelled', failed, store: analysis.store, coverageReport: analysis.coverage, answeredUrls: analysis.store.answeredUrls(), snapshotFile: analysis.snapshotFile, cleanup };
     }
     return {
       urls: [], findings: analysis.findings, evaluatedChecks: analysis.evaluatedChecks, evaluatedTemplates: analysis.evaluatedTemplates,
       sitemapDiff: analysis.sitemapDiff, snapshot: analysis.snapshot, stats, memoryStopped: outcome === 'resource_stopped',
-      store: analysis.store, coverageReport: analysis.coverage, answeredUrls: analysis.store.answeredUrls(), textsFile: analysis.textsFile, cleanup,
+      store: analysis.store, coverageReport: analysis.coverage, answeredUrls: analysis.store.answeredUrls(), textsFile: analysis.textsFile, snapshotFile: analysis.snapshotFile, cleanup,
     };
   }
 

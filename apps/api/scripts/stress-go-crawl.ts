@@ -2,7 +2,10 @@
  * End-to-end stress run of a full "All pages" crawl through the real API service, the Go crawler and the Rust text
  * core, against the synthetic store (tools/synthetic-store/server.mjs) on 127.0.0.1 — no external website.
  *
- *   npx tsx scripts/stress-go-crawl.ts --products 50000 [--concurrency 16] [--budget 450] [--out results.json]
+ *   npx tsx scripts/stress-go-crawl.ts --products 50000 [--concurrency 16] [--budget 450] [--twice] [--out results.json]
+ *
+ * --twice crawls the store a second time and measures the Change Monitor (comparison with the first crawl, baseline
+ * replacement, change list paging, search and a streamed export) including its memory.
  *
  * Run it with a small heap to prove the 500 MB host case, e.g.:
  *   node --max-old-space-size=256 --import tsx scripts/stress-go-crawl.ts --products 50000 --budget 450
@@ -28,6 +31,7 @@ const PRODUCTS = Number(arg('products', '5000'));
 const CONCURRENCY = Number(arg('concurrency', '16'));
 const BUDGET = arg('budget');
 const OUT = arg('out');
+const TWICE = process.argv.includes('--twice');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = process.env.SENTINEL_ROOT ?? path.resolve(here, '../../..');
 
@@ -42,47 +46,70 @@ async function main() {
   const env = loadEnv({
     NODE_ENV: 'development', LOG_LEVEL: 'warn', SEED_DEMO_DATA: 'false', CRAWLER_BASE_URL: base, CRAWLER_ENGINE: 'go', CRAWLER_REQUEST_DELAY_MS: '0',
     ...(BUDGET ? { CRAWLER_MEMORY_BUDGET_MB: BUDGET } : {}),
+    CHANGE_SNAPSHOT_DIR: fs.mkdtempSync(path.join((await import('node:os')).tmpdir(), 'stress-changes-')), CHANGE_CAPTURE_AFTER_CRAWL: 'false',
+    ...(process.env.CHANGE_MONITOR_ENABLED ? { CHANGE_MONITOR_ENABLED: process.env.CHANGE_MONITOR_ENABLED } : {}),
   });
   const c = await createContainer({ env });
   const crawls = c.services.crawls;
   const status = await crawls.status(SYSTEM_ACTOR);
   console.log(`engine: ${JSON.stringify(status.engine)}`);
 
-  const t0 = Date.now();
-  const run = await crawls.start(SYSTEM_ACTOR, 'full', 'manual', { startUrl: `${base}/`, maxPages: null, maxDepth: null, timeoutMs: 15000, concurrency: CONCURRENCY, requestDelayMs: 0 });
-  const peaks = { nodeRss: 0, nodeHeap: 0, go: 0, textCore: 0, total: 0 };
-  const phases: Record<string, number> = {};
-  let lastPhase = '';
-  let lastLog = 0;
-  for (;;) {
-    await new Promise((r) => setTimeout(r, 250));
-    const cur = (await c.repos.crawls.get(run.id))!;
-    const m = process.memoryUsage();
-    const nodeRss = m.rss / 1048576;
-    const go = cur.memory?.goRssMB ?? 0;
-    const tc = cur.memory?.textCoreRssMB ?? 0;
-    peaks.nodeRss = Math.max(peaks.nodeRss, nodeRss);
-    peaks.nodeHeap = Math.max(peaks.nodeHeap, m.heapUsed / 1048576);
-    peaks.go = Math.max(peaks.go, go);
-    peaks.textCore = Math.max(peaks.textCore, tc);
-    // Children are reported with their last progress sample; only add them while the crawler is still running.
-    const childAlive = cur.phase !== 'analysing' && cur.phase !== 'saving' && cur.status === 'running';
-    peaks.total = Math.max(peaks.total, nodeRss + (childAlive ? go + tc : 0));
-    const ph = cur.phase ?? cur.status;
-    if (ph !== lastPhase) { phases[ph] = Date.now() - t0; lastPhase = ph; }
-    if (Date.now() - lastLog > 10_000) {
-      lastLog = Date.now();
-      console.log(`${Math.round((Date.now() - t0) / 1000)}s ${ph} processed=${cur.coverage?.processed ?? cur.urlsCrawled} discovered=${cur.coverage?.discovered ?? '?'} ${cur.coverage?.pagesPerMin ?? '?'}/min node=${nodeRss.toFixed(0)}MB go=${go}MB rust=${tc}MB`);
+  /** Runs one full crawl and samples memory every 250 ms until the crawl AND its change comparison are done. */
+  async function crawlOnce() {
+    const t0 = Date.now();
+    const run = await crawls.start(SYSTEM_ACTOR, 'full', 'manual', { startUrl: `${base}/`, maxPages: null, maxDepth: null, timeoutMs: 15000, concurrency: CONCURRENCY, requestDelayMs: 0 });
+    const peaks = { nodeRss: 0, nodeHeap: 0, go: 0, textCore: 0, total: 0 };
+    const phases: Record<string, number> = {};
+    let lastPhase = '';
+    let lastLog = 0;
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 250));
+      const cur = (await c.repos.crawls.get(run.id))!;
+      const m = process.memoryUsage();
+      const nodeRss = m.rss / 1048576;
+      const go = cur.memory?.goRssMB ?? 0;
+      const tc = cur.memory?.textCoreRssMB ?? 0;
+      peaks.nodeRss = Math.max(peaks.nodeRss, nodeRss);
+      peaks.nodeHeap = Math.max(peaks.nodeHeap, m.heapUsed / 1048576);
+      peaks.go = Math.max(peaks.go, go);
+      peaks.textCore = Math.max(peaks.textCore, tc);
+      // Children are reported with their last progress sample; only add them while the crawler is still running.
+      const childAlive = cur.phase !== 'analysing' && cur.phase !== 'saving' && cur.status === 'running';
+      peaks.total = Math.max(peaks.total, nodeRss + (childAlive ? go + tc : 0));
+      const ph = cur.phase ?? cur.status;
+      if (ph !== lastPhase) { phases[ph] = Date.now() - t0; lastPhase = ph; }
+      if (Date.now() - lastLog > 10_000) {
+        lastLog = Date.now();
+        console.log(`${Math.round((Date.now() - t0) / 1000)}s ${ph} processed=${cur.coverage?.processed ?? cur.urlsCrawled} discovered=${cur.coverage?.discovered ?? '?'} ${cur.coverage?.pagesPerMin ?? '?'}/min node=${nodeRss.toFixed(0)}MB go=${go}MB rust=${tc}MB`);
+      }
+      if (cur.status !== 'running' && cur.status !== 'queued') break;
     }
-    if (cur.status !== 'running' && cur.status !== 'queued') break;
+    const doneAt = Date.now();
+    // The Change Monitor compares the crawl with the baseline after it shows "completed": keep sampling until idle.
+    let sampling = true;
+    const sampler = (async () => {
+      while (sampling) {
+        const m = process.memoryUsage();
+        peaks.nodeRss = Math.max(peaks.nodeRss, m.rss / 1048576);
+        peaks.nodeHeap = Math.max(peaks.nodeHeap, m.heapUsed / 1048576);
+        peaks.total = Math.max(peaks.total, m.rss / 1048576);
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    })();
+    await crawls.idle();
+    sampling = false;
+    await sampler;
+    return { run, t0, peaks, phases, afterCompletedMs: Date.now() - doneAt };
   }
+  const first = await crawlOnce();
+  const { run, t0, peaks, phases } = first;
   const done = (await c.repos.crawls.get(run.id))!;
   const wall = Date.now() - t0;
 
   // ---- Pages API, coverage, export
   const timed = async <T>(fn: () => Promise<T>) => { const s = Date.now(); const v = await fn(); return { ms: Date.now() - s, v }; };
-  const first = await timed(() => crawls.pages(SYSTEM_ACTOR, run.id, { limit: 50 }));
-  const deep = await timed(() => crawls.pages(SYSTEM_ACTOR, run.id, { offset: Math.max(0, first.v.total - 50), limit: 50, sort: 'response', dir: 'desc' }));
+  const firstPage = await timed(() => crawls.pages(SYSTEM_ACTOR, run.id, { limit: 50 }));
+  const deep = await timed(() => crawls.pages(SYSTEM_ACTOR, run.id, { offset: Math.max(0, firstPage.v.total - 50), limit: 50, sort: 'response', dir: 'desc' }));
   const filt = await timed(() => crawls.pages(SYSTEM_ACTOR, run.id, { problem: 'dup-title', limit: 50 }));
   const search = await timed(() => crawls.pages(SYSTEM_ACTOR, run.id, { q: 'chopper', limit: 50 }));
   const cov = await timed(() => crawls.coverage(SYSTEM_ACTOR, run.id));
@@ -104,11 +131,34 @@ async function main() {
     issues: { total: issues.length, byCheck: Object.fromEntries([...new Set(issues.map((i) => i.checkId))].map((k) => [k, issues.filter((i) => i.checkId === k).reduce((n, i) => n + i.affectedCount, 0)])) },
     newIssues: done.newIssues,
     dupTitleSample: filt.v.rows.slice(0, 6).map((r) => [r.url, r.title, r.status, r.flags]),
-    pagesApiMs: { first: first.ms, last: deep.ms, filterDupTitle: filt.ms, search: search.ms, total: first.v.total, dupTitleRows: filt.v.total, searchRows: search.v.total },
+    pagesApiMs: { first: firstPage.ms, last: deep.ms, filterDupTitle: filt.ms, search: search.ms, total: firstPage.v.total, dupTitleRows: filt.v.total, searchRows: search.v.total },
     coverageMs: cov.ms, coverageSummary: { sitemapNotCrawled: cov.v.sitemapNotCrawled.count, failed: cov.v.failed.count, redirects: cov.v.redirects.count, nearGroups: cov.v.duplicates.nearContent.count, titleGroups: cov.v.duplicates.titles.count, orphanCandidates: cov.v.orphanCandidates.count },
     exportCsv: { ms: exp.ms, ...exp.v },
     warnings: done.warnings,
   };
+  const changeStatus = await c.services.changes.status(SYSTEM_ACTOR);
+  Object.assign(result, { changeMonitorFirst: { afterCompletedMs: first.afterCompletedMs, summary: changeStatus.runs[0], diskBytes: changeStatus.diskBytes } });
+  if (TWICE) {
+    (globalThis as { gc?: () => void }).gc?.(); // with --expose-gc: what the first crawl really left behind
+    const rssBefore = Math.round(process.memoryUsage().rss / 1048576);
+    const heapBefore = Math.round(process.memoryUsage().heapUsed / 1048576);
+    const second = await crawlOnce();
+    const r2 = (await c.repos.crawls.get(second.run.id))!;
+    Object.assign(result, { secondCrawl: { rssBeforeMB: rssBefore, heapBeforeMB: heapBefore, status: r2.status, outcome: r2.outcome, outcomeReason: r2.outcomeReason, processed: r2.coverage?.processed, wallMs: Date.now() - second.t0, peaksMB: Object.fromEntries(Object.entries(second.peaks).map(([k, v]) => [k, Math.round(v)])) } });
+    if (!changeStatus.enabled) { console.log(JSON.stringify(result, null, 2)); if (OUT) fs.writeFileSync(OUT, `${JSON.stringify(result, null, 2)}\n`); site.kill('SIGTERM'); process.exit(0); }
+    const sum = await c.services.changes.summary(SYSTEM_ACTOR, second.run.id);
+    const listMs = await timed(() => c.services.changes.list(SYSTEM_ACTOR, second.run.id, { kind: 'unchanged', page: 100, pageSize: 50 }));
+    const searchMs = await timed(() => c.services.changes.list(SYSTEM_ACTOR, second.run.id, { q: 'chopper', pageSize: 50 }));
+    const ex = await timed(async () => { let b = 0; for await (const ch of (await c.services.changes.export(SYSTEM_ACTOR, second.run.id, 'csv', {})).stream) b += ch.length; return b; });
+    const st2 = await c.services.changes.status(SYSTEM_ACTOR);
+    Object.assign(result, {
+      changeMonitorSecond: {
+        crawlWallMs: Date.now() - second.t0, afterCompletedMs: second.afterCompletedMs, compareMs: sum.compareMs, urls: sum.urls, counts: sum.counts, baselineEffect: sum.baselineEffect,
+        peaksMB: Object.fromEntries(Object.entries(second.peaks).map(([k, v]) => [k, Math.round(v)])),
+        listPage100Ms: listMs.ms, listTotal: listMs.v.total, searchMs: searchMs.ms, searchRows: searchMs.v.total, exportCsv: { ms: ex.ms, bytes: ex.v }, diskBytes: st2.diskBytes,
+      },
+    });
+  }
   console.log(JSON.stringify(result, null, 2));
   if (OUT) fs.writeFileSync(OUT, `${JSON.stringify(result, null, 2)}\n`);
   site.kill('SIGTERM');

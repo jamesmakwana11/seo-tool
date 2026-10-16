@@ -92,3 +92,41 @@ export function lineDiff(a: string, b: string, context = 3): { lines: DiffLine[]
   }
   return { lines, added: mid.filter((l) => l.op === '+').length, removed: mid.filter((l) => l.op === '-').length };
 }
+
+// ------------------------------------------------------------------------------------------------ read-only snapshots
+
+/** Theme files kept in a source snapshot: text templates, settings, translations and text assets. */
+export const SNAPSHOT_FILE = /^((layout|templates|sections|snippets|blocks|config|locales)\/[^\s]+\.(liquid|json)|assets\/[^\s]+\.(css|js|liquid|scss|json|svg))$/;
+
+/** Every file name of a theme (paged, read-only). */
+export async function listThemeFiles(client: AdminClient, themeId: string, max = 2000): Promise<{ filename: string; size: number; checksumMd5: string | null }[]> {
+  if (!THEME_GID.test(themeId)) throw new ShopifyApiError('Not a theme ID.', { code: 'BAD_ID' });
+  const out: { filename: string; size: number; checksumMd5: string | null }[] = [];
+  let after: string | null = null;
+  for (let page = 0; page < 40 && out.length < max; page++) {
+    const d: { theme: { files: { nodes: { filename: string; size: number; checksumMd5: string | null }[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } } | null } = await client.request(
+      'query SentinelThemeFileList($id: ID!, $after: String) { theme(id: $id) { files(first: 250, after: $after) { nodes { filename size checksumMd5 } pageInfo { hasNextPage endCursor } } } }',
+      { id: themeId, after },
+    );
+    if (!d.theme) throw new ShopifyApiError('Theme not found.', { code: 'NOT_FOUND' });
+    out.push(...d.theme.files.nodes);
+    if (!d.theme.files.pageInfo.hasNextPage) break;
+    after = d.theme.files.pageInfo.endCursor;
+  }
+  return out.slice(0, max);
+}
+
+/** Text bodies of up to 50 files per request (binary files come back without content and are skipped). */
+export async function readThemeFiles(client: AdminClient, themeId: string, filenames: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (let k = 0; k < filenames.length; k += 50) {
+    const batch = filenames.slice(k, k + 50);
+    const d = await client.request<{ theme: { files: { nodes: { filename: string; body?: { content?: string } }[] } } | null }>(
+      'query SentinelThemeFiles($id: ID!, $f: [String!]) { theme(id: $id) { files(filenames: $f, first: 50) { nodes { filename body { ... on OnlineStoreThemeFileBodyText { content } } } } } }',
+      { id: themeId, f: batch },
+    );
+    if (!d.theme) throw new ShopifyApiError('Theme not found.', { code: 'NOT_FOUND' });
+    for (const n of d.theme.files.nodes) if (typeof n.body?.content === 'string') out.set(n.filename, n.body.content);
+  }
+  return out;
+}

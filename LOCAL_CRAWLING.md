@@ -64,6 +64,8 @@ What the template sets (all variables are documented in `apps/api/.env.example`)
 | `CRAWLER_MAX_BODY_BYTES` | `5242880` | Largest page body read (5 MB); bigger pages are truncated |
 | `CRAWLER_MAX_CONCURRENT_JOBS` | `2` | Crawls that may run at the same time on the server |
 | `CRAWLER_RETRIES` | `2` | Retries after 429 / 502 / 503 / 504, a timeout or a dropped connection |
+| `CRAWLER_STALL_MINUTES` | `20` | A crawl with no answered request for this long stops as partial (results kept) |
+| `CHANGE_SNAPSHOT_DIR` | temp folder | Change Monitor history (baseline, screenshots); see `docs/CHANGE_MONITOR.md` |
 | `CRAWLER_MAX_SITEMAP_FILES` | `1000` | Most sitemap files read (sitemap index files included) |
 | `CRAWLER_MAX_SITEMAP_MB` | `50` | Largest sitemap file read, after unzipping (the sitemaps.org limit is 50 MB) |
 
@@ -125,10 +127,18 @@ then use the Crawl Center. Each website's crawl is restricted to its own host.
   different website is refused with a message.
 - **Polite and resilient over long runs.** Requests that fail with 429, 502, 503, 504, a timeout or a dropped
   connection are retried up to `CRAWLER_RETRIES` times with increasing waits, following the site's `Retry-After`. When
-  the site answers 429 / 503 the gap between requests is widened, then narrowed again after a run of normal answers.
-  The robots.txt `Crawl-delay` for the crawler (or `*`) is honoured, capped at `CRAWLER_MAX_CRAWL_DELAY_MS`. A page
-  still failing after its retries is recorded as failed. Links to other websites are checked once, without retries.
-  The progress panel shows the current gap, the Crawl-delay, retries and slow-downs.
+  the site answers 429 / 503 the gap between requests is widened — once per burst (parallel requests answered 429 at
+  the same moment count as one slow-down, so the gap no longer escalates to the 30 s maximum), honouring `Retry-After` —
+  then narrowed again after a run of normal answers. The robots.txt `Crawl-delay` for the crawler (or `*`) is honoured,
+  capped at `CRAWLER_MAX_CRAWL_DELAY_MS`. A page still failing after its retries is recorded as failed; certificate
+  errors are not retried. Links to other websites, CDN images and scripts are paced per host (150 ms), not in the
+  website's queue, and each target is checked once however many pages link to it.
+- **After the pages:** link-target, sitemap, image, script, bot-access, host-variant and TLS checks run as parallel
+  groups (each still paced and robots-aware); the progress panel shows each group's done / total.
+- **Never "Running" forever:** if no request is answered for `CRAWLER_STALL_MINUTES` (default 20) the crawl stops as
+  *partial* with its results kept, and the progress panel shows the time since the last answer.
+- The progress panel shows the phase, the queue, the current gap, requests per minute (last minute), 429 / 503 answers,
+  slow-downs, retries and the last answer time; pages per minute is the last minute's rate.
 
 - Reads `robots.txt` and respects it; discovers pages from the sitemap (declared in robots.txt or `/sitemap.xml`)
   and from internal links (same host, www/non-www both accepted).

@@ -55,6 +55,20 @@ describe.skipIf(isWin)('bridge: crawler process failures', () => {
     expect(r.bridgeError).toMatch(/did not stop within/);
   });
 
+  it('a stall check stops a crawl that makes no progress: cancel reason "stalled", the crawler\'s summary is kept', async () => {
+    const bin = fakeCrawler(`rl.on('line', (l) => { const m = JSON.parse(l); if (m.type === 'start') out({ type: 'hello', protocol: 1, version: 'fake', go: 'none', pid: process.pid }); if (m.type === 'cancel') { out({ type: 'done', state: 'partial', reason: 'stopped: ' + m.reason }); process.exit(0); } }); setInterval(() => out({ type: 'progress', processed: 1, phase: 'checks', lastRequestAt: new Date(Date.now() - 3600e3).toISOString() }), 100);`);
+    let last: string | undefined;
+    const r = await runGoCrawler({
+      bin, job: {},
+      onEvent: (e) => { if (e.type === 'progress') last = e.lastRequestAt ?? undefined; },
+      stallCheck: () => (last && Date.now() - Date.parse(last) > 60_000 ? 'no request answered for an hour' : undefined),
+    });
+    expect(r.stoppedFor).toBe('stalled');
+    expect(r.stallReason).toBe('no request answered for an hour');
+    expect(r.done?.state).toBe('partial');
+    expect(r.done?.reason).toBe('stopped: stalled');
+  });
+
   it('a resource check stops the crawl with reason "resource" and keeps the crawler\'s own summary', async () => {
     const bin = fakeCrawler(`rl.on('line', (l) => { const m = JSON.parse(l); if (m.type === 'start') out({ type: 'hello', protocol: 1, version: 'fake', go: 'none', pid: process.pid }); if (m.type === 'cancel') { out({ type: 'done', state: 'resource_stopped', reason: 'stopped: ' + m.reason }); process.exit(0); } }); setInterval(() => out({ type: 'progress', processed: 1 }), 100);`);
     let calls = 0;

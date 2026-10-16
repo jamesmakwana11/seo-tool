@@ -43,7 +43,7 @@ function issueFilter(q: Request['query']): import('@sentinel/shared').IssueFilte
 /** Register one route per SentinelApi method. Order: auth → dashboard → modules → issues → tasks → crawls → opportunities → off-page → AI → reports → notifications → people → config → audit/system/search/diagnostics. */
 export function registerRoutes(routes: ApiRoute[], c: Container) {
   const { services } = c;
-  const { auth, tasks, issues, rules, crawls, reports, insights, admin, lighthouse, shopify } = services;
+  const { auth, tasks, issues, rules, crawls, changes, captures, reports, insights, admin, lighthouse, shopify } = services;
   const add = (r: ApiRoute) => routes.push(r);
 
   // -------------------------------------------------------------- auth
@@ -120,6 +120,70 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
       sort: optStr(req.query.sort) as never, dir: optStr(req.query.dir) as never,
     }),
   });
+  // ---- Change Monitor (snapshots on disk; lists paged and filtered on the server)
+  const changeQuery = (req: { query: Record<string, unknown> }) => ({
+    kind: optStr(req.query.kind) as never, field: optStr(req.query.field) as never, confidence: optStr(req.query.confidence) as never,
+    q: optStr(req.query.q), template: optStr(req.query.template), page: num(req.query.page, 1), pageSize: num(req.query.pageSize, 50),
+  });
+  add({ method: 'get', path: '/api/changes/status', permission: 'crawls.view', description: 'Change Monitor: baseline, recorded crawls, storage folder and retention', handle: (req) => changes.status(actorOf(req)) });
+  add({ method: 'get', path: '/api/changes/runs/:id', permission: 'crawls.view', description: 'Change summary of a crawl (id = crawl id, snapshot id or "latest")', handle: (req) => changes.summary(actorOf(req), prm(req, 'id')) });
+  add({
+    method: 'get', path: '/api/changes/runs/:id/urls', permission: 'crawls.view',
+    description: 'Changed / new / removed / failed / unchanged / unchecked URLs of a crawl, paged on the server (query: kind, field, confidence, q, template, page, pageSize ≤ 200)',
+    handle: (req) => changes.list(actorOf(req), prm(req, 'id'), changeQuery(req)),
+  });
+  add({ method: 'get', path: '/api/changes/runs/:id/url', permission: 'crawls.view', description: 'One URL\'s change record with old / new values, evidence and its open issues (query: url)', handle: (req) => changes.detail(actorOf(req), prm(req, 'id'), String(req.query.url ?? '')) });
+  add({ method: 'post', path: '/api/changes/issues', permission: 'crawls.view', description: 'Open issues on a page of URLs (body: urls, at most 200)', handle: (req) => changes.issuesFor(actorOf(req), Array.isArray(req.body?.urls) ? req.body.urls.map(String) : []) });
+  add({
+    method: 'get', path: '/api/changes/runs/:id/export', permission: 'crawls.view', description: 'Download a crawl\'s change records as CSV or JSON (same filters as the list), streamed', raw: true,
+    handle: async (req) => {
+      const f = await changes.export(actorOf(req), prm(req, 'id'), String(req.query.format ?? 'csv'), { ...changeQuery(req), page: undefined, pageSize: undefined });
+      const res = req.res!;
+      res.setHeader('Content-Type', f.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${f.filename.replace(/[^\w.-]/g, '_')}"`);
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(200);
+      for await (const chunk of f.stream) {
+        if (res.destroyed) break;
+        if (!res.write(chunk)) await new Promise<void>((r) => { res.once('drain', () => r()); res.once('close', () => r()); });
+      }
+      res.end();
+    },
+  });
+  // ---- Visual comparison + HTML / asset differences (screenshots taken by a real browser; never made up)
+  add({ method: 'get', path: '/api/changes/captures/status', permission: 'crawls.view', description: 'Whether page captures can run here (browser, memory), watched pages, recent capture jobs', handle: (req) => captures.status(actorOf(req)) });
+  add({ method: 'post', path: '/api/changes/captures', permission: 'crawls.run', status: 202, description: 'Capture screenshots + rendered HTML of pages of this website (body: urls ≤ 20, viewports: ["desktop","mobile"])', handle: (req) => captures.request(actorOf(req), req.body ?? {}) });
+  add({ method: 'get', path: '/api/changes/captures/jobs/:id', permission: 'crawls.view', description: 'Progress of a capture job', handle: (req) => captures.job(actorOf(req), prm(req, 'id')) });
+  add({ method: 'put', path: '/api/changes/captures/watch', permission: 'crawls.configure', description: 'Pages captured after every crawl, so later changes have a "before" (body: urls ≤ 50)', handle: (req) => captures.setWatch(actorOf(req), req.body?.urls) });
+  add({ method: 'get', path: '/api/changes/captures/pages', permission: 'crawls.view', description: 'Pages that have captures', handle: (req) => captures.pages(actorOf(req)) });
+  add({ method: 'get', path: '/api/changes/captures', permission: 'crawls.view', description: 'Captures of one page (query: url), newest first', handle: (req) => captures.list(actorOf(req), String(req.query.url ?? '')) });
+  add({
+    method: 'get', path: '/api/changes/captures/:id/:kind', permission: 'crawls.view', description: 'A capture\'s screenshot (image), pixel-difference image (diff) or rendered HTML (html)', raw: true,
+    handle: async (req) => {
+      const kind = prm(req, 'kind');
+      if (kind !== 'image' && kind !== 'diff' && kind !== 'html') throw badRequest('kind must be image, diff or html.');
+      const f = await captures.file(actorOf(req), prm(req, 'id'), kind);
+      const res = req.res!;
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      if (kind === 'html') {
+        // Served as a download of plain text: the captured page's own HTML must never run on this origin.
+        const { gunzipSync } = await import('node:zlib');
+        const { readFile } = await import('node:fs/promises');
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${f.name.replace(/\.gz$/, '').replace(/[^\w.-]/g, '_')}.txt"`);
+        res.status(200).send(gunzipSync(await readFile(f.path)));
+        return;
+      }
+      res.setHeader('Content-Type', f.type);
+      res.status(200).sendFile(f.path);
+    },
+  });
+  add({ method: 'get', path: '/api/changes/compare', permission: 'crawls.view', description: 'Previous vs current capture of a page: visual, rendered DOM diff, SEO fields, CSS / JS changes (query: url, viewport, from, to)', handle: (req) => captures.compare(actorOf(req), { url: String(req.query.url ?? ''), viewport: optStr(req.query.viewport), from: optStr(req.query.from), to: optStr(req.query.to) }) });
+  add({ method: 'get', path: '/api/changes/compare/asset', permission: 'crawls.view', description: 'Line diff of one CSS / JS file between two captures (query: url, from, to, key)', handle: (req) => captures.assetDiff(actorOf(req), { url: String(req.query.url ?? ''), from: String(req.query.from ?? ''), to: String(req.query.to ?? ''), key: String(req.query.key ?? '') }) });
+  add({ method: 'post', path: '/api/shopify/theme-snapshots', permission: 'shopify.theme', description: 'Read a theme\'s source files (read-only, authorised connection) and keep them as a snapshot for comparison (body: themeId)', handle: (req) => shopify.themeSnapshot(actorOf(req), req.body?.themeId) });
+  add({ method: 'get', path: '/api/shopify/theme-snapshots', permission: 'shopify.theme', description: 'Theme source snapshots, newest first', handle: (req) => shopify.themeSnapshots(actorOf(req)) });
+  add({ method: 'get', path: '/api/shopify/theme-snapshots/diff', permission: 'shopify.theme', description: 'Theme files added / removed / changed between two snapshots; with file, its line diff (query: from, to, file)', handle: (req) => shopify.themeSnapshotDiff(actorOf(req), String(req.query.from ?? ''), String(req.query.to ?? ''), optStr(req.query.file)) });
   add({ method: 'get', path: '/api/lighthouse/status', permission: 'crawls.view', description: 'Whether Lighthouse / rendered checks can run on this server', handle: (req) => lighthouse.status(actorOf(req)) });
   add({ method: 'get', path: '/api/lighthouse/runs', permission: 'crawls.view', description: 'Recent Lighthouse audits and rendered checks', handle: (req) => lighthouse.list(actorOf(req)) });
   add({ method: 'post', path: '/api/lighthouse/runs', permission: 'crawls.run', status: 202, description: 'Queue Lighthouse audits (body: url, formFactors: ["mobile","desktop"], render)', handle: (req) => lighthouse.start(actorOf(req), req.body ?? {}) });

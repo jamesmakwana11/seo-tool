@@ -1,0 +1,315 @@
+{
+  "products": 25000,
+  "site": {
+    "ready": true,
+    "url": "http://127.0.0.1:38557/",
+    "products": 25000,
+    "collections": 250,
+    "collectionPages": 1250,
+    "articles": 100
+  },
+  "concurrency": 16,
+  "budgetMB": 450,
+  "heapLimitMB": 336,
+  "status": "completed",
+  "outcome": "completed",
+  "wallMs": 110659,
+  "phasesAtMs": {
+    "crawling": 253,
+    "checks": 33633,
+    "text_analysis": 33884,
+    "analysing": 43408,
+    "saving": 102418
+  },
+  "timings": {
+    "checksMs": 114,
+    "crawlMs": 33570,
+    "robotsMs": 1,
+    "sitemapMs": 1413,
+    "textMs": 9264,
+    "crawlProcessMs": 43233,
+    "indexMs": 14417,
+    "heapAfterIndexMB": 82,
+    "textCoreReadMs": 214,
+    "heapAfterTextCoreMB": 90,
+    "wholeCrawlMs": 1295,
+    "heapAfterWholeCrawlMB": 93,
+    "heapAfterReleaseMB": 55,
+    "batchAnalysisMs": 41020,
+    "heapAfterBatchesMB": 83,
+    "coverageRowsMs": 1632,
+    "analysisTotalMs": 58950
+  },
+  "coverage": {
+    "discovered": 53491,
+    "queued": 0,
+    "waiting": 0,
+    "active": 0,
+    "processed": 26632,
+    "succeeded": 26507,
+    "failed": 125,
+    "robots": 0,
+    "depthLimited": 0,
+    "pageLimited": 0,
+    "excluded": 26735,
+    "excludedBy": {
+      "cart_account_or_app_path": 2,
+      "collection_scoped_product_path": 24992,
+      "sort_filter_search_parameter": 1741
+    },
+    "notProcessed": 0,
+    "sitemapUrls": 25235,
+    "pagesPerMin": 5685,
+    "politeness": {
+      "avgLatencyMs": 13,
+      "crawlDelayMs": 0,
+      "delayMs": 0,
+      "floorMs": 0,
+      "limitedAnswers": 0,
+      "rateLimited": 0,
+      "retries": 0,
+      "slowDowns": 0,
+      "unavailable503": 0,
+      "waitedMs": 0
+    },
+    "requests": 27385,
+    "requestsPerMin": 38300,
+    "lastRequestAt": "2026-10-16T07:45:04.355Z",
+    "checks": {
+      "done": 344,
+      "groups": {
+        "botProbes": {
+          "done": 5,
+          "total": 5
+        },
+        "external": {
+          "done": 0,
+          "total": 0
+        },
+        "images": {
+          "done": 300,
+          "total": 300
+        },
+        "links": {
+          "done": 21,
+          "total": 21
+        },
+        "samples": {
+          "done": 18,
+          "total": 18
+        },
+        "scripts": {
+          "done": 0,
+          "total": 0
+        }
+      },
+      "total": 344
+    }
+  },
+  "rows": 53491,
+  "textCore": {
+    "ok": true
+  },
+  "peaksMB": {
+    "nodeRss": 303,
+    "nodeHeap": 159,
+    "go": 59,
+    "textCore": 19,
+    "total": 303
+  },
+  "runMemory": {
+    "nodeRssMB": 287,
+    "nodeHeapMB": 102.8,
+    "totalMB": 287,
+    "peakTotalMB": 287,
+    "budgetMB": 450
+  },
+  "issues": {
+    "total": 48,
+    "byCheck": {
+      "TECH-SITEMAP": 1,
+      "TECH-4XX": 153,
+      "TECH-DISCONTINUED": 125,
+      "TECH-DUPLICATE": 1897,
+      "ONP-TPL-HOME": 1,
+      "AEO-ENTITY": 1,
+      "GEO-EEAT": 101,
+      "AIC-01": 14883,
+      "TECH-BROKEN-INTERNAL": 630,
+      "TECH-THIN": 14977,
+      "TECH-SCHEMA-PRESENCE": 251,
+      "PERF-IMAGES": 150,
+      "ONP-TITLE": 25238,
+      "ONP-META": 2305,
+      "ONP-H1": 2076,
+      "ONP-BREADCRUMBS": 250,
+      "ONP-IMAGES": 1081,
+      "ONP-TPL-COLLECTION": 250,
+      "ONP-TPL-PRODUCT": 24875,
+      "AEO-ANSWER-BLOCK": 1,
+      "AEO-FAQ": 25125,
+      "AEO-EXTRACTABILITY": 1,
+      "GEO-STRUCTURE": 3,
+      "AIC-02": 610,
+      "AIC-09": 14713,
+      "GEO-FRESHNESS": 100,
+      "AIC-05": 100
+    }
+  },
+  "newIssues": 48,
+  "dupTitleSample": [
+    [
+      "http://127.0.0.1:38557/collections/vegetable-choppers-0",
+      "Vegetable Choppers | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:38557/collections/shoe-racks-11",
+      "Shoe Racks | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:38557/collections/spice-racks-10",
+      "Spice Racks | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:38557/collections/yoga-mats-14",
+      "Yoga Mats | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:38557/collections/storage-boxs-1",
+      "Storage Boxs | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:38557/collections/cutting-boards-16",
+      "Cutting Boards | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ]
+  ],
+  "pagesApiMs": {
+    "first": 29,
+    "last": 39,
+    "filterDupTitle": 19,
+    "search": 43,
+    "total": 53491,
+    "dupTitleRows": 2407,
+    "searchRows": 4028
+  },
+  "coverageMs": 0,
+  "coverageSummary": {
+    "sitemapNotCrawled": 0,
+    "failed": 125,
+    "redirects": 125,
+    "nearGroups": 1,
+    "titleGroups": 807,
+    "orphanCandidates": 0
+  },
+  "exportCsv": {
+    "ms": 1041,
+    "bytes": 39040260,
+    "rows": 53492
+  },
+  "warnings": [],
+  "changeMonitorFirst": {
+    "afterCompletedMs": 6509,
+    "summary": {
+      "runId": "CRL-0001",
+      "snapshotId": "20261016T074430Z-CRL-0001",
+      "crawlType": "full",
+      "outcome": "completed",
+      "observedAt": "2026-10-16T07:44:30.610Z",
+      "finishedAt": "2026-10-16T07:46:14.602Z",
+      "urls": 53491,
+      "baseline": null,
+      "baselineEffect": "created",
+      "baselineNote": "This full crawl is now the baseline: changes are reported from the next crawl.",
+      "notes": [
+        "No baseline to compare with yet."
+      ],
+      "compareMs": 6584
+    },
+    "diskBytes": 20459423
+  },
+  "secondCrawl": {
+    "rssBeforeMB": 304,
+    "heapBeforeMB": 114,
+    "status": "completed",
+    "outcome": "resource_stopped",
+    "outcomeReason": "Stopped at 25,077 pages: that is as many as this API server can analyse with its memory (Node.js heap limit 336 MB). The pages not fetched are listed as \"page limit reached\". Give the API more memory (see DEPLOYMENT.md) to crawl more pages.",
+    "processed": 25077,
+    "wallMs": 125473,
+    "peaksMB": {
+      "nodeRss": 427,
+      "nodeHeap": 240,
+      "go": 58,
+      "textCore": 19,
+      "total": 427
+    }
+  },
+  "changeMonitorSecond": {
+    "crawlWallMs": 126237,
+    "afterCompletedMs": 5335,
+    "compareMs": 5483,
+    "urls": 53402,
+    "counts": {
+      "new": 0,
+      "removed": 0,
+      "failed": 0,
+      "changed": 0,
+      "unchanged": 25190,
+      "unchecked": 28301,
+      "suspected": 0,
+      "byField": {}
+    },
+    "baselineEffect": "kept",
+    "peaksMB": {
+      "nodeRss": 427,
+      "nodeHeap": 240,
+      "go": 58,
+      "textCore": 19,
+      "total": 427
+    },
+    "listPage100Ms": 215,
+    "listTotal": 25190,
+    "searchMs": 217,
+    "searchRows": 4028,
+    "exportCsv": {
+      "ms": 329,
+      "bytes": 16774703
+    },
+    "diskBytes": 30844730
+  }
+}

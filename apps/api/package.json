@@ -31,6 +31,7 @@
     "zod": "3.24.1"
   },
   "optionalDependencies": {
-    "lighthouse": "^13.5.0"
+    "lighthouse": "^13.5.0",
+    "playwright-core": "1.64.0"
   }
 }

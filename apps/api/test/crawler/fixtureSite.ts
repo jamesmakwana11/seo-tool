@@ -55,13 +55,17 @@ export interface FixtureOptions {
   orphanInSitemap: boolean;
   /** /collections/x/products/y pages canonicalize to themselves instead of /products/y. */
   scopedSelfCanonical: boolean;
+  /** Paths answering 503 Service Unavailable (a temporary failure, not a removal). */
+  unavailable: string[];
+  /** Theme stylesheet version: above 1, base.css gets ?v=N and a different background colour (visual / asset changes). */
+  themeVersion: number;
 }
 
 export const defaultFixtureOptions = (): FixtureOptions => ({
   noindex: [], xRobotsNoindex: [], deletedProducts: [], missingCanonical: [], duplicateTitle: [], thinCollections: [], longTitle: [], missingMeta: [],
   multipleH1: [], missingAlt: [], largeImage: [], noOffers: [], productTemplateNoOffers: false, priceMismatch: {}, reviewMarkupWithoutReviews: [],
   robotsDisallowCollections: false, robotsBlockGptBot: false, aiBoilerplate: [], ymylClaim: [], newHeadScriptOnProducts: false, linkErrorRoutes: false,
-  slowMs: 1500, ssrfRedirect: false, malformedPage: false, orphanInSitemap: false, scopedSelfCanonical: false,
+  slowMs: 1500, ssrfRedirect: false, malformedPage: false, orphanInSitemap: false, scopedSelfCanonical: false, unavailable: [], themeVersion: 1,
 });
 
 interface Product { handle: string; name: string; price: number; collection: string; material: string; size: string; use: string; detail: string; more: string; review: string }
@@ -191,7 +195,7 @@ ${robots}
 <meta property="og:type" content="${p.ogType ?? 'website'}">
 <meta property="og:image" content="${origin}/cdn/img/og-default.webp">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="/cdn/shop/t/1/assets/base.css">
+<link rel="stylesheet" href="/cdn/shop/t/1/assets/base.css${opts.themeVersion > 1 ? `?v=${opts.themeVersion}` : ''}">
 ${headScripts}
 ${p.headExtra ?? ''}
 ${p.jsonld.map((j) => `<script type="application/ld+json">${JSON.stringify(j)}</script>`).join('\n')}
@@ -387,6 +391,7 @@ ${a.sections.map(([h, t]) => `<h2>${esc(h)}</h2><p>${esc(t)}</p>`).join('\n')}
     const method = req.method ?? 'GET';
     const path = u.pathname.replace(/\/+$/, '') || '/';
     const xr = (p: string): Record<string, string> => (opts.xRobotsNoindex.includes(p) ? { 'x-robots-tag': 'noindex' } : {});
+    if (opts.unavailable.includes(path)) return send(res, 503, '<h1>Service Unavailable</h1>', {}, method);
     if (path === '/robots.txt') return send(res, 200, robotsTxt(), { 'content-type': 'text/plain' }, method);
     if (path === '/sitemap.xml') return send(res, 200, sitemapXml(), { 'content-type': 'application/xml' }, method);
     if (path.startsWith('/cdn/img/')) {
@@ -394,6 +399,11 @@ ${a.sections.map(([h, t]) => `<h2>${esc(h)}</h2><p>${esc(t)}</p>`).join('\n')}
       const size = big ? 300 * 1024 : 18 * 1024;
       res.writeHead(200, { 'content-type': big ? 'image/jpeg' : 'image/webp', 'content-length': String(size) });
       return res.end(method === 'HEAD' ? undefined : Buffer.alloc(size, 1));
+    }
+    if (path === '/cdn/shop/t/1/assets/base.css' && opts.themeVersion > 1) {
+      const css = `body{margin:0;font-family:sans-serif;background:${['#ffffff', '#fff6d6', '#e8f4ff'][opts.themeVersion % 3]}}h1{color:#1d2b3a;font-size:2rem}.price{font-weight:700;color:#0a6b3d}`;
+      res.writeHead(200, { 'content-type': 'text/css', 'content-length': String(Buffer.byteLength(css)) });
+      return res.end(method === 'HEAD' ? undefined : css);
     }
     if (path.startsWith('/cdn/shop/') || path.startsWith('/apps/')) {
       const body = '/* asset */'.padEnd(4000, ' ');

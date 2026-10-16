@@ -97,10 +97,44 @@ const schema = z.object({
   CRAWLER_MEMORY_BUDGET_MB: z.coerce.number().int().min(128).max(65536).optional(),
   /** Heap limit of the Go crawler (MB). Default: 35% of the budget, at most 160. */
   CRAWLER_GO_MEMORY_MB: z.coerce.number().int().min(32).max(8192).optional(),
+  /** Stop a crawl (outcome partial, results kept) when no request has been answered for this many minutes. */
+  CRAWLER_STALL_MINUTES: z.coerce.number().int().min(3).max(240).default(20),
   /** Pages a smart crawl may fetch (its priority budget). */
   CRAWLER_SMART_MAX_PAGES: z.coerce.number().int().min(10).max(1_000_000).default(500),
   /** Finished crawls whose page rows stay available for paging and export (older ones are deleted from disk). */
   CRAWLER_KEEP_RESULTS: z.coerce.number().int().min(1).max(50).default(3),
+  /** Change Monitor: compare every crawl with the last valid crawl (snapshots on disk, no database). */
+  CHANGE_MONITOR_ENABLED: bool(true),
+  /**
+   * Folder for Change Monitor snapshots (default: the system temp folder /sentinel-changes). On Render the filesystem is
+   * EPHEMERAL: history is lost on every restart / deploy unless this points at a mounted persistent disk.
+   */
+  CHANGE_SNAPSHOT_DIR: z.string().optional(),
+  /** Crawls whose snapshot and change list are kept (the baseline is always kept). */
+  CHANGE_SNAPSHOT_KEEP: z.coerce.number().int().min(1).max(100).default(5),
+  /** Snapshots older than this are deleted (the baseline is always kept). */
+  CHANGE_SNAPSHOT_MAX_AGE_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
+  /** Visual comparison: screenshots + rendered HTML of selected / changed pages in a real browser (Playwright + Chromium). */
+  CHANGE_CAPTURE_ENABLED: bool(true),
+  /** After each crawl, capture the watched pages and the most important changed pages (default: on, except in tests). */
+  CHANGE_CAPTURE_AFTER_CRAWL: z.enum(['true', 'false', '1', '0']).optional().transform((v) => (v === undefined ? undefined : v === 'true' || v === '1')),
+  /** Changed pages captured after a crawl (0 = only the watched pages). */
+  CHANGE_CAPTURE_CHANGED_PAGES: z.coerce.number().int().min(0).max(50).default(5),
+  /** Viewports captured after a crawl: desktop, mobile or both (comma-separated). */
+  CHANGE_CAPTURE_VIEWPORTS: z.string().default('desktop'),
+  /** Captures kept per page and viewport. */
+  CHANGE_CAPTURE_KEEP: z.coerce.number().int().min(2).max(20).default(3),
+  /** Pages with captures kept (least recently captured pages are dropped first). */
+  CHANGE_CAPTURE_MAX_PAGES: z.coerce.number().int().min(1).max(5000).default(200),
+  /** Screenshot height limit (px): taller pages are cut there. */
+  CHANGE_CAPTURE_MAX_HEIGHT: z.coerce.number().int().min(900).max(20000).default(6000),
+  /** Pages captured at the same time in the one browser (1–2). */
+  CHANGE_CAPTURE_CONCURRENCY: z.coerce.number().int().min(1).max(2).default(1),
+  /** Free memory (within the crawl memory budget) a capture job needs; refused below it. */
+  CHANGE_CAPTURE_MIN_FREE_MB: z.coerce.number().int().min(100).max(8192).default(300),
+  CHANGE_CAPTURE_TIMEOUT_MS: z.coerce.number().int().min(5000).max(180000).default(45000),
+  /** Hosts besides the website whose CSS / JS files are kept for asset comparison (comma-separated). */
+  CHANGE_CAPTURE_ASSET_HOSTS: z.string().default('cdn.shopify.com'),
   /** Keep the crawler's raw result files after analysis (debugging only). */
   CRAWLER_KEEP_WORK_FILES: bool(false),
   /** Lighthouse lab audits and rendered-page checks (need the lighthouse package and a Chrome / Chromium binary). */

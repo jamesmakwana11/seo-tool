@@ -1,6 +1,6 @@
 # Backend status — Phase 2
 
-_Last updated: 14 Oct 2026 · Phase 2 gate evaluated: **PASS with documented limitations** · Storage: **temporary in-memory** · **No database work has been started** — Phase 3 waits for your explicit authorization._
+_Last updated: 16 Oct 2026 · Phase 2 gate evaluated: **PASS with documented limitations** · Storage: **temporary in-memory** · **No database work has been started** — Phase 3 waits for your explicit authorization._
 
 ## 1. What exists
 
@@ -18,6 +18,8 @@ _Last updated: 14 Oct 2026 · Phase 2 gate evaluated: **PASS with documented lim
 | Issue workflow | Task management was removed (14 Oct 2026). Issues move Assigned → In progress → Fixed via `POST /api/issues/:id/status`; only `POST /api/issues/:id/verify` (a system re-check) can verify. An internal work record per issue still carries SLA, verification history and regression reopen — it has no API or UI | `src/services/tasks.ts` |
 | Crawler + analysis | **Go crawler** (`services/crawler-go`, child process, NDJSON protocol v1): sitemaps incl. index + gzip, URL normalisation and dedup, bounded queues, retries, adaptive throttle, robots, SSRF guard, cancellation, progress; **Rust text core** (`services/textcore-rs`, binary frame protocol v1): fingerprints, duplicate titles / meta / content, near-duplicate candidates. Node streams the crawl files through 54 analyzers in batches (identical findings to the Node pipeline, parity-tested), memory budget across all three processes, outcomes completed / partial / cancelled / failed / resource-stopped, server-side paged results and streamed exports. The built-in Node crawler remains for re-verification and as a fallback | `src/gocrawl/`, `src/crawler/`, `src/analysis/`, `src/results/`, `src/services/crawls.ts` |
 | Lighthouse | Real Lighthouse 13 mobile / desktop lab audits and a rendered-vs-raw HTML check of one URL, in a separate process, one at a time, memory-gated, own-site URLs only; reports what is missing (package, browser) | `src/lighthouse/`, `runtime/lighthouse-runner.mjs` |
+| Change Monitor | Every crawl compared with the baseline (last valid crawl) in a streamed, memory-bounded diff: new / removed (confirmed 404·410, suspected when only no longer found) / failed (never "removed") / changed / unchanged / unchecked, 14 fields with old / new values and evidence; partial / cancelled / resource-stopped crawls never replace the baseline; versioned gzip NDJSON snapshots on disk with retention; server-paged lists, streamed CSV / JSON | `src/changes/` (`snapshot.ts`, `diff.ts`, `store.ts`, `service.ts`) |
+| Page comparisons | Screenshots desktop / mobile in Playwright + Chromium (separate process, one browser per server, memory-gated, own-site URLs, private addresses blocked), pixel diff, rendered-DOM diff, CSS / JS files as downloaded, after-crawl captures of watched + changed pages; read-only Shopify theme source snapshots and diffs | `src/changes/capture.ts`, `runtime/capture-runner.mjs`, `src/lib/diff.ts`, `src/shopify/themeSnapshots.ts` |
 | Shopify SEO editor | OAuth (HMAC, single-use state, scope check; token in memory only) or env token; URL → product / collection / page / article; drafts from existing text only, validation, manual edits; preview with live values + conflicts, confirmation phrase, batch apply with rate-limit handling and per-field results, read-back verification, storefront re-audit; H1 source detection; theme proposals (diff, backup, unpublished themes only, never publishes) | `src/shopify/` |
 | Connectors | Connection tests for all 14 PDF §15 sources + delivery channels; honest states (not configured / credentials missing / failed / connected / partial / rate limited / sync failed) | `src/connectors/` |
 | Data syncs | GA4 → page value + PDF §3.1 tiers; Search Console → visibility, page impressions/clicks, striking distance; CrUX → Core Web Vitals + PERF-CRUX issues. Run only after a passed connection test | `src/sync/` |
@@ -25,7 +27,7 @@ _Last updated: 14 Oct 2026 · Phase 2 gate evaluated: **PASS with documented lim
 | Custom rules & QA gate | Rule builder validation (ReDoS guard), 30-day dry run required before enabling, LLM-judged rules only with a provider, rules applied to crawled page text, QA-gate holds with human sign-off | `src/services/rules.ts` |
 | Reports | Daily digest / weekly / monthly from live state, export (JSON/CSV/Markdown), send through configured channels | `src/services/reports.ts` |
 | Jobs | In-process IST scheduler: crawl schedules, 00:30 escalations + 24h auto-allocation + SLA notices, 01:00 connector syncs, 08:00 digest, Monday weekly, monthly | `src/jobs/` |
-| HTTP | 120 routes, request ids, consistent error body `{ error: { code, message, details }, requestId }`, Shopify webhook with HMAC check, diagnostics ring buffer | `src/http/` |
+| HTTP | 135 routes, request ids, consistent error body `{ error: { code, message, details }, requestId }`, Shopify webhook with HMAC check, diagnostics ring buffer | `src/http/` |
 
 Configuration: every variable is documented in `apps/api/.env.example` (names only, no values). Secrets are read from the
 environment only, refused as UI settings, redacted from logs, errors and stored results.
@@ -55,7 +57,28 @@ VITE_API_MODE=mock VITE_ROUTER=memory VITE_HOSTED_REVIEW=true npx vite build --o
 node scripts/package-review.mjs <dir>
 ```
 
-## 3. Verification (last run 15 Oct 2026, after the Go/Rust crawler, Lighthouse and Shopify SEO editor)
+## 3. Verification
+
+### 16 Oct 2026 — crawl speed / reliability, Change Monitor, visual and code comparison
+
+| Suite | Result |
+|---|---|
+| Go crawler: `go vet`, `go test -count=1 ./...` — 21 tests, incl. new: coalesced 429/503 back-off, per-host pacing of other hosts, a rate-limited site settling on a moderate gap, capped facet probes + per-group check progress, stall warning in every phase, auxiliary checks done once per target, built-in fallback roots, certificate errors not retried | ✅ all pass (108 s) |
+| Rust text core: `cargo test` | ✅ all pass |
+| `apps/api` — 43 files, 435 tests, incl. new: bridge stall → partial; Change Monitor end to end on the Go **and** the Node engine (title, meta, H1, canonical, indexability, structured data, content, images / alt, 404 → removed, 503 → failed not removed, carry-over of the last good record); partial / cancelled / failed crawls preserving the baseline; smart-crawl merge; suspected removals; robots / redirect / status changes; truncated pages → suspected; retention and a deleted baseline file; HTTP API paging, page-size cap, filters, CSV / JSON exports, issues per URL; real-Chromium captures (no previous screenshot → said so, pixel diff, DOM diff, SEO fields, CSS diff, after-crawl captures, files served only signed in, HTML served as text, other sites refused), no-browser state; read-only theme snapshots and diffs (no write / publish calls, token not on disk); line-diff bounds | ✅ 434 pass, 1 skipped (opt-in in-process stress test) |
+| `packages/shared` 85 tests · `apps/web` 38 tests (incl. diff rendering, side-by-side + difference view, "never made up" state) | ✅ all pass |
+| Typecheck api / web / shared · ESLint web (0 warnings) · `npm run build:prod` (bundle syntax-checked, started with `NODE_ENV=production`: `/healthz` 200, change APIs 401 without sign-in) | ✅ clean |
+| Route smoke (in-browser DEMO adapter): 59 routes × 3 roles × 3 widths = 531 visits + 5 interaction checks | ✅ 0 failures |
+
+Measured on this sandbox (synthetic store on 127.0.0.1, `node --max-old-space-size=288` as in the Docker image, 450 MB budget):
+
+| Run | Result |
+|---|---|
+| 25,000 products, two full crawls in one process (`docs/measurements/go-crawl-25k-twice-change-monitor.json`) | 26,633 pages / 53,491 URL rows, 111 s, ~5,700 pages/min; peaks: API RSS 303 MB (heap 159), Go 59 MB, Rust 19 MB. First crawl became the baseline in 6.6 s. The second crawl stopped at 25,077 pages (*resource-stopped*, see limitations): compared in 5.5 s (53,402 URLs, 1,556 unreached pages *unchecked*, none *removed*), baseline kept. Change list page 100: 215 ms; search 217 ms; CSV export of all records 329 ms. History on disk 31 MB |
+| 50,000 products (`go-crawl-50k-change-monitor.json`) vs the same run with `CHANGE_MONITOR_ENABLED=false` (`…-off.json`) | 53,234 pages / 106,966 rows, completed, ~4,060 pages/min both; peak API RSS 398 vs 412 MB, heap 238 vs 239 MB (no measurable memory cost); analysis 109.8 vs 102.4 s (+7 %, snapshot writing); baseline written 12.7 s after the crawl; 40 MB on disk |
+| Change comparison alone, 50,000 URLs with 5,000 changed, `--max-old-space-size=160` (`test/changes/scale.bench.ts`) | 25 s, peak heap 69 MB, RSS 179 MB; list page 58 ms, full search 269 ms, CSV export (15 MB) 440 ms |
+
+### 15 Oct 2026 — after the Go/Rust crawler, Lighthouse and Shopify SEO editor
 
 | Suite | Result |
 |---|---|
@@ -113,6 +136,21 @@ test; reports sent with no configured channel claim no delivery; crawls refuse t
 - Log-file ingestion (optional in the PDF) is not built.
 - API gaps carried from Phase 1: no task title/description edit endpoint, no per-view task count endpoint, link-prospect status is
   read-only, report history is regenerated rather than snapshotted.
+
+**Change Monitor / comparisons (16 Oct 2026):**
+- History lives in `CHANGE_SNAPSHOT_DIR` (default: temp folder). On Render it is lost on every restart / redeploy unless a persistent
+  disk is mounted and the variable points at it; the UI says so. Run ids restart with the server, so snapshots are keyed by start time + id.
+- Screenshots need Chromium (`INSTALL_CHROMIUM=true`, ≥ 1 GB RAM). On a 512 MB plan without it, every visual view says
+  "not available on this server" and why. The pixel-difference image exists only for consecutive captures of one page / viewport.
+- A previous screenshot exists only if the page was captured before the change (watched pages are captured after every crawl).
+- CSS / JS comparison covers the files a capture downloaded (≤ 25 files, ≤ 1.5 MB each) from the site and `cdn.shopify.com`.
+- Theme source is compared only through an authorised connection; it has never been run against a real store (mock Shopify only).
+- Internal-link added / removed lists cover the first 150 links of each version in page order (counts and change detection cover all).
+- Memory between crawls: after a 26,000-page crawl about 105–115 MB of heap stays in use (in-memory site inventory, issues, crawl
+  state — temporary storage, unchanged by this work). With the 288 MB heap of the Docker image, a second 26,000-page crawl in the same
+  process completed in 1 of 4 runs and stopped 0.2–8 % early as *resource-stopped* in 3 (one of those with the Change Monitor off);
+  such a crawl is compared but never replaces the baseline. Raise `NODE_OPTIONS=--max-old-space-size` with the plan size for repeated
+  large crawls.
 
 **Multi-website limits:** websites added through the API live in memory and disappear on restart (with all their data); the primary
 website's domain comes from server configuration; a website's domain cannot be changed after it is added; crawling any non-loopback

@@ -31,6 +31,7 @@ import type { LinkStatus, ParsedPage, SiteContext } from '../crawler/types';
 import { isCollectionTagPage, normalizeUrl, pathOf, sameUrl, scopedProductCanonical, urlKey } from '../crawler/url';
 import { FileResultStore } from '../results/store';
 import { gzWriter, readNdjsonGz, type ReadStats } from './files';
+import { SNAPSHOT_TEXT_CHARS, snapFromPage, snapFromRow } from '../changes/snapshot';
 import { enrichLite, Interner, litePage, toParsedPage, type GoPage, type PageRecord, type UrlRecord } from './convert';
 import { FindingMerger } from './merge';
 
@@ -67,6 +68,8 @@ export interface AnalyzeInput {
   collectTexts?: boolean | number;
   /** Only build page rows (cancelled / failed crawls are never analysed). */
   rowsOnly?: boolean;
+  /** Write the Change Monitor snapshot (default true). */
+  snapshot?: boolean;
   batchSize?: number;
   onPhase?: (phase: 'analysing' | 'saving') => void;
   /** Called between batches (memory sampling, progress). */
@@ -84,6 +87,8 @@ export interface AnalyzeOutput {
   store: FileResultStore;
   coverage: CrawlCoverageReport;
   textsFile?: string;
+  /** Compact per-URL snapshot for the Change Monitor (gzip NDJSON of SnapRec). */
+  snapshotFile?: string;
   textsCount: number;
   pages: number;
   timings: Record<string, number>;
@@ -398,6 +403,9 @@ export async function analyzeGoCrawl(input: AnalyzeInput): Promise<AnalyzeOutput
   const merger = new FindingMerger();
   const batchAnalyzers = ANALYZERS.filter((a) => !WHOLE_CRAWL_CHECKS.has(a.checkId));
   const texts = input.collectTexts && !input.rowsOnly ? gzWriter(path.join(input.resultsDir, 'texts.ndjson.gz')) : undefined;
+  // Change Monitor: one compact record per URL, written as the rows are made (never the whole crawl in memory).
+  const snapshotFile = input.snapshot === false ? undefined : path.join(input.resultsDir, 'snapshot.ndjson.gz');
+  const snaps = snapshotFile ? gzWriter(snapshotFile) : undefined;
   const textLimit = input.collectTexts === true ? Number.POSITIVE_INFINITY : typeof input.collectTexts === 'number' ? input.collectTexts : 0;
   let textsCount = 0;
   const lookup = (l: string) => {
@@ -439,6 +447,7 @@ export async function analyzeGoCrawl(input: AnalyzeInput): Promise<AnalyzeOutput
         if (prep && isOkPage(p)) row.uniqueWords = prep.uniqueWords(p);
       }
       store.add(row);
+      if (snaps) await snaps.write(snapFromPage(p, row, SNAPSHOT_TEXT_CHARS));
       if (texts && textsCount < textLimit && p.status === 200 && p.html?.mainText) {
         await texts.write({ url: p.url, template: p.template, text: p.html.mainText.slice(0, 50_000) });
         textsCount++;
@@ -487,7 +496,9 @@ export async function analyzeGoCrawl(input: AnalyzeInput): Promise<AnalyzeOutput
     };
     for (const k of Object.keys(row) as (keyof CrawledUrl)[]) if (row[k] === undefined) delete row[k];
     store.add(row);
+    if (snaps) await snaps.write(snapFromRow(row));
   }
+  await snaps?.close();
   if (s3.missing) readProblems.push('the URL coverage file is missing (the crawler stopped before writing it)');
   else if (s3.truncated) readProblems.push(`the URL coverage file ended early (${s3.truncated})`);
   store.seal();
@@ -495,7 +506,7 @@ export async function analyzeGoCrawl(input: AnalyzeInput): Promise<AnalyzeOutput
 
   if (input.rowsOnly) {
     coverage.note = 'This crawl was not analysed (cancelled or failed); duplicate and orphan reports need a finished crawl.';
-    return { findings: [], evaluatedChecks: [], evaluatedTemplates: {}, notEvaluated: {}, store, coverage, textsCount: 0, pages: s2.lines, timings, readProblems };
+    return { findings: [], evaluatedChecks: [], evaluatedTemplates: {}, notEvaluated: {}, store, coverage, snapshotFile, textsCount: 0, pages: s2.lines, timings, readProblems };
   }
 
   // ---------------------------------------------------------------- merge the page checks of every batch
@@ -514,7 +525,7 @@ export async function analyzeGoCrawl(input: AnalyzeInput): Promise<AnalyzeOutput
   input.log?.info({ pages: s2.lines, timings, slowAnalyzers: Object.fromEntries(slow) }, 'go crawl analysis finished');
   return {
     findings, evaluatedChecks, evaluatedTemplates, notEvaluated, sitemapDiff, snapshot, store, coverage,
-    textsFile: texts ? path.join(input.resultsDir, 'texts.ndjson.gz') : undefined, textsCount, pages: s2.lines, timings, readProblems,
+    textsFile: texts ? path.join(input.resultsDir, 'texts.ndjson.gz') : undefined, snapshotFile, textsCount, pages: s2.lines, timings, readProblems,
   };
 }
 

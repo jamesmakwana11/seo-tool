@@ -31,6 +31,7 @@ const P = {
   AiVisibility: L(() => import('@/pages/modules/AiVisibilityPage')),
   Crawls: L(() => import('@/pages/crawls/CrawlCenterPage')),
   CrawlRun: L(() => import('@/pages/crawls/CrawlRunPage')),
+  Compare: L(() => import('@/pages/crawls/ComparePage')),
   Verification: L(() => import('@/pages/crawls/VerificationPage')),
   Issues: L(() => import('@/pages/issues/IssuesBoardPage')),
   Issue: L(() => import('@/pages/issues/IssueDetailPage')),
@@ -115,6 +116,7 @@ export function AppRoutes() {
         <Route path="modules/ai-visibility" element={ga(P.AiVisibility, 'modules.view')} />
 
         <Route path="crawls" element={g(P.Crawls, 'crawls.view')} />
+        <Route path="crawls/compare" element={g(P.Compare, 'crawls.view')} />
         <Route path="crawls/:id" element={g(P.CrawlRun, 'crawls.view')} />
         <Route path="verification" element={g(P.Verification, 'crawls.view')} />
 
@@ -166,7 +168,7 @@ export function AppRoutes() {
 export const SMOKE_PATHS = [
   '/', '/health', '/search?q=schema', '/notifications', '/profile', '/modules/technical', '/modules/technical/crawlability', '/modules/technical/responses',
   '/modules/technical/canonicals', '/modules/technical/security', '/modules/technical/structured-data', '/modules/performance', '/modules/content', '/modules/onpage',
-  '/modules/offpage', '/modules/offpage/backlinks', '/modules/aeo', '/modules/geo', '/modules/ai-compliance', '/modules/ai-visibility', '/crawls', '/verification',
+  '/modules/offpage', '/modules/offpage/backlinks', '/modules/aeo', '/modules/geo', '/modules/ai-compliance', '/modules/ai-visibility', '/crawls', '/crawls/compare', '/verification',
   '/issues', '/issues/groups', '/issues/exclusions', '/websites', '/websites/overview', '/team/employees', '/team/roles',
   '/team/allocations', '/opportunities', '/opportunities/keywords', '/opportunities/gaps', '/opportunities/briefs', '/opportunities/clusters', '/opportunities/seasonal',
   '/opportunities/link-building', '/opportunities/mentions', '/competitors', '/reports/daily', '/reports/weekly', '/reports/monthly', '/reports/history',

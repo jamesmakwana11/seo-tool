@@ -13,6 +13,10 @@ import type {
   ShopifyApplyBatchResult, ShopifyApplyPreview, ShopifyDraft, ShopifyResolveResult, ShopifyResourceKind, ShopifyResourceList, ShopifyStatus,
   ShopifyTheme, ShopifyThemeFile, ShopifyThemeProposal,
 } from './shopify';
+import type {
+  AssetChange, CaptureJob, CaptureStatus, CaptureViewport, ChangeDetail, ChangeListQuery, ChangeListResponse, ChangeMonitorStatus, ChangeRunSummary, PageCapture,
+  PageComparison, TextDiffView, ThemeDiffResponse, ThemeSnapshotMeta,
+} from './changes';
 
 export interface SessionUser {
   id: string;
@@ -85,7 +89,7 @@ export interface DashboardData {
 export interface ModuleData {
   module: AuditModule;
   score?: number;
-  checks: (CheckDefinition & { lastStatus: 'pass' | 'fail' | 'warn' | 'not_run' | 'unavailable'; openIssues: number; unavailableReason?: string })[];
+  checks: (CheckDefinition & { lastStatus: 'pass' | 'fail' | 'warn' | 'not_run' | 'unavailable' | 'not_built' | 'awaiting_crawl'; openIssues: number; unavailableReason?: string })[];
   issues: Issue[];
   dataNotes: string[];
 }
@@ -317,6 +321,31 @@ export interface SentinelApi {
   listShopifyThemeProposals(): Promise<ShopifyThemeProposal[]>;
   applyShopifyThemeProposal(id: string, confirm: string): Promise<ShopifyThemeProposal>;
   downloadShopifyThemeBackup(id: string): Promise<{ filename: string; mimeType: string; content: string | Blob }>;
+  /** Read-only theme source snapshots through the authorised connection, and their line diffs. */
+  createThemeSnapshot(themeId: string): Promise<ThemeSnapshotMeta>;
+  listThemeSnapshots(): Promise<ThemeSnapshotMeta[]>;
+  diffThemeSnapshots(from: string, to: string, file?: string): Promise<ThemeDiffResponse>;
+
+  // Change Monitor (crawl vs baseline) and page comparisons (screenshots, rendered DOM, CSS / JS)
+  getChangeStatus(): Promise<ChangeMonitorStatus>;
+  /** `id` = crawl id, snapshot id or "latest". */
+  getChangeSummary(id: string): Promise<ChangeRunSummary>;
+  listChanges(id: string, query: ChangeListQuery): Promise<ChangeListResponse>;
+  getChange(id: string, url: string): Promise<ChangeDetail>;
+  /** Open issues on a page of URLs (keys: normalised URLs). */
+  getChangeIssues(urls: string[]): Promise<Record<string, ChangeDetail['issues']>>;
+  exportChanges(id: string, format: 'csv' | 'json', query: ChangeListQuery): Promise<{ filename: string; mimeType: string; content: string | Blob }>;
+  getCaptureStatus(): Promise<CaptureStatus>;
+  requestCaptures(input: { urls: string[]; viewports: CaptureViewport[] }): Promise<CaptureJob>;
+  getCaptureJob(id: string): Promise<CaptureJob>;
+  setCaptureWatch(urls: string[]): Promise<string[]>;
+  listCapturePages(): Promise<{ url: string; lastAt: string; captures: number }[]>;
+  listCaptures(url: string): Promise<PageCapture[]>;
+  /** A capture's screenshot or pixel-difference image (PNG). */
+  getCaptureImage(id: string, kind: 'image' | 'diff'): Promise<Blob>;
+  downloadCaptureHtml(id: string): Promise<{ filename: string; mimeType: string; content: string | Blob }>;
+  compareCaptures(input: { url: string; viewport: CaptureViewport; from?: string; to?: string }): Promise<PageComparison>;
+  getCaptureAssetDiff(input: { url: string; from: string; to: string; key: string }): Promise<{ key: string; from?: string; to?: string; diff: TextDiffView; note: string; asset?: AssetChange }>;
   listSchedules(): Promise<CrawlSchedule[]>;
   updateSchedule(id: string, input: { cron?: string; enabled?: boolean }): Promise<CrawlSchedule>;
   listVerifications(): Promise<VerificationAttempt[]>;

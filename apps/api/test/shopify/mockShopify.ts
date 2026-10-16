@@ -139,6 +139,19 @@ export function createMockShopify() {
         const content = t?.files.get(name);
         return { theme: t ? { files: { nodes: content === undefined ? [] : [{ filename: name, checksumMd5: null, size: content.length, body: { content } }] } } : null };
       }
+      case 'SentinelThemeFileList': {
+        const t = themes.find((x) => x.id === v.id);
+        if (!t) return { theme: null };
+        const names = [...t.files.keys()].sort();
+        const start = v.after ? Number(v.after) : 0;
+        const slice = names.slice(start, start + 250);
+        return { theme: { files: { nodes: slice.map((f) => ({ filename: f, size: t.files.get(f)!.length, checksumMd5: null })), pageInfo: { hasNextPage: start + 250 < names.length, endCursor: String(start + 250) } } } };
+      }
+      case 'SentinelThemeFiles': {
+        const t = themes.find((x) => x.id === v.id);
+        if (!t) return { theme: null };
+        return { theme: { files: { nodes: (v.f as string[]).filter((f) => t.files.has(f)).map((f) => ({ filename: f, body: { content: t.files.get(f) } })) } } };
+      }
       case 'SentinelThemeWrite': {
         const t = themes.find((x) => x.id === v.themeId)!;
         for (const f of v.files as { filename: string; body: { value: string } }[]) t.files.set(f.filename, f.body.value);

@@ -16,6 +16,7 @@ import { describeCron, nextRuns, parseCron } from '@/components/crawls/cron';
 import { fmtDuration } from '@/components/crawls/format';
 import { CrawlProgress, LiveCrawlForm, TemporaryResultsNote } from '@/components/crawls/LiveCrawl';
 import { LighthousePanel } from '@/components/crawls/LighthousePanel';
+import { ChangeMonitorPanel } from '@/components/crawls/ChangeMonitor';
 import { fmtDateTime, fmtNum, fmtRelative } from '@/lib/format';
 
 const isActive = (r: CrawlRun) => r.status === 'running' || r.status === 'queued';
@@ -40,6 +41,7 @@ export default function CrawlCenterPage() {
       />
       <div className="space-y-5">
         <LiveCrawlPanel running={running} latest={latestLive} />
+        {API_MODE !== 'mock' && <ChangeMonitorPanel />}
         <StartCrawlPanel running={running} loading={q.isLoading} />
         <LighthouseSection />
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

@@ -655,7 +655,22 @@ export interface CrawlCoverageCounts {
   notProcessed: number;
   sitemapUrls: number;
   pagesPerMin: number;
-  politeness?: { delayMs: number; floorMs?: number; crawlDelayMs?: number; slowDowns: number; retries: number; rateLimited?: number; waitedMs?: number; avgLatencyMs?: number };
+  politeness?: {
+    delayMs: number; floorMs?: number; crawlDelayMs?: number; slowDowns: number; retries: number; rateLimited?: number; waitedMs?: number; avgLatencyMs?: number;
+    /** 503 answers from the site (rate limiting / overload). */
+    unavailable503?: number;
+    /** 429 + 503 answers in total (a burst counts once in slowDowns). */
+    limitedAnswers?: number;
+  };
+  /** Requests answered so far (pages, samples and checks; every host). */
+  requests?: number;
+  requestsPerMin?: number;
+  /** When the last request was answered — a stall shows here first. */
+  lastRequestAt?: string;
+  /** Post-crawl checks (link targets, images, scripts, host variants, TLS, samples): done / total per group. */
+  checks?: { total: number; done: number; groups: Record<string, { total: number; done: number }> };
+  /** Phase reported by the crawler with this progress. */
+  phase?: string;
 }
 
 export interface CrawlMemory {

@@ -22,3 +22,5 @@ export { rng } from './seed/rng';
 export * from './crawlRows';
 export * from './lighthouse';
 export * from './shopify';
+export * from './checks/notBuilt';
+export * from './changes';

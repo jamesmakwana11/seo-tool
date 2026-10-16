@@ -26,9 +26,12 @@ import { groupFor, isAllowed, parseRobots, pathAndQuery } from './robots';
 import { fetchSitemaps } from './sitemap';
 import { checkCertificate } from './tls';
 import type { AssetInfo, CrawlLog, FetchResult, HostVariant, LinkStatus, ParsedPage, RobotsInfo, SiteContext, TlsInfo } from './types';
+import { SNAPSHOT_TEXT_CHARS, snapFromPage } from '../changes/snapshot';
 import { crawlBudgetReason, crawlTrapReason, hostOf, isLocalHost, isSameSite, normalizeUrl, pageParam, paginationPage, sameUrl, templateOf, urlKey } from './url';
 
 export interface CrawlEngineOptions {
+  /** Build Change Monitor snapshots (default true; off when CHANGE_MONITOR_ENABLED=false). */
+  changeSnapshots?: boolean;
   baseUrl?: string;
   allowLive: boolean;
   userAgent: string;
@@ -816,9 +819,10 @@ export function createCrawlEngine(opts: CrawlEngineOptions): CrawlEngine & { col
         ...(resolvedFrom ? { resolvedStartUrl: startUrl ?? base, resolvedFrom } : {}),
       };
       const urls = pageRows(pages, ctx);
+      const snapshotRecords = opts.changeSnapshots === false ? undefined : pages.map((p, i) => snapFromPage(p, urls[i], SNAPSHOT_TEXT_CHARS));
       if (collected.cancelled || plan.signal?.aborted) {
         // A partial crawl is never analysed: missing pages would wrongly "resolve" issues.
-        return { urls, findings: [], evaluatedChecks: [], evaluatedTemplates: {}, pageTexts: [], stats, cancelled: true };
+        return { urls, findings: [], evaluatedChecks: [], evaluatedTemplates: {}, pageTexts: [], stats, cancelled: true, snapshotRecords };
       }
       plan.onPhase?.('analysing');
       const tAnalysis = Date.now();
@@ -836,6 +840,7 @@ export function createCrawlEngine(opts: CrawlEngineOptions): CrawlEngine & { col
         evaluatedTemplates,
         pageTexts,
         snapshot: snapshotFromPages(pages, ctx, prepared),
+        snapshotRecords,
         stats,
         memoryStopped: collected.memoryStopped,
       };

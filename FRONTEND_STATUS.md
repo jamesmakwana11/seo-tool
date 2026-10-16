@@ -47,6 +47,15 @@ All 83 screens from prompt §4.2 are implemented (requirements `CUS-SCR-01…83`
 | `/seo-editor` | Shopify SEO editor: open a page by URL or browse resources, drafts with current vs proposed values, reason, validation, mutation used, manual edits, H1 source; batch review with live values, conflicts, original-values download and typed confirmation; per-field results and storefront re-check; **Theme changes** tab (file editor, diff proposals, write to unpublished themes only) |
 | `/settings/shopify` | Connect with Shopify (OAuth), granted / missing scopes, capabilities, disconnect, where the token is kept |
 
+**Added 16 Oct 2026 (crawl reliability + Change Monitor):**
+
+| Screen | What |
+|---|---|
+| `/crawls` (live progress) | phase, queue (queued / active), gap between requests, requests per minute now + total, 429 / 503 answers and slow-downs, retries, time since the last answer (red after 60 s while running), post-crawl checks done / total per group; pages per minute is the last minute's rate, not an average since the start |
+| `/crawls` → Change Monitor panel | baseline (crawl, date, URLs, merged smart crawls), what each recorded crawl changed (changed / new / removed / failed), effect on the baseline, storage folder with the "temporary unless persistent disk" warning, retention |
+| `/crawls/:id?tab=changes` | counts per type (clickable), baseline effect and notes, server-paged list (50 per page) with search over URL and old / new values, filters (type, field, evidence), open issues per row, CSV / JSON export of the filtered list; drawer with old → new values per field, added / removed lists, evidence, both observation times, open issues with links, **Capture screenshots** and **Compare versions** |
+| `/crawls/compare?url=` | capture now (desktop / mobile), watch a page after every crawl, browser / memory availability; previous / current capture pickers; **Visual** (side by side, pixel-difference image, % changed, cut-height note), **Rendered HTML** (line diff with both line numbers; download either version), **SEO fields** (rendered title / meta / H1 / canonical / robots + the crawler's raw-HTML comparison), **CSS / JS** (added / removed / changed files, line diff per file), **Theme source** (Shopify, read-only snapshots, files added / removed / changed, line diff) — each view says why it is empty instead of showing anything made up |
+
 **Screens pending:** none. **Screens intentionally absent:** none — log-file ingestion (PDF §2, marked optional) has no screen.
 
 ## 3. Role experiences (DEVELOPMENT preview — not production auth)

@@ -10,9 +10,10 @@ import { badRequest, conflict, notFound } from '../lib/errors';
 import { ApiError } from '../lib/errors';
 import { audit, need, SYSTEM_ACTOR, type Actor, type Ctx } from './context';
 import type { IssueService } from './issues';
-import type { CrawlPlan } from './ports';
+import type { CrawlPlan, EngineRunResult } from './ports';
 import type { RuleService } from './rules';
 import { heapLimitMb } from '../crawler/memory';
+import type { ChangeService } from '../changes/service';
 
 export function templateOfPath(path: string): PageTemplate {
   if (path === '/' || path === '') return 'home';
@@ -64,7 +65,7 @@ const sameUrlKey = (u: string) => {
   }
 };
 
-export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleService) {
+export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleService, changes?: ChangeService) {
   const r = ctx.repos;
   const iso = () => ctx.clock().toISOString();
   const running = new Map<string, Promise<void>>();
@@ -89,6 +90,23 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     const st = stores.get(id);
     if (st) return st;
     return new MemoryResultStore((await r.crawlUrls.get(id))?.urls ?? []);
+  }
+
+  /**
+   * Change Monitor: compare the finished crawl with the baseline. Never fails the crawl — a problem is logged and shown
+   * as a warning on the run.
+   */
+  async function recordChanges(runId: string, out: Pick<EngineRunResult, 'snapshotFile' | 'snapshotRecords'>) {
+    if (!changes) return;
+    const run = await r.crawls.get(runId);
+    if (!run) return;
+    try {
+      await changes.record(run, out);
+    } catch (e) {
+      ctx.log.warn({ runId, err: (e as Error).message }, 'change monitor failed');
+      const cur = (await r.crawls.get(runId)) ?? run;
+      await r.crawls.update({ ...cur, warnings: [...(cur.warnings ?? []), { code: 'change_monitor', message: `Change Monitor could not compare this crawl: ${(e as Error).message}`, at: iso() }].slice(-20) });
+    }
   }
 
   /** The website this service crawls (its configured URL). */
@@ -311,6 +329,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
           ...cur, ...out.stats, status: 'cancelled', outcome: 'cancelled', urlCount, finishedAt: iso(), durationMs: Date.now() - started,
           error: `Cancelled${cur.cancelledBy ? ` by ${cur.cancelledBy}` : ''} after ${out.stats.urlsCrawled ?? 0} pages. Results show what was fetched before cancelling; no issues were created or resolved from this partial crawl.`,
         });
+        await recordChanges(run.id, out);
         await out.cleanup?.();
         await audit(ctx, SYSTEM_ACTOR, 'crawl.cancelled', 'crawl', run.id, `${run.type} crawl cancelled after ${out.stats.urlsCrawled ?? 0} pages`);
         return;
@@ -320,6 +339,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
         await r.crawlUrls.upsert({ id: run.id, urls: await inlineRows() });
         const cur = (await r.crawls.get(run.id))!;
         await r.crawls.update({ ...cur, ...out.stats, status: 'failed', outcome: 'failed', urlCount, finishedAt: iso(), durationMs: Date.now() - started, error: `${out.failed} ${out.stats.urlsCrawled ? `${out.stats.urlsCrawled} pages fetched before the failure are shown; no issues were created or resolved.` : ''}`.trim() });
+        await recordChanges(run.id, out);
         await out.cleanup?.();
         await ctx.integrations.recordSync?.('crawler', { ok: false, error: out.failed });
         await audit(ctx, SYSTEM_ACTOR, 'crawl.failed', 'crawl', run.id, `${run.type} crawl failed: ${out.failed}`);
@@ -359,6 +379,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
         scope: [...(out.stats.scope ?? cur.scope), ...(stats.excludedUrls ? [{ label: 'URLs skipped by exclusions', count: stats.excludedUrls }] : []), { label: `Custom rules applied (${ruleStats.rules})`, count: ruleStats.flagged }],
       };
       await r.crawls.update(final);
+      await recordChanges(run.id, out);
       await ctx.integrations.recordSync?.('crawler', { ok: true });
       const m = await r.metrics.get();
       if (m.source !== 'demo') {

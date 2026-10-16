@@ -62,7 +62,9 @@ type throttle struct {
 	interval  time.Duration
 	maxD      time.Duration
 	okRun     int
-	slowDowns int64
+	slowDowns int64 // times the gap was widened
+	limited   int64 // 429 / 503 answers seen (one burst usually holds several)
+	lastSlow  time.Time
 	waited    time.Duration
 }
 
@@ -103,14 +105,28 @@ func (t *throttle) wait(ctx context.Context) error {
 	}
 }
 
+// slowDown reacts to a 429 / 503. Several requests are usually in flight when a site starts rate limiting, and all
+// of them come back limited: those answers describe the pace that was already corrected, so the gap is widened once
+// per burst (window = the current gap, at least 2 s), not once per answer — otherwise 6 parallel 429s would turn
+// 250 ms into 30 s in one go. Retry-After is always honoured.
 func (t *throttle) slowDown(retryAfter time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.slowDowns++
+	t.limited++
 	t.okRun = 0
-	n := t.interval * 2
-	if n < time.Second {
-		n = time.Second
+	now := time.Now()
+	window := t.interval
+	if window < 2*time.Second {
+		window = 2 * time.Second
+	}
+	n := t.interval
+	if t.lastSlow.IsZero() || now.Sub(t.lastSlow) >= window {
+		t.slowDowns++
+		t.lastSlow = now
+		n = t.interval * 2
+		if n < 500*time.Millisecond {
+			n = 500 * time.Millisecond
+		}
 	}
 	if retryAfter > n {
 		n = retryAfter
@@ -136,7 +152,12 @@ func (t *throttle) relax() {
 	t.okRun++
 	if t.okRun >= 5 {
 		t.okRun = 0
+		// Five normal answers in a row at a long gap (≥ 2 s) show the site has recovered: halve it; closer to the
+		// configured gap, step down by a quarter.
 		n := t.interval * 3 / 4
+		if t.interval >= 2*time.Second {
+			n = t.interval / 2
+		}
 		// Close to the configured gap: go straight back to it.
 		if n < t.floor || n-t.floor < 100*time.Millisecond {
 			n = t.floor
@@ -168,6 +189,12 @@ func (t *throttle) snapshot() (interval, floor time.Duration, slowDowns int64, w
 	return t.interval, t.floor, t.slowDowns, t.waited
 }
 
+func (t *throttle) limitedCount() int64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.limited
+}
+
 // ------------------------------------------------------------------------------------------- client
 
 type clientOpts struct {
@@ -178,7 +205,8 @@ type clientOpts struct {
 	Retries        int
 	MaxRetryWait   time.Duration
 	AllowLoopback  bool
-	Throttle       *throttle // nil = unthrottled (other websites)
+	Throttle       *throttle // the site's shared pace (nil for other hosts)
+	PerHostDelay   time.Duration // other hosts (CDN images, scripts, external links): a small gap per host, never the site's queue
 	Concurrency    int
 	OnRetry        func()
 	OnStatus       func(status int)
@@ -199,11 +227,40 @@ type reqOpts struct {
 }
 
 type httpClient struct {
-	o       clientOpts
-	c       *http.Client
-	retries atomic.Int64
-	rate429 atomic.Int64
-	latency latencyStats
+	o        clientOpts
+	c        *http.Client
+	retries  atomic.Int64
+	rate429  atomic.Int64
+	rate503  atomic.Int64
+	done     atomic.Int64 // requests answered or failed (not cancelled)
+	lastDone atomic.Int64 // unix ms of the last one
+	latency  latencyStats
+	hostMu   sync.Mutex
+	hosts    map[string]*throttle
+}
+
+// hostThrottle: one small pacer per other host, so a slow or rate-limiting CDN never holds up the site's pages.
+func (h *httpClient) hostThrottle(target string) *throttle {
+	if h.o.PerHostDelay <= 0 {
+		return nil
+	}
+	host := hostOf(target)
+	h.hostMu.Lock()
+	defer h.hostMu.Unlock()
+	if h.hosts == nil {
+		h.hosts = map[string]*throttle{}
+	}
+	t := h.hosts[host]
+	if t == nil {
+		t = newThrottle(h.o.PerHostDelay, 30*time.Second)
+		h.hosts[host] = t
+	}
+	return t
+}
+
+func (h *httpClient) noteDone() {
+	h.done.Add(1)
+	h.lastDone.Store(time.Now().UnixMilli())
 }
 
 type latencyStats struct {
@@ -326,8 +383,12 @@ func (h *httpClient) once(ctx context.Context, target string, ro reqOpts) single
 	if err := checkURL(target, h.o.AllowLoopback); err != nil {
 		return single{err: err.Error()}
 	}
-	if h.o.Throttle != nil {
-		if err := h.o.Throttle.wait(ctx); err != nil {
+	thr := h.o.Throttle
+	if thr == nil {
+		thr = h.hostThrottle(target)
+	}
+	if thr != nil {
+		if err := thr.wait(ctx); err != nil {
 			return single{err: "cancelled"}
 		}
 	}
@@ -358,9 +419,11 @@ func (h *httpClient) once(ctx context.Context, target string, ro reqOpts) single
 		if ctx.Err() != nil {
 			return single{err: "cancelled", ms: int(time.Since(t0).Milliseconds())}
 		}
+		h.noteDone()
 		return single{err: describeErr(err, timedOut, h.o.Timeout), ms: int(time.Since(t0).Milliseconds())}
 	}
 	defer res.Body.Close()
+	defer h.noteDone()
 	ms := int(time.Since(t0).Milliseconds())
 	h.latency.add(ms)
 	s := single{status: res.StatusCode, headers: res.Header, ms: ms}
@@ -427,14 +490,20 @@ func (h *httpClient) attempt(ctx context.Context, target string, ro reqOpts) sin
 	for n := 0; ; n++ {
 		s := h.once(ctx, target, ro)
 		ra, hasRA := retryAfter(s.headers.Get("Retry-After"), time.Now())
-		if !ro.NoRetry && h.o.Throttle != nil {
+		if s.status == 429 {
+			h.rate429.Add(1)
+		} else if s.status == 503 {
+			h.rate503.Add(1)
+		}
+		thr := h.o.Throttle
+		if thr == nil {
+			thr = h.hostThrottle(target)
+		}
+		if !ro.NoRetry && thr != nil {
 			if s.status == 429 || s.status == 503 {
-				if s.status == 429 {
-					h.rate429.Add(1)
-				}
-				h.o.Throttle.slowDown(ra)
+				thr.slowDown(ra)
 			} else if s.status != 0 && s.status < 500 {
-				h.o.Throttle.relax()
+				thr.relax()
 			}
 		}
 		if h.o.OnStatus != nil && s.status != 0 {

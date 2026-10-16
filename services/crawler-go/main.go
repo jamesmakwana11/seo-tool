@@ -3,7 +3,7 @@
 // Protocol v1 (newline-delimited JSON over stdio):
 //
 //	stdin  line 1: {"type":"start","protocol":1,"job":{...}}      — see Job
-//	stdin  later : {"type":"cancel","reason":"user"|"resource"}  — stop, keep what was fetched
+//	stdin  later : {"type":"cancel","reason":"user"|"resource"|"stalled"}  — stop, keep what was fetched
 //	stdout       : {"type":"hello"|"phase"|"progress"|"sitemap"|"warning"|"error"|"done", ...}
 //
 // Results are written to the job's work directory (pages.ndjson.gz, urls.ndjson.gz, sitemap.ndjson.gz, context.json

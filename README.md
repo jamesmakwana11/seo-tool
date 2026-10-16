@@ -14,6 +14,7 @@ Specification: `docs/seotooldocs.pdf` · Build brief: `docs/MASTER_BUILD_PROMPT.
 Native binaries: `npm run build:native` (Go 1.22+, Rust 1.75+) · tests: `npm run test:native`.
 Shopify connection and SEO editor: `docs/SHOPIFY_SEO_EDITOR.md`.
 
+Change Monitor (crawl-to-crawl changes, screenshots, rendered HTML / CSS / JS / theme source differences): `docs/CHANGE_MONITOR.md`.
 Run locally with live crawling: `LOCAL_CRAWLING.md`. Deployment (Docker, env vars, production checks, PostgreSQL status): `DEPLOYMENT.md`.
 
 Status documents: `FEATURE_TRACEABILITY.md` (generated: `npm run traceability`), `FRONTEND_STATUS.md`, `BACKEND_STATUS.md`.

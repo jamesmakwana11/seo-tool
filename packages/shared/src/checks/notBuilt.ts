@@ -1,0 +1,40 @@
+/**
+ * Checks from the PDF that the tool does NOT evaluate yet, and why. The module screens show these as
+ * "Not built yet" instead of "Pass" — a check that never runs must never look like a passing check.
+ * Keep in sync with the API's analyzers and data syncs (apps/api/test/api/check-status.test.ts enforces it).
+ */
+export const CHECKS_NOT_BUILT: Record<string, string> = {
+  'TECH-INDEX-COVERAGE': 'Not built: Search Console does not expose index-coverage counts through its API; a URL-Inspection sample of Tier 1 pages is planned.',
+  'TECH-RICH-COVERAGE': 'Not built: rich-result counts are not synced from Search Console yet.',
+  'TECH-SCHEMA-SYNC': 'Not built: needs a feed of Google structured-data documentation changes.',
+  'TECH-JS-RENDER': 'Not run during crawls: use the rendered-vs-raw check for chosen URLs in the Crawl Center (Lighthouse panel).',
+  'TECH-MOBILE': 'Not run during crawls: use a mobile Lighthouse audit for chosen URLs in the Crawl Center.',
+  'PERF-PSI': 'Not scheduled: Lighthouse lab audits run on demand in the Crawl Center, not daily with a 7-day regression alert yet.',
+  'CONT-QA-GATE': 'Not built: needs Shopify publish times to know which pages are new (custom-rule QA-gate holds do work).',
+  'CONT-INTENT': 'Not built: needs Search Console query analysis and SERP data.',
+  'CONT-DECAY': 'Not built: the 28-day click comparison over Search Console data is not implemented yet.',
+  'CONT-CANNIBAL': 'Not built: the query → URL analysis over Search Console data is not implemented yet.',
+  'CONT-PLAGIARISM': 'Not built: needs a web-search / plagiarism data source.',
+  'ONP-KEYWORD-MAP': 'Not built: needs a keyword map (one primary keyword per Tier 1–2 page) — there is no screen to enter it yet.',
+  'ONP-LOW-CTR': 'Not built: low-CTR detection over Search Console data is not implemented yet.',
+  'ONP-SERP-FEATURE': 'Not built: needs daily search-appearance / SERP feature data.',
+  'OFF-BACKLINKS': 'Not built: needs the Ahrefs or Semrush data sync.',
+  'OFF-TOXIC': 'Not built: needs the Ahrefs or Semrush data sync.',
+  'OFF-ANCHOR': 'Not built: needs the Ahrefs or Semrush data sync.',
+  'OFF-BRAND-MENTION': 'Not built: needs a brand-mention data source.',
+  'OFF-REFDOMAINS': 'Not built: needs the Ahrefs or Semrush data sync.',
+  'OFF-GAP': 'Not built: needs the Ahrefs or Semrush data sync.',
+  'OFF-DIGITAL-PR': 'Not built: needs trend / search data (the festival calendar is in the Seasonal planner).',
+  'OFF-LOCAL': 'Not built: needs the Google Business Profile data sync.',
+  'OFF-DISAVOW': 'Not built: needs the Ahrefs or Semrush data sync (the approval screen exists).',
+  'AEO-PAA': 'Not built: needs People Also Ask data.',
+  'AEO-SNIPPET': 'Not built: featured-snippet targeting over Search Console data is not implemented yet.',
+  'AEO-AI-VISIBILITY': 'Not built: the weekly prompt panel against AI engines is not implemented yet.',
+  'GEO-CITATION': 'Not built: needs SERP / competitor data.',
+  'GEO-CLUSTER': 'Not built: needs a pillar → cluster topic map — there is no screen to enter it yet.',
+  'GEO-SEMANTIC': 'Not built: needs SERP data and an LLM.',
+  'GEO-BRAND-FACTS': 'Not built: needs Google Business Profile and other profile data.',
+  'AIC-03': 'Not built: needs Shopify product specs and an LLM to compare claims.',
+  'AIC-04': 'Not built: needs an LLM evaluation pass.',
+  'AIC-10': 'Not built: needs supplier-feed / marketplace text sources.',
+};

@@ -1,0 +1,250 @@
+{
+  "products": 50000,
+  "site": {
+    "ready": true,
+    "url": "http://127.0.0.1:45757/",
+    "products": 50000,
+    "collections": 500,
+    "collectionPages": 2500,
+    "articles": 200
+  },
+  "concurrency": 16,
+  "budgetMB": 450,
+  "heapLimitMB": 336,
+  "status": "completed",
+  "outcome": "completed",
+  "wallMs": 195836,
+  "phasesAtMs": {
+    "crawling": 255,
+    "checks": 69473,
+    "text_analysis": 69724,
+    "analysing": 90038,
+    "saving": 192467
+  },
+  "timings": {
+    "checksMs": 171,
+    "crawlMs": 69344,
+    "robotsMs": 0,
+    "sitemapMs": 2834,
+    "textMs": 19597,
+    "crawlProcessMs": 89688,
+    "indexMs": 33004,
+    "heapAfterIndexMB": 166,
+    "textCoreReadMs": 455,
+    "heapAfterTextCoreMB": 175,
+    "wholeCrawlMs": 2994,
+    "heapAfterWholeCrawlMB": 216,
+    "heapAfterReleaseMB": 223,
+    "batchAnalysisMs": 64306,
+    "heapAfterBatchesMB": 198,
+    "coverageRowsMs": 1242,
+    "analysisTotalMs": 102357
+  },
+  "coverage": {
+    "discovered": 106966,
+    "queued": 0,
+    "waiting": 0,
+    "active": 0,
+    "processed": 53233,
+    "succeeded": 52983,
+    "failed": 250,
+    "robots": 0,
+    "depthLimited": 0,
+    "pageLimited": 0,
+    "excluded": 53485,
+    "excludedBy": {
+      "cart_account_or_app_path": 2,
+      "collection_scoped_product_path": 49992,
+      "sort_filter_search_parameter": 3491
+    },
+    "notProcessed": 0,
+    "sitemapUrls": 50460,
+    "pagesPerMin": 4057,
+    "politeness": {
+      "avgLatencyMs": 14,
+      "crawlDelayMs": 0,
+      "delayMs": 0,
+      "floorMs": 0,
+      "limitedAnswers": 0,
+      "rateLimited": 0,
+      "retries": 0,
+      "slowDowns": 0,
+      "unavailable503": 0,
+      "waitedMs": 0
+    },
+    "requests": 54111,
+    "requestsPerMin": 32120,
+    "lastRequestAt": "2026-10-16T07:49:44.143Z",
+    "checks": {
+      "done": 344,
+      "groups": {
+        "botProbes": {
+          "done": 5,
+          "total": 5
+        },
+        "external": {
+          "done": 0,
+          "total": 0
+        },
+        "images": {
+          "done": 300,
+          "total": 300
+        },
+        "links": {
+          "done": 21,
+          "total": 21
+        },
+        "samples": {
+          "done": 18,
+          "total": 18
+        },
+        "scripts": {
+          "done": 0,
+          "total": 0
+        }
+      },
+      "total": 344
+    }
+  },
+  "rows": 106966,
+  "textCore": {
+    "ok": true
+  },
+  "peaksMB": {
+    "nodeRss": 412,
+    "nodeHeap": 239,
+    "go": 94,
+    "textCore": 35,
+    "total": 412
+  },
+  "runMemory": {
+    "nodeRssMB": 410.5,
+    "nodeHeapMB": 184.1,
+    "totalMB": 410.5,
+    "peakTotalMB": 410.5,
+    "budgetMB": 450
+  },
+  "issues": {
+    "total": 48,
+    "byCheck": {
+      "TECH-SITEMAP": 1,
+      "TECH-4XX": 306,
+      "TECH-DISCONTINUED": 250,
+      "TECH-DUPLICATE": 6873,
+      "ONP-TPL-HOME": 1,
+      "AEO-ENTITY": 1,
+      "GEO-EEAT": 201,
+      "AIC-01": 29800,
+      "TECH-BROKEN-INTERNAL": 1255,
+      "TECH-THIN": 29986,
+      "TECH-SCHEMA-PRESENCE": 501,
+      "PERF-IMAGES": 150,
+      "ONP-TITLE": 50463,
+      "ONP-META": 7567,
+      "ONP-H1": 7181,
+      "ONP-BREADCRUMBS": 500,
+      "ONP-IMAGES": 2163,
+      "ONP-TPL-COLLECTION": 500,
+      "ONP-TPL-PRODUCT": 49750,
+      "AEO-ANSWER-BLOCK": 1,
+      "AEO-FAQ": 50250,
+      "AEO-EXTRACTABILITY": 1,
+      "GEO-STRUCTURE": 6,
+      "AIC-02": 1158,
+      "AIC-09": 29476,
+      "GEO-FRESHNESS": 200,
+      "AIC-05": 200
+    }
+  },
+  "newIssues": 48,
+  "dupTitleSample": [
+    [
+      "http://127.0.0.1:45757/collections/cleaning-brushs-9",
+      "Cleaning Brushs | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:45757/collections/lunch-boxs-4",
+      "Lunch Boxs | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:45757/collections/water-bottles-2",
+      "Water Bottles | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:45757/collections/phone-stands-8",
+      "Phone Stands | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:45757/collections/cutting-boards-16",
+      "Cutting Boards | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:45757/collections/laundry-bags-18",
+      "Laundry Bags | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ]
+  ],
+  "pagesApiMs": {
+    "first": 44,
+    "last": 51,
+    "filterDupTitle": 27,
+    "search": 69,
+    "total": 106966,
+    "dupTitleRows": 7836,
+    "searchRows": 7666
+  },
+  "coverageMs": 0,
+  "coverageSummary": {
+    "sitemapNotCrawled": 0,
+    "failed": 250,
+    "redirects": 250,
+    "nearGroups": 1,
+    "titleGroups": 3079,
+    "orphanCandidates": 0
+  },
+  "exportCsv": {
+    "ms": 1909,
+    "bytes": 79897767,
+    "rows": 106967
+  },
+  "warnings": [],
+  "changeMonitorFirst": {
+    "afterCompletedMs": 100,
+    "diskBytes": 0
+  }
+}

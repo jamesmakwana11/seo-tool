@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { type CrawlDetail, type CrawledUrl, type SitemapDiff } from '@sentinel/shared';
@@ -16,9 +16,10 @@ import { fmtDuration } from '@/components/crawls/format';
 import { CrawlProgress, ExportButtons, TemporaryResultsNote } from '@/components/crawls/LiveCrawl';
 import { hasPageDetails, IssuesFound, PageResults } from '@/components/crawls/PageResults';
 import { CoverageReport, OutcomeBadge, RunDiagnostics } from '@/components/crawls/Coverage';
+import { ChangesTab } from '@/components/crawls/ChangeMonitor';
 import { fmtDateTime, fmtMs, fmtNum, shortUrl } from '@/lib/format';
 
-type Tab = 'urls' | 'issues' | 'coverage' | 'sitemap' | 'reverify';
+type Tab = 'urls' | 'issues' | 'changes' | 'coverage' | 'sitemap' | 'reverify';
 
 export default function CrawlRunPage() {
   const { id = '' } = useParams();
@@ -40,7 +41,9 @@ function BackLink() {
 
 function Detail({ d }: { d: CrawlDetail }) {
   const { run } = d;
-  const [tab, setTab] = useState<Tab>('urls');
+  const [params, setParams] = useSearchParams();
+  const tab = (params.get('tab') as Tab | null) ?? 'urls';
+  const setTab = (t: Tab) => { const p = new URLSearchParams(params); if (t === 'urls') p.delete('tab'); else p.set('tab', t); setParams(p, { replace: true }); };
   const simulated = run.source === 'simulated';
   const active = run.status === 'running' || run.status === 'queued';
   // Page-level results: live crawls (Go crawler rows are paged on the server; small runs carry them inline too).
@@ -114,6 +117,7 @@ function Detail({ d }: { d: CrawlDetail }) {
           items={[
             { value: 'urls', label: detailed ? 'Pages' : 'URLs', count: rowCount },
             ...(detailed ? [{ value: 'issues' as Tab, label: 'Issues' }] : []),
+            ...(!simulated && run.source !== 'demo' && run.type !== 'reverify' ? [{ value: 'changes' as Tab, label: 'Changes' }] : []),
             ...(run.engine === 'go' ? [{ value: 'coverage' as Tab, label: 'Coverage' }] : []),
             { value: 'sitemap', label: 'Sitemap diff' },
             { value: 'reverify', label: 'Re-verification', count: d.verification.length },
@@ -124,6 +128,7 @@ function Detail({ d }: { d: CrawlDetail }) {
             : run.options && !d.urls.length ? <Panel><EmptyState title="No pages were fetched" description={run.status === 'cancelled' ? 'The crawl was cancelled before its first page was fetched.' : run.error ?? 'This crawl produced no page results.'} /></Panel>
               : <UrlsTab urls={d.urls} simulated={simulated} />)}
         {tab === 'issues' && <IssuesFound runId={run.id} />}
+        {tab === 'changes' && <ChangesTab runId={run.id} active={active} />}
         {tab === 'coverage' && <CoverageReport run={run} />}
         {tab === 'sitemap' && <SitemapTab diff={d.sitemapDiff} />}
         {tab === 'reverify' && <ReverifyTab d={d} />}

@@ -12,6 +12,7 @@
 import type {
   CrawledUrl, ShopifyApplyBatchResult, ShopifyApplyPreview, ShopifyApplyResult, ShopifyDraft, ShopifyFieldResult, ShopifyReaudit,
   ShopifyResolveResult, ShopifyResourceKind, ShopifyResourceList, ShopifyStatus, ShopifyTheme, ShopifyThemeFile, ShopifyThemeProposal,
+  ThemeDiffResponse, ThemeSnapshotMeta,
 } from '@sentinel/shared';
 import { SHOPIFY_OPTIONAL_SCOPES, SHOPIFY_REQUIRED_SCOPES } from '@sentinel/shared';
 import type { Request } from 'express';
@@ -27,7 +28,8 @@ import { createAdminClient, ShopifyApiError, type AdminClient } from './client';
 import { buildFields, detectH1Sources, sourceTexts, themeNotes, validateField, type Limits } from './drafts';
 import { authorizeUrl, createStateStore, exchangeCode, missingScopes, normalizeShop, OAuthError, verifyQueryHmac, CALLBACK_MAX_AGE_S } from './oauth';
 import { adminUrl, fetchByHandle, fetchById, fieldValue, isGid, listResources, parseStorefrontPath, sameValue, summarize, writeOps, type ShopifyResource } from './resources';
-import { getTheme, lineDiff, listThemes, md5, MAX_THEME_FILE_BYTES, readThemeFile, writeThemeFile } from './theme';
+import { getTheme, lineDiff, listThemeFiles, listThemes, md5, MAX_THEME_FILE_BYTES, readThemeFile, readThemeFiles, SNAPSHOT_FILE, writeThemeFile } from './theme';
+import { createThemeSnapshotStore } from './themeSnapshots';
 
 export interface ShopifyDeps {
   fetchImpl?: FetchLike;
@@ -37,6 +39,8 @@ export interface ShopifyDeps {
   /** SHOPIFY_ADMIN_TOKEN only applies to the primary website. */
   useEnvToken: boolean;
   sleep?: (ms: number) => Promise<void>;
+  /** Folder for read-only theme source snapshots (Change Monitor storage). */
+  themeSnapshotDir?: () => Promise<string>;
 }
 
 interface Connection {
@@ -73,6 +77,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
   /** Existing text of each draft's resource (facts check for hand edits). */
   const draftSources = new Map<string, string[]>();
   let applying = false;
+  const snapshots = deps.themeSnapshotDir ? createThemeSnapshotStore(deps.themeSnapshotDir) : undefined;
   const requestedScopes = () => (env.SHOPIFY_SCOPES ? env.SHOPIFY_SCOPES.split(',').map((s) => s.trim()).filter(Boolean) : [...SHOPIFY_REQUIRED_SCOPES, ...SHOPIFY_OPTIONAL_SCOPES]);
   const appUrl = () => (env.SHOPIFY_APP_URL ?? env.APP_BASE_URL)?.replace(/\/$/, '');
   const redirectUrl = () => (appUrl() ? `${appUrl()}/api/shopify/oauth/callback` : undefined);
@@ -519,6 +524,36 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
       d.result = d.result ? { ...d.result, reaudit: ra } : { at: iso(), by: actor.name, fields: [], verified: false, reaudit: ra };
       d.updatedAt = iso();
       return d;
+    },
+
+    // -------------------------------------------------------------------------------------- theme source snapshots (read-only)
+
+    /** Reads a theme's text files through the authorised connection and keeps them as a snapshot (never writes to Shopify). */
+    async themeSnapshot(actor: Actor, themeId: unknown): Promise<ThemeSnapshotMeta> {
+      await need(ctx, actor, 'shopify.theme');
+      const st = await status();
+      if (!st.capabilities.themes) throw new ApiError(409, 'SHOPIFY_SCOPES', st.connected ? 'The connection lacks the read_themes scope. Reconnect and approve it.' : 'Shopify is not connected: theme source can only be read through an authorised connection.');
+      if (typeof themeId !== 'string') throw badRequest('themeId is required.');
+      if (!snapshots) throw new ApiError(409, 'NOT_CONFIGURED', 'Theme snapshots need the Change Monitor storage folder.');
+      const theme = await call((c) => getTheme(c, themeId));
+      const names = (await call((c) => listThemeFiles(c, themeId))).filter((f) => SNAPSHOT_FILE.test(f.filename));
+      const meta = await snapshots.save({ themeId, themeName: theme.name, themeRole: theme.role, at: iso(), takenBy: actor.name }, names, (fs) => call((c) => readThemeFiles(c, themeId, fs)));
+      await audit(ctx, actor, 'shopify.theme_snapshot', 'shopify', meta.id, `Read ${meta.files} file(s) of theme “${theme.name}” (${theme.role}) for comparison (read-only)`);
+      return meta;
+    },
+    async themeSnapshots(actor: Actor): Promise<ThemeSnapshotMeta[]> {
+      await need(ctx, actor, 'shopify.theme');
+      return snapshots ? snapshots.list() : [];
+    },
+    async themeSnapshotDiff(actor: Actor, from: string, to: string, file?: string): Promise<ThemeDiffResponse> {
+      await need(ctx, actor, 'shopify.theme');
+      if (!snapshots) throw new ApiError(409, 'NOT_CONFIGURED', 'Theme snapshots need the Change Monitor storage folder.');
+      try {
+        return await snapshots.diff(from, to, file);
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT' || /Not a theme snapshot/.test((e as Error).message)) throw notFound(`Theme snapshot ${from} or ${to}`);
+        throw e;
+      }
     },
 
     // -------------------------------------------------------------------------------------- themes

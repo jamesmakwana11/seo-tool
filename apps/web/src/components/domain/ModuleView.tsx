@@ -16,8 +16,10 @@ const STATUS_ICON = {
   fail: <XCircle className="h-4 w-4 text-crit-ink" aria-label="Fail" />,
   not_run: <CircleDashed className="h-4 w-4 text-faint" aria-label="Opportunity / metric" />,
   unavailable: <CircleSlash className="h-4 w-4 text-faint" aria-label="Unavailable" />,
+  not_built: <CircleSlash className="h-4 w-4 text-med-ink" aria-label="Not built yet" />,
+  awaiting_crawl: <CircleDashed className="h-4 w-4 text-faint" aria-label="No crawl yet" />,
 };
-const STATUS_LABEL = { pass: 'Pass', warn: 'Open issues', fail: 'Critical open', not_run: 'Metric / opportunity', unavailable: 'Data source missing' };
+const STATUS_LABEL = { pass: 'Pass', warn: 'Open issues', fail: 'Critical open', not_run: 'Metric / opportunity', unavailable: 'Data source missing', not_built: 'Not built yet', awaiting_crawl: 'No crawl yet' };
 
 export function useModule(module: AuditModule) {
   return useApiQuery(['module', module], () => api.getModule(module));
@@ -40,6 +42,7 @@ export function CheckTable({ checks, groupFilter }: { checks: ModuleData['checks
               <div className="font-medium text-ink">{c.name} <span className="font-mono text-2xs font-normal text-faint">{c.id}</span></div>
               <div className="mt-0.5 text-xs text-muted">{c.detects}</div>
               {c.policy && <div className="mt-0.5 text-xs text-opp-ink">Protects against: {c.policy}</div>}
+              {(c.lastStatus === 'not_built' || c.lastStatus === 'unavailable' || c.lastStatus === 'awaiting_crawl') && c.unavailableReason && <div className="mt-0.5 text-xs text-med-ink">{c.unavailableReason}</div>}
             </div>
           ),
         },
@@ -82,7 +85,7 @@ function ModuleBody({ d, groupFilter, extra, tab, setTab }: { d: ModuleData; gro
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {d.score !== undefined && !groupFilter && <Stat label="Module score" value={<span style={{ color: scoreColor(d.score) }}>{d.score.toFixed(1)}</span>} hint="PDF §14 module score" />}
-        <Stat label="Checks" value={checks.length} hint={`${checks.filter((c) => c.lastStatus === 'pass').length} passing`} />
+        <Stat label="Checks" value={checks.length} hint={`${checks.filter((c) => c.lastStatus === 'pass').length} passing · ${checks.filter((c) => c.lastStatus === 'not_built').length} not built yet`} />
         <Stat label="Critical open" value={crit} tone={crit ? 'crit' : undefined} />
         <Stat label="Medium open" value={med} tone={med ? 'med' : undefined} />
         <Stat label="Low open" value={low} tone={low ? 'low' : undefined} />

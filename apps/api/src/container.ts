@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { defaultConfig, setPriorityConfig } from '@sentinel/shared';
 import type { Env } from './config/env';
 import { createLogger, type Logger } from './lib/logger';
@@ -21,6 +22,9 @@ import { createTaskService } from './services/tasks';
 import { createIssueService } from './services/issues';
 import { createRuleService } from './services/rules';
 import { createCrawlService } from './services/crawls';
+import { createChangeService, urlKey } from './changes/service';
+import { createCaptureService } from './changes/capture';
+import { safeName } from './changes/store';
 import { createReportService } from './services/reports';
 import { createInsightService } from './services/insights';
 import { createAdminService, type DiagnosticsSource } from './services/admin';
@@ -81,13 +85,14 @@ export async function createContainer(o: ContainerOptions) {
     requestDelayMs: env.CRAWLER_REQUEST_DELAY_MS, maxBodyBytes: env.CRAWLER_MAX_BODY_BYTES,
     retries: env.CRAWLER_RETRIES, maxRetryWaitMs: env.CRAWLER_MAX_RETRY_WAIT_MS, maxCrawlDelayMs: env.CRAWLER_MAX_CRAWL_DELAY_MS,
     maxSitemapFiles: env.CRAWLER_MAX_SITEMAP_FILES, maxSitemapBytes: env.CRAWLER_MAX_SITEMAP_MB * 1024 * 1024,
+    changeSnapshots: env.CHANGE_MONITOR_ENABLED !== false,
     thresholds: { ...cfg0.thresholds }, config: structuredClone(cfg0), fetchImpl: fetchImpl as typeof fetch | undefined, log: { info: (...a: unknown[]) => log.info(a), warn: (...a: unknown[]) => log.warn(a), error: (...a: unknown[]) => log.error(a) }, now: clock,
   };
   const baseEngine = createCrawlEngine(engineOpts);
   const workDir = env.CRAWLER_WORK_DIR ?? defaultWorkDir();
   const goEngine = createGoCrawlEngine({
     ...engineOpts, workDir, keepWorkFiles: env.CRAWLER_KEEP_WORK_FILES, memoryBudgetMB: env.CRAWLER_MEMORY_BUDGET_MB, goMemoryMB: env.CRAWLER_GO_MEMORY_MB,
-    smartMaxPages: env.CRAWLER_SMART_MAX_PAGES, env: { CRAWLER_GO_BIN: env.CRAWLER_GO_BIN, TEXTCORE_BIN: env.TEXTCORE_BIN },
+    smartMaxPages: env.CRAWLER_SMART_MAX_PAGES, stallTimeoutMs: env.CRAWLER_STALL_MINUTES * 60_000, env: { CRAWLER_GO_BIN: env.CRAWLER_GO_BIN, TEXTCORE_BIN: env.TEXTCORE_BIN },
   });
   if (!o.repos && !o.engine) await cleanStaleWork(workDir).catch(() => 0);
   /** Which engine runs a plan: re-verification → built-in; otherwise CRAWLER_ENGINE (auto = Go when installed). */
@@ -136,10 +141,38 @@ export async function createContainer(o: ContainerOptions) {
   const tasks = createTaskService(ctx);
   const issues = createIssueService(ctx, tasks);
   const rules = createRuleService(ctx);
-  const crawls = createCrawlService(ctx, issues, rules);
+  const changes = createChangeService(ctx, {
+    siteUrl: async () => engine.readiness().baseUrl ?? env.CRAWLER_BASE_URL ?? (await repos.config.get()).site.baseUrl,
+    issuesFor: async (urls) => {
+      const want = new Set(urls.map(urlKey));
+      const out = new Map<string, { id: string; checkId: string; title: string; severity: string }[]>();
+      if (!want.size) return out;
+      for (const i of await repos.issues.list()) {
+        if (i.source !== 'live' || i.isTemplateGroup || i.supersededById || ['VERIFIED', 'CLOSED', 'NOT_AN_ISSUE', 'SUPERSEDED'].includes(i.status)) continue;
+        for (const u of i.affectedUrls) {
+          const k = urlKey(u);
+          if (!want.has(k)) continue;
+          const list = out.get(k) ?? [];
+          if (!list.some((x) => x.id === i.id)) list.push({ id: i.id, checkId: i.checkId, title: i.title, severity: i.severity });
+          out.set(k, list);
+        }
+      }
+      return out;
+    },
+  });
+  const captures = createCaptureService(ctx, {
+    siteUrl: async () => engine.readiness().baseUrl ?? env.CRAWLER_BASE_URL ?? (await repos.config.get()).site.baseUrl,
+    root: changes.directory, allowLoopback: engineOpts.allowLoopback ?? false, userAgent: engineOpts.userAgent,
+    latestChange: (u) => changes.latestChange(u), changedUrls: (id, max) => changes.changedUrls(id, max),
+  });
+  changes.setOnRecorded((s) => { void captures.afterCrawl(s.runId, s.snapshotId, !!s.counts).catch((e) => log.warn({ err: (e as Error).message }, 'after-crawl captures failed')); });
+  const crawls = createCrawlService(ctx, issues, rules, changes);
   const lighthouse = createLighthouseService(ctx, env, baseEngine.collector, { allowLoopback: engineOpts.allowLoopback ?? false, userAgent: engineOpts.userAgent });
   // SHOPIFY_ADMIN_TOKEN belongs to the primary website only; added websites connect their own store with OAuth.
-  const shopify = createShopifyService(ctx, { fetchImpl, collector: baseEngine.collector, latestRow: (u) => crawls.latestRow(u), useEnvToken: !o.repos });
+  const shopify = createShopifyService(ctx, {
+    fetchImpl, collector: baseEngine.collector, latestRow: (u) => crawls.latestRow(u), useEnvToken: !o.repos,
+    themeSnapshotDir: async () => path.join(changes.directory, safeName(new URL(engine.readiness().baseUrl ?? env.CRAWLER_BASE_URL ?? (await repos.config.get()).site.baseUrl).host), 'themes'),
+  });
   const reports = createReportService(ctx);
   const insights = createInsightService(ctx);
   let schedulerRef: { running: () => boolean } = { running: () => false };
@@ -162,7 +195,7 @@ export async function createContainer(o: ContainerOptions) {
     env, log, clock, repos, ctx, diagnostics, recent,
     /** Injected outbound fetch (tests); undefined in production → adapters use global fetch. */
     fetchImpl,
-    services: { auth, tasks, issues, rules, crawls, reports, insights, admin, lighthouse, shopify },
+    services: { auth, tasks, issues, rules, crawls, changes, captures, reports, insights, admin, lighthouse, shopify },
     scheduler,
     refreshVerifierInputs,
     runEscalations: () => runEscalations(ctx, issues),

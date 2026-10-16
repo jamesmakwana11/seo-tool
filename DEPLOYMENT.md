@@ -101,6 +101,9 @@ Crawling and scheduling (needed for real audits):
 | `CRAWLER_SMART_MAX_PAGES` | pages a Smart crawl fetches, highest priority first (default 500) |
 | `CRAWLER_KEEP_RESULTS` | recent crawls whose page rows stay browsable (default 3, temporary files) |
 | `CRAWLER_GO_BIN`, `TEXTCORE_BIN`, `CRAWLER_WORK_DIR` | set by the image (`/app/bin/…`, `/tmp/sentinel-crawls`) |
+| `CRAWLER_STALL_MINUTES` | stop a crawl as *partial* (results kept) when no request was answered for this long (default 20) |
+| `CHANGE_SNAPSHOT_DIR` | Change Monitor history (crawl snapshots, baseline, screenshots, theme snapshots). Default: the temp folder — **lost on every Render restart / redeploy**. Point it at a persistent disk to keep it, e.g. `/var/data/sentinel-changes` — see `docs/CHANGE_MONITOR.md` |
+| `CHANGE_SNAPSHOT_KEEP`, `CHANGE_CAPTURE_*` | retention and screenshot settings (`docs/CHANGE_MONITOR.md`); screenshots need Chromium like Lighthouse |
 | `LIGHTHOUSE_ENABLED`, `LIGHTHOUSE_CHROME_FLAGS` | Lighthouse on/off (default on, but it needs Chromium: build with `--build-arg INSTALL_CHROMIUM=true`); in the container Chromium runs as a non-root user and usually needs `LIGHTHOUSE_CHROME_FLAGS=--no-sandbox` |
 
 Shopify SEO editor (optional — `docs/SHOPIFY_SEO_EDITOR.md`):
@@ -132,6 +135,11 @@ Render → your web service → **Environment** → add (then **Save, rebuild an
 | `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD` | your admin sign-in (password: at least 10 characters, letters and numbers) |
 | `APP_BASE_URL` | `https://<service>.onrender.com` (or your custom domain) |
 | optional: `CRAWLER_REQUEST_DELAY_MS`, `CRAWLER_MAX_PAGES`, `CRAWLER_MAX_CONCURRENT_JOBS` | see the table above; leave `CRAWLER_MAX_PAGES` unset for no page limit |
+
+Change history (optional): Render's filesystem is ephemeral, so the Change Monitor baseline and screenshots are lost on
+every restart or redeploy. To keep them, add a **Disk** to the service (paid plans; e.g. mount path `/var/data`, 1 GB is
+plenty) and set `CHANGE_SNAPSHOT_DIR=/var/data/sentinel-changes`. Without a disk the Crawl Center says that the history
+is temporary.
 
 Do not set `NODE_ENV`, `PORT` or `WEB_DIST_DIR` (the image sets them) and do not bake `CRAWLER_BASE_URL` into the
 Dockerfile — the image stays the same for every website, and the environment decides which website it may crawl.

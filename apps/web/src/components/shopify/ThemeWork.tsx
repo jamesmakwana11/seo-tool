@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Download, FileCode2, GitCompare } from 'lucide-react';
-import type { DiffLine, ShopifyThemeFile, ShopifyThemeProposal } from '@sentinel/shared';
+import { ApiError, type DiffLine, type ShopifyThemeFile, type ShopifyThemeProposal } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { errorMessage, useApiMutation, useApiQuery } from '@/api/hooks';
 import { Async, Badge, Button, EmptyState, Field, Input, Mono, Notice, Panel, Select, Textarea } from '@/components/ui/primitives';
@@ -48,7 +48,9 @@ export function ThemeWork() {
         Make the change on an unpublished copy of the theme (duplicate the live theme in Shopify first). Sentinel shows the diff, keeps the original file, and writes only after you type the confirmation. It never writes to the live theme and never publishes — preview the copy in Shopify and publish it yourself.
       </Notice>
       <Panel title="Edit a theme file">
-        <Async q={themes} rows={2}>
+        {themes.error instanceof ApiError && themes.error.status === 409 ? (
+          <div className="mt-3"><Notice tone="med" title="No Shopify connection with theme access">{errorMessage(themes.error)}</Notice></div>
+        ) : <Async q={themes} rows={2}>
           {(list) => (
             <div className="mt-3 space-y-3">
               <div className="flex flex-wrap items-end gap-3">
@@ -75,7 +77,7 @@ export function ThemeWork() {
               )}
             </div>
           )}
-        </Async>
+        </Async>}
       </Panel>
       <Panel title="Proposals" bodyClassName="p-0">
         <Async q={proposals} rows={3}>

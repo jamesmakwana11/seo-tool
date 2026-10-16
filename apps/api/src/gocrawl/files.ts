@@ -15,7 +15,8 @@ export interface ReadStats {
   missing?: boolean;
 }
 
-export async function* readNdjsonGz<T>(file: string, stats: ReadStats = { lines: 0, badLines: 0 }): AsyncGenerator<T> {
+/** `keep` (optional) sees each raw line first: lines it rejects are skipped without being parsed (fast lookups). */
+export async function* readNdjsonGz<T>(file: string, stats: ReadStats = { lines: 0, badLines: 0 }, keep?: (line: string) => boolean): AsyncGenerator<T> {
   if (!fs.existsSync(file)) {
     stats.missing = true;
     return;
@@ -29,6 +30,7 @@ export async function* readNdjsonGz<T>(file: string, stats: ReadStats = { lines:
   try {
     for await (const line of rl) {
       if (!line) continue;
+      if (keep && !keep(line)) continue;
       let v: T;
       try {
         v = JSON.parse(line) as T;

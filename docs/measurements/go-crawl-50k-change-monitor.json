@@ -1,0 +1,266 @@
+{
+  "products": 50000,
+  "site": {
+    "ready": true,
+    "url": "http://127.0.0.1:34827/",
+    "products": 50000,
+    "collections": 500,
+    "collectionPages": 2500,
+    "articles": 200
+  },
+  "concurrency": 16,
+  "budgetMB": 450,
+  "heapLimitMB": 336,
+  "status": "completed",
+  "outcome": "completed",
+  "wallMs": 214009,
+  "phasesAtMs": {
+    "crawling": 253,
+    "checks": 68240,
+    "text_analysis": 68491,
+    "analysing": 87793,
+    "saving": 197680
+  },
+  "timings": {
+    "checksMs": 164,
+    "crawlMs": 68188,
+    "robotsMs": 1,
+    "sitemapMs": 2855,
+    "textMs": 18639,
+    "crawlProcessMs": 87484,
+    "indexMs": 29130,
+    "heapAfterIndexMB": 161,
+    "textCoreReadMs": 533,
+    "heapAfterTextCoreMB": 188,
+    "wholeCrawlMs": 3221,
+    "heapAfterWholeCrawlMB": 215,
+    "heapAfterReleaseMB": 218,
+    "batchAnalysisMs": 74053,
+    "heapAfterBatchesMB": 172,
+    "coverageRowsMs": 2522,
+    "analysisTotalMs": 109756
+  },
+  "coverage": {
+    "discovered": 106966,
+    "queued": 0,
+    "waiting": 0,
+    "active": 0,
+    "processed": 53234,
+    "succeeded": 52984,
+    "failed": 250,
+    "robots": 0,
+    "depthLimited": 0,
+    "pageLimited": 0,
+    "excluded": 53485,
+    "excludedBy": {
+      "cart_account_or_app_path": 2,
+      "collection_scoped_product_path": 49992,
+      "sort_filter_search_parameter": 3491
+    },
+    "notProcessed": 0,
+    "sitemapUrls": 50460,
+    "pagesPerMin": 4058,
+    "politeness": {
+      "avgLatencyMs": 14,
+      "crawlDelayMs": 0,
+      "delayMs": 0,
+      "floorMs": 0,
+      "limitedAnswers": 0,
+      "rateLimited": 0,
+      "retries": 0,
+      "slowDowns": 0,
+      "unavailable503": 0,
+      "waitedMs": 0
+    },
+    "requests": 54112,
+    "requestsPerMin": 33327,
+    "lastRequestAt": "2026-10-16T07:42:01.787Z",
+    "checks": {
+      "done": 344,
+      "groups": {
+        "botProbes": {
+          "done": 5,
+          "total": 5
+        },
+        "external": {
+          "done": 0,
+          "total": 0
+        },
+        "images": {
+          "done": 300,
+          "total": 300
+        },
+        "links": {
+          "done": 21,
+          "total": 21
+        },
+        "samples": {
+          "done": 18,
+          "total": 18
+        },
+        "scripts": {
+          "done": 0,
+          "total": 0
+        }
+      },
+      "total": 344
+    }
+  },
+  "rows": 106966,
+  "textCore": {
+    "ok": true
+  },
+  "peaksMB": {
+    "nodeRss": 398,
+    "nodeHeap": 238,
+    "go": 94,
+    "textCore": 35,
+    "total": 398
+  },
+  "runMemory": {
+    "nodeRssMB": 403.8,
+    "nodeHeapMB": 190.8,
+    "totalMB": 403.8,
+    "peakTotalMB": 403.8,
+    "budgetMB": 450
+  },
+  "issues": {
+    "total": 48,
+    "byCheck": {
+      "TECH-SITEMAP": 1,
+      "TECH-4XX": 306,
+      "TECH-DISCONTINUED": 250,
+      "TECH-DUPLICATE": 6873,
+      "ONP-TPL-HOME": 1,
+      "AEO-ENTITY": 1,
+      "GEO-EEAT": 201,
+      "AIC-01": 29800,
+      "TECH-BROKEN-INTERNAL": 1255,
+      "TECH-THIN": 29986,
+      "TECH-SCHEMA-PRESENCE": 501,
+      "PERF-IMAGES": 150,
+      "ONP-TITLE": 50463,
+      "ONP-META": 7567,
+      "ONP-H1": 7181,
+      "ONP-BREADCRUMBS": 500,
+      "ONP-IMAGES": 2163,
+      "ONP-TPL-COLLECTION": 500,
+      "ONP-TPL-PRODUCT": 49750,
+      "AEO-ANSWER-BLOCK": 1,
+      "AEO-FAQ": 50250,
+      "AEO-EXTRACTABILITY": 1,
+      "GEO-STRUCTURE": 6,
+      "AIC-02": 1158,
+      "AIC-09": 29476,
+      "GEO-FRESHNESS": 200,
+      "AIC-05": 200
+    }
+  },
+  "newIssues": 48,
+  "dupTitleSample": [
+    [
+      "http://127.0.0.1:34827/collections/storage-boxs-1",
+      "Storage Boxs | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:34827/collections/water-bottles-2",
+      "Water Bottles | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:34827/collections/vegetable-choppers-0",
+      "Vegetable Choppers | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:34827/collections/lunch-boxs-4",
+      "Lunch Boxs | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:34827/collections/wall-hooks-3",
+      "Wall Hooks | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:34827/collections/plant-pots-19",
+      "Plant Pots | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ]
+  ],
+  "pagesApiMs": {
+    "first": 42,
+    "last": 46,
+    "filterDupTitle": 30,
+    "search": 55,
+    "total": 106966,
+    "dupTitleRows": 7838,
+    "searchRows": 7666
+  },
+  "coverageMs": 1,
+  "coverageSummary": {
+    "sitemapNotCrawled": 0,
+    "failed": 250,
+    "redirects": 250,
+    "nearGroups": 1,
+    "titleGroups": 3079,
+    "orphanCandidates": 0
+  },
+  "exportCsv": {
+    "ms": 1958,
+    "bytes": 79880733,
+    "rows": 106967
+  },
+  "warnings": [],
+  "changeMonitorFirst": {
+    "afterCompletedMs": 12643,
+    "summary": {
+      "runId": "CRL-0001",
+      "snapshotId": "20261016T074053Z-CRL-0001",
+      "crawlType": "full",
+      "outcome": "completed",
+      "observedAt": "2026-10-16T07:40:53.388Z",
+      "finishedAt": "2026-10-16T07:44:14.655Z",
+      "urls": 106966,
+      "baseline": null,
+      "baselineEffect": "created",
+      "baselineNote": "This full crawl is now the baseline: changes are reported from the next crawl.",
+      "notes": [
+        "No baseline to compare with yet."
+      ],
+      "compareMs": 12717
+    },
+    "diskBytes": 40431153
+  }
+}

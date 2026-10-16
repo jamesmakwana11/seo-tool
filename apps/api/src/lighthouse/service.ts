@@ -26,6 +26,7 @@ import { activeChildMemoryMB } from '../gocrawl/engine';
 import { memoryPlan, nodeMemory } from '../gocrawl/memoryBudget';
 import { minimalEnv } from '../gocrawl/binaries';
 import { audit, need, type Actor, type Ctx } from '../services/context';
+import { withBrowser } from '../lib/browserLock';
 
 export interface LighthouseEnv {
   LIGHTHOUSE_ENABLED: boolean;
@@ -90,7 +91,7 @@ async function pump() {
   const next = queue.shift();
   if (!next) return;
   active = next.run;
-  try { await next.exec(); } finally {
+  try { await withBrowser('lighthouse', next.exec); } finally {
     active = undefined;
     void pump();
   }

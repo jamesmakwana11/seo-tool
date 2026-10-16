@@ -15,6 +15,7 @@ import { isIssueOpen } from './rules/escalation';
 import { slaState } from './rules/sla';
 import { computeHealthScore } from './rules/healthScore';
 import { CHECKS, MODULE_LABELS } from './checks/library';
+import { CHECKS_NOT_BUILT } from './checks/notBuilt';
 import { TEAMS } from './config';
 import { generateFixCard } from './fixcards/generate';
 import { comparePriority } from './rules/priority';
@@ -174,8 +175,15 @@ export function buildModuleData(v: SentinelView, module: AuditModule, now: Date,
     const mine = issues.filter((i) => i.checkId === c.id && isIssueOpen(i.status));
     const needs = c.dataSources.filter((d) => d !== 'crawler' && !(v.liveSources as Record<string, boolean>)[d === 'psi' ? 'crux' : d === 'llm' || d === 'google_docs_feed' || d === 'renderer' ? 'none' : d]);
     const unavailable = !demoMode && needs.length > 0 && !c.crawlerEvaluable;
-    const lastStatus: ModuleData['checks'][number]['lastStatus'] = unavailable ? 'unavailable' : mine.some((i) => i.severity === 'critical') ? 'fail' : mine.length ? 'warn' : c.issueClass === 'opportunity' || c.issueClass === 'metric' || c.issueClass === 'report' ? 'not_run' : 'pass';
-    return { ...c, lastStatus, openIssues: mine.length, unavailableReason: needs.length ? `Needs: ${needs.map((n) => UNAVAILABLE_WITHOUT[n] ?? n).join(', ')}` : undefined };
+    // A check that never runs must never show "Pass": not-built checks and crawler checks before the first live crawl say so.
+    const notBuilt = CHECKS_NOT_BUILT[c.id];
+    const crawlerCheck = c.crawlerEvaluable || c.dataSources.includes('crawler');
+    const awaitingCrawl = !demoMode && crawlerCheck && !notBuilt && !v.liveSources.crawler;
+    const lastStatus: ModuleData['checks'][number]['lastStatus'] = mine.some((i) => i.severity === 'critical') ? 'fail' : mine.length ? 'warn'
+      : notBuilt ? 'not_built' : unavailable ? 'unavailable' : awaitingCrawl ? 'awaiting_crawl'
+      : c.issueClass === 'opportunity' || c.issueClass === 'metric' || c.issueClass === 'report' ? 'not_run' : 'pass';
+    const reason = notBuilt ?? (needs.length ? `Needs: ${needs.map((n) => UNAVAILABLE_WITHOUT[n] ?? n).join(', ')}` : awaitingCrawl ? 'No completed live crawl of this website yet.' : undefined);
+    return { ...c, lastStatus, openIssues: mine.length, unavailableReason: reason };
   });
   const scoreMod = module === 'content' || module === 'ai_compliance' ? 'content_ai' : module;
   const h = computeHealthScore(v.issues, v.siteSize, v.config, now);

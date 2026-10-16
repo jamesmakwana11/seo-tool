@@ -108,6 +108,9 @@ export interface EngineRunResult extends Omit<CrawlOutcome, 'run'> {
   answeredUrls?: Set<string>;
   /** Every page's main text (gzip NDJSON of {url, template, text}) for custom rules, when collectTexts was set. */
   textsFile?: string;
+  /** Change Monitor snapshot of this crawl: a gzip NDJSON file (Go engine) or the records themselves (built-in engine). */
+  snapshotFile?: string;
+  snapshotRecords?: import('../changes/snapshot').SnapRec[];
   /** The crawl failed; `store` holds what was fetched before the failure. */
   failed?: string;
   /** Called once the crawl service has stored what it needs (removes the crawl's temporary work files). */

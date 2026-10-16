@@ -39,6 +39,7 @@ const WEBSITE_METHODS = new Set(['listWebsites', 'createWebsite', 'updateWebsite
 
 let counter = 1000;
 const nid = (p: string) => `${p}-${++counter}`;
+const changesMock = () => new ApiError(409, 'NOT_AVAILABLE_IN_MOCK', 'Mock mode makes no real crawls and runs no browser, so it has no change history or screenshots. Connect the app to the API server.');
 const shopifyMock = () => new ApiError(409, 'SHOPIFY_NOT_CONNECTED', 'Mock mode has no Shopify connection: the SEO editor reads and writes Shopify through the API server.');
 
 const MOCK_NO_LIVE_CRAWL = 'This is the in-browser DEMO version: it cannot fetch websites. Start the API server with live crawling enabled (see LOCAL_CRAWLING.md) to crawl a real site.';
@@ -567,6 +568,42 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
     listShopifyThemeProposals: () => call('listShopifyThemeProposals', () => { need('shopify.theme'); return []; }),
     applyShopifyThemeProposal: () => call('applyShopifyThemeProposal', () => { need('shopify.theme'); throw shopifyMock(); }),
     downloadShopifyThemeBackup: () => call('downloadShopifyThemeBackup', () => { need('shopify.theme'); throw shopifyMock(); }),
+    createThemeSnapshot: () => call('createThemeSnapshot', () => { need('shopify.theme'); throw shopifyMock(); }),
+    listThemeSnapshots: () => call('listThemeSnapshots', () => { need('shopify.theme'); return []; }),
+    diffThemeSnapshots: () => call('diffThemeSnapshots', () => { need('shopify.theme'); throw shopifyMock(); }),
+    // Change Monitor + page captures: mock mode makes no crawls and runs no browser, so there is nothing to compare.
+    getChangeStatus: () => call('getChangeStatus', () => {
+      need('crawls.view');
+      return {
+        enabled: false, directory: '(mock mode)', persistentHint: 'Mock mode keeps no change history: crawls are simulated. Connect the app to the API server (VITE_API_MODE=http).',
+        retention: { keepRuns: 0, maxAgeDays: 0 }, baseline: null, runs: [], diskBytes: 0,
+      };
+    }),
+    getChangeSummary: () => call('getChangeSummary', () => { need('crawls.view'); throw changesMock(); }),
+    listChanges: () => call('listChanges', () => { need('crawls.view'); throw changesMock(); }),
+    getChange: () => call('getChange', () => { need('crawls.view'); throw changesMock(); }),
+    getChangeIssues: () => call('getChangeIssues', () => { need('crawls.view'); return {}; }),
+    exportChanges: () => call('exportChanges', () => { need('crawls.view'); throw changesMock(); }),
+    getCaptureStatus: () => call('getCaptureStatus', () => {
+      need('crawls.view');
+      return {
+        available: false, problems: ['Mock mode runs no browser: screenshots are taken by the API server.'], memoryNeededMB: 300,
+        afterCrawl: { enabled: false, changedPages: 0, viewports: [] }, watch: [], jobs: [], limits: { keepPerPage: 0, maxPages: 0, maxHeight: 0, concurrency: 1 },
+      };
+    }),
+    requestCaptures: () => call('requestCaptures', () => { need('crawls.run'); throw changesMock(); }),
+    getCaptureJob: () => call('getCaptureJob', () => { need('crawls.view'); throw new ApiError(404, 'NOT_FOUND', 'Capture job not found.'); }),
+    setCaptureWatch: () => call('setCaptureWatch', () => { need('crawls.configure'); throw changesMock(); }),
+    listCapturePages: () => call('listCapturePages', () => { need('crawls.view'); return []; }),
+    listCaptures: () => call('listCaptures', () => { need('crawls.view'); return []; }),
+    getCaptureImage: () => call('getCaptureImage', () => { need('crawls.view'); throw changesMock(); }),
+    downloadCaptureHtml: () => call('downloadCaptureHtml', () => { need('crawls.view'); throw changesMock(); }),
+    compareCaptures: (input) => call('compareCaptures', () => {
+      need('crawls.view');
+      const reason = 'Mock mode runs no browser: no screenshot exists, and none is made up.';
+      return { url: input.url, viewport: input.viewport, from: null, to: null, visual: { available: false, reason }, dom: { available: false, reason, note: '' }, seoFields: [], assets: { available: false, reason, items: [] }, change: null };
+    }),
+    getCaptureAssetDiff: () => call('getCaptureAssetDiff', () => { need('crawls.view'); throw changesMock(); }),
     listSchedules: () => call('listSchedules', () => { need('crawls.view'); return s.schedules; }),
     updateSchedule: (id, input) => call('updateSchedule', () => {
       need('crawls.configure');

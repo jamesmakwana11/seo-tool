@@ -157,6 +157,20 @@ function SmallCount({ label, value, hint }: { label: string; value?: number; hin
   );
 }
 
+const CHECK_LABELS: Record<string, string> = { links: 'links', images: 'images', external: 'external links', scripts: 'scripts', host: 'host variants', tls: 'TLS', botProbes: 'bot access', samples: 'samples' };
+
+/** "12 s ago" style age of a timestamp. */
+function ago(iso: string | undefined, now: number): string | undefined {
+  if (!iso) return undefined;
+  const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
+  return s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`;
+}
+
+const PHASE_SHORT: Record<string, string> = {
+  preflight: 'Checking address', robots: 'robots.txt', sitemaps: 'Sitemaps', crawling: 'Fetching pages', crawling_sitemap_only: 'Sitemap-only pages', samples: 'Samples',
+  checks: 'Checks after crawl', finalizing: 'Writing results', text_analysis: 'Duplicate analysis', analysing: 'Analysing', saving: 'Saving',
+};
+
 const PHASES: Record<string, string> = {
   preflight: 'Checking the site address…', robots: 'Reading robots.txt…', sitemaps: 'Reading sitemaps…', crawling_sitemap_only: 'Fetching pages found only in the sitemap…',
   samples: 'Fetching parameter, pagination and duplicate-path samples…', checks: 'Checking links, images, scripts, host variants and TLS…', finalizing: 'Writing results…',
@@ -190,8 +204,10 @@ export function CrawlProgress({ run, showLink = true }: { run: CrawlRun; showLin
   const target = Math.max(1, Math.min(cap, Math.max(run.urlsDiscovered ?? run.urlsPlanned, processed)));
   const pct = run.status === 'completed' ? 100 : Math.min(100, Math.round((processed / target) * 100));
   const elapsed = run.startedAt ? (run.finishedAt ? new Date(run.finishedAt).getTime() : now) - new Date(run.startedAt).getTime() : undefined;
-  // Pages per minute so far, and pages found but not fetched yet (large crawls run for hours: show the pace).
-  const perMinute = elapsed && elapsed > 5000 && processed > 0 ? Math.round((processed / elapsed) * 60000) : undefined;
+  // Pace in the last minute as measured by the crawler (an average since the start would keep showing a page rate long
+  // after page fetching ended, e.g. while links and images are checked).
+  const cov = run.coverage;
+  const perMinute = cov?.pagesPerMin || undefined;
   const waiting = run.urlsDiscovered !== undefined ? Math.max(0, Math.min(cap, run.urlsDiscovered) - processed) : undefined;
   const phaseText = run.status === 'queued'
     ? 'Queued — checking the site address before the first request…'
@@ -199,8 +215,10 @@ export function CrawlProgress({ run, showLink = true }: { run: CrawlRun; showLin
       ? `Fetching finished. Analysing ${fmtNum(processed)} pages — on a large crawl this can take several minutes.`
       : run.phase === 'saving'
         ? 'Saving page results and updating issues…'
-        : run.phase && PHASES[run.phase]
-          ? `${PHASES[run.phase]} ${perMinute ? `About ${fmtNum(perMinute)} pages a minute so far.` : ''}`
+        : run.phase === 'checks' && cov?.checks
+          ? `${PHASES.checks} ${fmtNum(cov.checks.done)} of ${fmtNum(cov.checks.total)} done (${Object.entries(cov.checks.groups).filter(([, g]) => g.total).map(([k, g]) => `${CHECK_LABELS[k] ?? k} ${fmtNum(g.done)}/${fmtNum(g.total)}`).join(' · ')}).`
+          : run.phase && PHASES[run.phase]
+          ? `${PHASES[run.phase]} ${perMinute ? `${fmtNum(perMinute)} pages in the last minute.` : ''}`
           : `Running — figures refresh every 2 seconds.${perMinute ? ` About ${fmtNum(perMinute)} pages a minute` : ''}${perMinute && waiting ? `; ${fmtNum(waiting)} found and waiting` : ''}${perMinute ? '.' : ''} Discovered includes URLs from the sitemap${run.options?.maxPages ? '; only up to the maximum pages are fetched' : ''}.`;
   return (
     <section aria-label={`Crawl ${run.id} progress`} className="space-y-3">
@@ -245,19 +263,25 @@ export function CrawlProgress({ run, showLink = true }: { run: CrawlRun; showLin
         </p>
       )}
       {active && !!run.warnings?.length && <Notice tone="med">{run.warnings[run.warnings.length - 1].message}</Notice>}
-      {(run.resolvedFrom || run.politeness) && (
-        <p className="text-xs text-ink-soft">
-          {run.resolvedFrom && <>Crawling <span className="font-mono">{run.resolvedStartUrl}</span> ({run.resolvedFrom} redirects there). </>}
-          {run.politeness && (
-            <>
-              {fmtNum(run.politeness.delayMs)} ms between requests
-              {run.politeness.crawlDelayMs ? ` (robots.txt Crawl-delay ${fmtNum(run.politeness.crawlDelayMs / 1000)} s)` : ''}
-              {run.politeness.retries ? ` · ${fmtNum(run.politeness.retries)} request${run.politeness.retries === 1 ? '' : 's'} retried` : ''}
-              {run.politeness.slowDowns ? ` · the site asked to slow down ${fmtNum(run.politeness.slowDowns)} time${run.politeness.slowDowns === 1 ? '' : 's'}` : ''}.
-            </>
-          )}
-        </p>
-      )}
+      {run.resolvedFrom && <p className="text-xs text-ink-soft">Crawling <span className="font-mono">{run.resolvedStartUrl}</span> ({run.resolvedFrom} redirects there).</p>}
+      {(cov?.politeness || run.politeness) && (() => {
+        const pol = { ...run.politeness, ...cov?.politeness } as NonNullable<typeof cov>['politeness'] & object;
+        const last = ago(cov?.lastRequestAt, now);
+        const quiet = active && cov?.lastRequestAt ? now - Date.parse(cov.lastRequestAt) > 60_000 : false;
+        return (
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-ctl border border-line bg-raised/40 px-3 py-2 text-xs sm:grid-cols-3 lg:grid-cols-6" aria-label="Crawl status">
+            <div><dt className="text-muted">Phase</dt><dd className="font-medium">{run.phase ? (PHASE_SHORT[run.phase] ?? run.phase.replace(/_/g, ' ')) : run.status}</dd></div>
+            <div><dt className="text-muted">Gap between requests</dt><dd className="font-medium tabular-nums">{fmtNum(pol.delayMs)} ms{pol.crawlDelayMs ? ` (Crawl-delay ${fmtNum(pol.crawlDelayMs / 1000)} s)` : ''}</dd></div>
+            <div><dt className="text-muted">Requests / min (now)</dt><dd className="font-medium tabular-nums">{cov?.requestsPerMin !== undefined ? fmtNum(cov.requestsPerMin) : '—'}{cov?.requests !== undefined ? <span className="text-muted"> · {fmtNum(cov.requests)} total</span> : null}</dd></div>
+            <div><dt className="text-muted">429 / 503 answers</dt><dd className={`font-medium tabular-nums ${(pol.rateLimited ?? 0) + (pol.unavailable503 ?? 0) ? 'text-med-ink' : ''}`}>{fmtNum(pol.rateLimited ?? 0)} / {fmtNum(pol.unavailable503 ?? 0)}{pol.slowDowns ? <span className="text-muted"> · slowed {fmtNum(pol.slowDowns)}×</span> : null}</dd></div>
+            <div><dt className="text-muted">Retries</dt><dd className="font-medium tabular-nums">{fmtNum(pol.retries ?? 0)}</dd></div>
+            <div><dt className="text-muted">Last answer</dt><dd className={`font-medium tabular-nums ${quiet ? 'text-crit-ink' : ''}`}>{last ?? '—'}</dd></div>
+            {cov?.checks && cov.checks.total > 0 && (
+              <div className="col-span-2 sm:col-span-3 lg:col-span-6"><dt className="text-muted">Checks after the crawl</dt><dd className="tabular-nums">{fmtNum(cov.checks.done)} of {fmtNum(cov.checks.total)} done — {Object.entries(cov.checks.groups).filter(([, g]) => g.total).map(([k, g]) => `${CHECK_LABELS[k] ?? k} ${fmtNum(g.done)}/${fmtNum(g.total)}`).join(' · ')}</dd></div>
+            )}
+          </dl>
+        );
+      })()}
       {active && <p className="text-xs text-muted" aria-live="polite">{phaseText}</p>}
       {!active && run.status === 'completed' && (
         <p className="text-sm text-ink-soft">
