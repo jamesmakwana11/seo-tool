@@ -35,7 +35,8 @@ export interface SessionUser {
 export interface AuthResult {
   token: string;
   user: SessionUser;
-  expiresAt: string;
+  /** When the session ends on its own; absent = it lasts until the user signs out. */
+  expiresAt?: string;
 }
 
 export interface IssueFilter {
@@ -153,7 +154,11 @@ export interface CrawlPagesQuery {
   crawlState?: NonNullable<CrawledUrl['crawlState']>;
   source?: string;
   template?: string;
-  sort?: 'url' | 'status' | 'depth' | 'indexable' | 'issues' | 'links' | 'response' | 'title' | 'inlinks';
+  /** Page audit score band: poor < 50, fair 50–79, good ≥ 80, none = not scored (not an HTML page / not fetched). */
+  score?: 'poor' | 'fair' | 'good' | 'none';
+  /** Pages failing / warning on one page-audit check (PAGE_AUDIT_TODO id). */
+  check?: string;
+  sort?: 'url' | 'status' | 'depth' | 'indexable' | 'issues' | 'links' | 'response' | 'title' | 'inlinks' | 'score';
   dir?: 'asc' | 'desc';
 }
 
@@ -163,7 +168,11 @@ export interface CrawlPagesResponse {
   limit: number;
   rows: CrawledUrl[];
   /** Counts over the whole run (not the filtered set): statuses, problems, crawl states, sources, templates. */
-  facets: { status: Record<string, number>; problem: Record<string, number>; crawlState: Record<string, number>; source: Record<string, number>; template: Record<string, number>; indexable: Record<string, number> };
+  facets: { status: Record<string, number>; problem: Record<string, number>; crawlState: Record<string, number>; source: Record<string, number>; template: Record<string, number>; indexable: Record<string, number>; score?: Record<string, number>; check?: Record<string, number> };
+  /** Limits the page audit scores were computed with (the page report uses the same). */
+  auditLimits?: import('./pageAudit').PageAuditLimits;
+  /** Average page audit score of the whole crawl and per template (not affected by filters). */
+  scoreSummary?: import('./pageAudit').PageScoreSummary;
 }
 
 /** URL coverage of one crawl: what was found, crawled, failed, excluded and what the sitemap and link graph disagree on. */
@@ -283,6 +292,8 @@ export interface SentinelApi {
   exportCrawl(id: string, format: 'csv' | 'json'): Promise<{ filename: string; mimeType: string; content: string | Blob }>;
   /** One page of a run's page rows (server-side search, filters, sort and paging). */
   getCrawlPages(id: string, query: CrawlPagesQuery): Promise<CrawlPagesResponse>;
+  /** One page of a crawl ("latest" = newest finished crawl) with its SEO audit and recommendations. */
+  getCrawlPage(id: string, url: string): Promise<import('./pageAudit').CrawlPageReport>;
   /** URL coverage report of a run. */
   getCrawlCoverage(id: string): Promise<CrawlCoverageReport>;
   /** Whether Lighthouse / rendered checks can run on this server (package, browser, memory). */
@@ -332,6 +343,8 @@ export interface SentinelApi {
   getChangeSummary(id: string): Promise<ChangeRunSummary>;
   listChanges(id: string, query: ChangeListQuery): Promise<ChangeListResponse>;
   getChange(id: string, url: string): Promise<ChangeDetail>;
+  /** This URL in the latest crawl that was compared with the baseline (null = never compared). */
+  getUrlChange(url: string): Promise<{ change: import('./changes').ChangeRecord | null }>;
   /** Open issues on a page of URLs (keys: normalised URLs). */
   getChangeIssues(urls: string[]): Promise<Record<string, ChangeDetail['issues']>>;
   exportChanges(id: string, format: 'csv' | 'json', query: ChangeListQuery): Promise<{ filename: string; mimeType: string; content: string | Blob }>;

@@ -1,0 +1,353 @@
+{
+  "products": 25000,
+  "site": {
+    "ready": true,
+    "url": "http://127.0.0.1:43581/",
+    "products": 25000,
+    "collections": 250,
+    "collectionPages": 1250,
+    "articles": 100
+  },
+  "concurrency": 16,
+  "budgetMB": null,
+  "heapLimitMB": 304,
+  "status": "completed",
+  "outcome": "completed",
+  "wallMs": 111388,
+  "phasesAtMs": {
+    "crawling": 254,
+    "checks": 33126,
+    "text_analysis": 33377,
+    "analysing": 42652,
+    "saving": 104364
+  },
+  "timings": {
+    "checksBudgetMs": 300000,
+    "checksMs": 152,
+    "crawlMs": 32986,
+    "robotsMs": 0,
+    "sitemapMs": 1647,
+    "textMs": 9030,
+    "crawlProcessMs": 42430,
+    "indexMs": 13789,
+    "heapAfterIndexMB": 91,
+    "textCoreReadMs": 540,
+    "heapAfterTextCoreMB": 102,
+    "wholeCrawlMs": 2707,
+    "heapAfterWholeCrawlMB": 142,
+    "heapAfterReleaseMB": 144,
+    "batchAnalysisMs": 42942,
+    "heapAfterBatchesMB": 98,
+    "coverageRowsMs": 1456,
+    "analysisTotalMs": 61669
+  },
+  "coverage": {
+    "discovered": 53491,
+    "queued": 0,
+    "waiting": 0,
+    "active": 0,
+    "processed": 26633,
+    "succeeded": 26508,
+    "failed": 125,
+    "robots": 0,
+    "depthLimited": 0,
+    "pageLimited": 0,
+    "excluded": 26735,
+    "excludedBy": {
+      "cart_account_or_app_path": 2,
+      "collection_scoped_product_path": 24992,
+      "sort_filter_search_parameter": 1741
+    },
+    "notProcessed": 0,
+    "sitemapUrls": 25235,
+    "pagesPerMin": 5794,
+    "politeness": {
+      "avgLatencyMs": 13,
+      "crawlDelayMs": 0,
+      "delayMs": 0,
+      "floorMs": 0,
+      "limitedAnswers": 0,
+      "rateLimited": 0,
+      "retries": 0,
+      "retryAfterPauses": 0,
+      "slowDowns": 0,
+      "unavailable503": 0,
+      "waitedMs": 0
+    },
+    "requests": 27390,
+    "requestsPerMin": 39141,
+    "lastRequestAt": "2026-10-16T12:08:29.699Z",
+    "checks": {
+      "deferred": 20000,
+      "done": 348,
+      "groups": {
+        "botProbes": {
+          "deferred": 0,
+          "done": 5,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 5
+        },
+        "external": {
+          "deferred": 0,
+          "done": 0,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 0
+        },
+        "images": {
+          "deferred": 20000,
+          "deferredAtLeast": true,
+          "done": 300,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 20300
+        },
+        "links": {
+          "deferred": 0,
+          "done": 25,
+          "excluded": 26710,
+          "failed": 0,
+          "reused": 25427,
+          "total": 25
+        },
+        "samples": {
+          "deferred": 0,
+          "done": 18,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 18
+        },
+        "scripts": {
+          "deferred": 0,
+          "done": 0,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 0
+        }
+      },
+      "total": 20348
+    }
+  },
+  "rows": 53491,
+  "textCore": {
+    "ok": true
+  },
+  "peaksMB": {
+    "nodeRss": 308,
+    "nodeHeap": 160,
+    "go": 62,
+    "textCore": 19,
+    "total": 308
+  },
+  "runMemory": {
+    "nodeRssMB": 278.6,
+    "nodeHeapMB": 95.8,
+    "totalMB": 278.6,
+    "peakTotalMB": 278.6
+  },
+  "issues": {
+    "total": 48,
+    "byCheck": {
+      "TECH-SITEMAP": 1,
+      "TECH-4XX": 153,
+      "TECH-DISCONTINUED": 125,
+      "TECH-DUPLICATE": 1897,
+      "ONP-TPL-HOME": 1,
+      "AEO-ENTITY": 1,
+      "GEO-EEAT": 101,
+      "AIC-01": 14883,
+      "TECH-BROKEN-INTERNAL": 630,
+      "TECH-THIN": 14977,
+      "TECH-SCHEMA-PRESENCE": 251,
+      "PERF-IMAGES": 150,
+      "ONP-TITLE": 25238,
+      "ONP-META": 2305,
+      "ONP-H1": 2076,
+      "ONP-BREADCRUMBS": 250,
+      "ONP-IMAGES": 1081,
+      "ONP-TPL-COLLECTION": 250,
+      "ONP-TPL-PRODUCT": 24875,
+      "AEO-ANSWER-BLOCK": 1,
+      "AEO-FAQ": 25125,
+      "AEO-EXTRACTABILITY": 1,
+      "GEO-STRUCTURE": 3,
+      "AIC-02": 610,
+      "AIC-09": 14713,
+      "GEO-FRESHNESS": 100,
+      "AIC-05": 100
+    }
+  },
+  "newIssues": 48,
+  "dupTitleSample": [
+    [
+      "http://127.0.0.1:43581/collections/toy-cars-13",
+      "Toy Cars | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:43581/collections/desk-organisers-5",
+      "Desk Organisers | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:43581/collections/hair-dryers-12",
+      "Hair Dryers | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:43581/collections/vegetable-choppers-0",
+      "Vegetable Choppers | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:43581/collections/shoe-racks-11",
+      "Shoe Racks | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:43581/collections/water-bottles-2",
+      "Water Bottles | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ]
+  ],
+  "pagesApiMs": {
+    "first": 34,
+    "last": 33,
+    "filterDupTitle": 18,
+    "search": 33,
+    "total": 53491,
+    "dupTitleRows": 2407,
+    "searchRows": 4028
+  },
+  "pageAuditMs": {
+    "todoFilter": 36,
+    "todoRows": 1081,
+    "sortByScore": 27,
+    "reports": [
+      55,
+      35,
+      59
+    ],
+    "scoreSummary": {
+      "average": 97,
+      "scored": 26631,
+      "byTemplate": {
+        "home": {
+          "average": 100,
+          "pages": 1
+        },
+        "collection": {
+          "average": 89,
+          "pages": 1509
+        },
+        "product": {
+          "average": 98,
+          "pages": 25008
+        },
+        "page": {
+          "average": 85,
+          "pages": 10
+        },
+        "other": {
+          "average": 80,
+          "pages": 2
+        },
+        "blog_index": {
+          "average": 90,
+          "pages": 1
+        },
+        "blog_article": {
+          "average": 90,
+          "pages": 100
+        }
+      }
+    },
+    "todo": {
+      "title-short": 228,
+      "title-duplicate": 2407,
+      "meta-short": 203,
+      "meta-duplicate": 3099,
+      "thin": 184,
+      "broken-links": 655,
+      "h2-missing": 77,
+      "alt-missing": 1081,
+      "meta-missing": 607,
+      "h1-multiple": 221,
+      "title-long": 232,
+      "error-status": 125,
+      "redirect": 125,
+      "orphan": 750
+    }
+  },
+  "coverageMs": 1,
+  "coverageSummary": {
+    "sitemapNotCrawled": 0,
+    "failed": 125,
+    "redirects": 125,
+    "nearGroups": 1,
+    "titleGroups": 807,
+    "orphanCandidates": 0
+  },
+  "exportCsv": {
+    "ms": 1052,
+    "bytes": 39562214,
+    "rows": 53492
+  },
+  "warnings": [],
+  "changeMonitorFirst": {
+    "afterCompletedMs": 5413,
+    "summary": {
+      "runId": "CRL-0001",
+      "snapshotId": "20261016T120756Z-CRL-0001",
+      "crawlType": "full",
+      "outcome": "completed",
+      "observedAt": "2026-10-16T12:07:56.509Z",
+      "finishedAt": "2026-10-16T12:09:42.319Z",
+      "urls": 53491,
+      "baseline": null,
+      "baselineEffect": "created",
+      "baselineNote": "This full crawl is now the baseline: changes are reported from the next crawl.",
+      "notes": [
+        "No baseline to compare with yet."
+      ],
+      "compareMs": 5568
+    },
+    "diskBytes": 20447858
+  }
+}

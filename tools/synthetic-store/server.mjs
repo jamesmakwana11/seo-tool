@@ -3,7 +3,7 @@
  * Synthetic Shopify-like store for crawl stress tests — serves ONLY on 127.0.0.1, generates every page on request
  * (nothing external is ever contacted).
  *
- *   node tools/synthetic-store/server.mjs --products 50000 [--port 0] [--seed 7]
+ *   node tools/synthetic-store/server.mjs --products 50000 [--port 0] [--seed 7] [--rate 4 --burst 8 --retry-after 30]
  *
  * Prints one JSON line {"ready":true,"url":"http://127.0.0.1:PORT/","pages":…} when listening.
  *
@@ -184,8 +184,28 @@ const ROBOTS = `User-agent: *\nDisallow: /cart\nDisallow: /checkout\nDisallow: /
 
 // ---------------------------------------------------------------- server
 let served = 0;
+// Optional rate limiting like a storefront's bot protection: --rate R requests/s with a burst of --burst B (token
+// bucket, all paths); over the limit the answer is 429 with Retry-After: --retry-after seconds.
+const RATE = Number(arg('rate', '0'));
+const BURST = Number(arg('burst', String(Math.max(1, RATE * 2))));
+const RETRY_AFTER = arg('retry-after', '');
+let tokens = BURST;
+let refilled = Date.now();
+let limited = 0;
 const server = http.createServer((req, res) => {
   served++;
+  if (RATE > 0) {
+    const now = Date.now();
+    tokens = Math.min(BURST, tokens + ((now - refilled) / 1000) * RATE);
+    refilled = now;
+    if (tokens < 1) {
+      limited++;
+      res.writeHead(429, { 'content-type': 'text/plain', ...(RETRY_AFTER ? { 'retry-after': RETRY_AFTER } : {}) });
+      res.end('Too Many Requests');
+      return;
+    }
+    tokens -= 1;
+  }
   const u = new URL(req.url, ORIGIN);
   const p = u.pathname;
   const send = (status, body, type = 'text/html; charset=utf-8', headers = {}) => {
@@ -237,5 +257,6 @@ server.listen(PORT, '127.0.0.1', () => {
   const collectionPages = Array.from({ length: COLLECTIONS }, (_, c) => Math.max(1, Math.ceil(Math.ceil((N - c) / COLLECTIONS) / PER_PAGE))).reduce((a, b) => a + b, 0);
   process.stdout.write(`${JSON.stringify({ ready: true, url: `${ORIGIN}/`, products: N, collections: COLLECTIONS, collectionPages, articles: ARTICLES })}\n`);
 });
-setInterval(() => process.stderr.write(`${JSON.stringify({ served })}\n`), 30_000).unref();
+setInterval(() => process.stderr.write(`${JSON.stringify({ served, limited })}\n`), 30_000).unref();
+process.on('SIGTERM', () => { process.stderr.write(`${JSON.stringify({ final: true, served, limited })}\n`); process.exit(0); });
 process.on('SIGTERM', () => server.close(() => process.exit(0)));

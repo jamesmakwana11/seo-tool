@@ -31,6 +31,7 @@ import type { LinkStatus, ParsedPage, SiteContext } from '../crawler/types';
 import { isCollectionTagPage, normalizeUrl, pathOf, sameUrl, scopedProductCanonical, urlKey } from '../crawler/url';
 import { FileResultStore } from '../results/store';
 import { gzWriter, readNdjsonGz, type ReadStats } from './files';
+import { auditLimitsFrom } from '@sentinel/shared';
 import { SNAPSHOT_TEXT_CHARS, snapFromPage, snapFromRow } from '../changes/snapshot';
 import { enrichLite, Interner, litePage, toParsedPage, type GoPage, type PageRecord, type UrlRecord } from './convert';
 import { FindingMerger } from './merge';
@@ -399,7 +400,7 @@ export async function analyzeGoCrawl(input: AnalyzeInput): Promise<AnalyzeOutput
 
   // ---------------------------------------------------------------- pass 2: page checks in batches + page rows
   const t3 = Date.now();
-  const store = new FileResultStore(input.resultsDir);
+  const store = new FileResultStore(input.resultsDir, auditLimitsFrom(ctx.thresholds));
   const merger = new FindingMerger();
   const batchAnalyzers = ANALYZERS.filter((a) => !WHOLE_CRAWL_CHECKS.has(a.checkId));
   const texts = input.collectTexts && !input.rowsOnly ? gzWriter(path.join(input.resultsDir, 'texts.ndjson.gz')) : undefined;

@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"io"
-	"os"
-	"path/filepath"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -35,16 +35,35 @@ func TestThrottleCoalescesBurstsOfRateLimits(t *testing.T) {
 	if iv, _, _, _ = th.snapshot(); iv != time.Second {
 		t.Fatalf("second burst: %v, want 1s", iv)
 	}
+	// Retry-After is a pause before the next request, not the gap between every later request.
+	before := time.Now()
 	th.slowDown(5 * time.Second)
-	if iv, _, _, _ = th.snapshot(); iv != 5*time.Second {
-		t.Fatalf("Retry-After 5s inside the window: %v", iv)
+	if iv, _, _, _ = th.snapshot(); iv != time.Second {
+		t.Fatalf("Retry-After 5s inside the window changed the gap to %v, want it to stay 1s", iv)
 	}
-	// Normal answers bring it back down.
+	th.mu.Lock()
+	next := th.next
+	th.mu.Unlock()
+	if next.Before(before.Add(5*time.Second)) || th.pauseCount() != 1 {
+		t.Fatalf("Retry-After 5s: next request at +%v (want ≥ 5s), pauses %d", next.Sub(before), th.pauseCount())
+	}
+	// Normal answers bring it back down — but not below the pace that was still rate limited (1.5 × the 500 ms gap
+	// of the last burst = 750 ms), so the crawl does not speed straight into the next 429 and its pause.
+	th.mu.Lock()
+	th.next = time.Now()
+	th.mu.Unlock()
 	for i := 0; i < 40; i++ {
 		th.relax()
 	}
+	if iv, _, _, _ = th.snapshot(); iv != 750*time.Millisecond {
+		t.Fatalf("after 40 normal answers: %v, want the learned 750ms", iv)
+	}
+	// A site that keeps answering normally gets the configured pace back (the learned gap decays 10 % per 100).
+	for i := 0; i < 1500; i++ {
+		th.relax()
+	}
 	if iv, _, _, _ = th.snapshot(); iv != 250*time.Millisecond {
-		t.Fatalf("after 40 normal answers: %v, want the 250ms floor", iv)
+		t.Fatalf("after 1,540 normal answers: %v, want the 250ms floor", iv)
 	}
 }
 
@@ -62,7 +81,10 @@ func TestOtherHostsArePacedPerHostNotByTheSiteQueue(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		for _, u := range []string{sa.URL, sb.URL} {
 			wg.Add(1)
-			go func(u string) { defer wg.Done(); ext.request(context.Background(), fmt.Sprintf("%s/x%d", u, i), reqOpts{NoRetry: true}) }(u)
+			go func(u string) {
+				defer wg.Done()
+				ext.request(context.Background(), fmt.Sprintf("%s/x%d", u, i), reqOpts{NoRetry: true})
+			}(u)
 		}
 	}
 	wg.Wait()
@@ -208,14 +230,19 @@ func TestFacetLinksAreSampledAndChecksReportProgress(t *testing.T) {
 	}
 	counts := r.done["counts"].(map[string]any)
 	checks := counts["checks"].(map[string]any)
-	if checks["total"].(float64) == 0 || checks["done"] != checks["total"] {
+	if checks["total"].(float64) == 0 || checks["done"].(float64)+checks["deferred"].(float64) != checks["total"].(float64) {
 		t.Fatalf("checks progress %v", checks)
 	}
 	for name, g := range checks["groups"].(map[string]any) {
 		gm := g.(map[string]any)
-		if gm["done"] != gm["total"] {
+		if gm["done"].(float64)+gm["deferred"].(float64) != gm["total"].(float64) {
 			t.Errorf("group %s: %v", name, gm)
 		}
+	}
+	// Filter variants beyond the sample are excluded on purpose (not checked); pages the crawl fetched are reused.
+	links := checks["groups"].(map[string]any)["links"].(map[string]any)
+	if links["excluded"].(float64) < 120-maxFacetProbes-10 || links["reused"].(float64) == 0 { // up to 10 variants are fetched as crawl-budget samples
+		t.Fatalf("link accounting: %v", links)
 	}
 	if counts["requests"].(float64) == 0 || counts["lastRequestAt"] == nil {
 		t.Fatalf("request counters missing: %v", counts)

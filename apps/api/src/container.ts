@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import path from 'node:path';
 import { defaultConfig, setPriorityConfig } from '@sentinel/shared';
 import type { Env } from './config/env';
@@ -92,7 +93,8 @@ export async function createContainer(o: ContainerOptions) {
   const workDir = env.CRAWLER_WORK_DIR ?? defaultWorkDir();
   const goEngine = createGoCrawlEngine({
     ...engineOpts, workDir, keepWorkFiles: env.CRAWLER_KEEP_WORK_FILES, memoryBudgetMB: env.CRAWLER_MEMORY_BUDGET_MB, goMemoryMB: env.CRAWLER_GO_MEMORY_MB,
-    smartMaxPages: env.CRAWLER_SMART_MAX_PAGES, stallTimeoutMs: env.CRAWLER_STALL_MINUTES * 60_000, env: { CRAWLER_GO_BIN: env.CRAWLER_GO_BIN, TEXTCORE_BIN: env.TEXTCORE_BIN },
+    smartMaxPages: env.CRAWLER_SMART_MAX_PAGES, stallTimeoutMs: env.CRAWLER_STALL_MINUTES * 60_000,
+    checksBudgetMs: env.CRAWLER_CHECKS_BUDGET_MINUTES ? env.CRAWLER_CHECKS_BUDGET_MINUTES * 60_000 : undefined, env: { CRAWLER_GO_BIN: env.CRAWLER_GO_BIN, TEXTCORE_BIN: env.TEXTCORE_BIN },
   });
   if (!o.repos && !o.engine) await cleanStaleWork(workDir).catch(() => 0);
   /** Which engine runs a plan: re-verification → built-in; otherwise CRAWLER_ENGINE (auto = Go when installed). */
@@ -214,6 +216,8 @@ async function bootstrapAdmin(repos: Repositories, env: Env, now: Date) {
     id, name: env.ADMIN_NAME ?? 'Administrator', email, role: 'admin', teamIds: [], title: 'Administrator', status: 'active',
     capacityHoursPerWeek: 40, createdAt: now.toISOString(), source: 'live',
   });
-  const { hash, salt } = await hashPassword(password);
+  // Same salt at every start (keyed with SESSION_SECRET): sessions signed before a restart stay valid after it.
+  const fixedSalt = env.SESSION_SECRET ? createHmac('sha256', env.SESSION_SECRET).update(`admin-salt:${email}`).digest('hex').slice(0, 32) : undefined;
+  const { hash, salt } = await hashPassword(password, fixedSalt);
   await repos.credentials.insert({ id: email, employeeId: id, hash, salt, updatedAt: now.toISOString() });
 }

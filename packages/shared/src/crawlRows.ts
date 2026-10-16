@@ -4,6 +4,7 @@
  */
 import type { CrawlPageProblem, CrawlPagesQuery, CrawlPagesResponse, CrawlPageStatusGroup } from './api';
 import type { CrawledUrl, Severity } from './types';
+import { auditPage, DEFAULT_PAGE_AUDIT_LIMITS, PAGE_AUDIT_TODO, scoreSummaryFrom, todoBit, todoIds, todoMask } from './pageAudit';
 
 export const crawlRowStatus = (u: CrawledUrl): number | null | undefined => (u.redirects ? u.status : u.finalStatus ?? u.status);
 
@@ -52,15 +53,37 @@ export function queryCrawlRows(all: CrawledUrl[], q: CrawlPagesQuery): CrawlPage
       case 'noindex': return u.indexable === false;
     }
   };
-  const facets: CrawlPagesResponse['facets'] = { status: {}, problem: {}, crawlState: {}, source: {}, template: {}, indexable: {} };
+  const flagsOf = (u: CrawledUrl) => (Object.keys(CRAWL_PROBLEM_LABELS) as CrawlPageProblem[]).filter((p) => is(u, p));
+  const audits = new Map<CrawledUrl, { score: number; todo: number }>();
+  const auditOf = (u: CrawledUrl) => {
+    let v = audits.get(u);
+    if (!v) { const a = auditPage({ ...u, flags: flagsOf(u) }, DEFAULT_PAGE_AUDIT_LIMITS); v = { score: a.score === null ? -1 : a.score, todo: todoMask(a) }; audits.set(u, v); }
+    return v;
+  };
+  const scoreOf = (u: CrawledUrl) => auditOf(u).score;
+  const cbit = q.check !== undefined ? todoBit(q.check) : undefined;
+  const band = (u: CrawledUrl) => { const v = scoreOf(u); return v < 0 ? 'none' : v < 50 ? 'poor' : v < 80 ? 'fair' : 'good'; };
+  const facets: CrawlPagesResponse['facets'] = { status: {}, problem: {}, crawlState: {}, source: {}, template: {}, indexable: {}, score: {}, check: {} };
   const inc = (o: Record<string, number>, k: string) => { o[k] = (o[k] ?? 0) + 1; };
+  let sum = 0;
+  let scored = 0;
+  const byT = new Map<string, { sum: number; n: number }>();
   for (const u of all) {
+    const sc = scoreOf(u);
+    if (sc >= 0) {
+      sum += sc; scored++;
+      const t = byT.get(u.template ?? '') ?? { sum: 0, n: 0 };
+      t.sum += sc; t.n++; byT.set(u.template ?? '', t);
+    }
     inc(facets.status, crawlRowStatusGroup(u));
     for (const p of Object.keys(CRAWL_PROBLEM_LABELS) as CrawlPageProblem[]) if (is(u, p)) inc(facets.problem, p);
     inc(facets.crawlState, u.crawlState ?? 'fetched');
     for (const v of u.foundVia ?? []) inc(facets.source, v);
     if (u.template) inc(facets.template, u.template);
     if (u.indexable !== undefined) inc(facets.indexable, u.indexable ? 'yes' : 'no');
+    inc(facets.score!, band(u));
+    const m = auditOf(u).todo;
+    if (m) for (let b = 0; b < PAGE_AUDIT_TODO.length; b++) if (m & (1 << b)) inc(facets.check!, PAGE_AUDIT_TODO[b].id);
   }
   const needle = q.q?.trim().toLowerCase();
   let rows = all.filter((u) => (!q.status || crawlRowStatusGroup(u) === q.status)
@@ -69,6 +92,8 @@ export function queryCrawlRows(all: CrawledUrl[], q: CrawlPagesQuery): CrawlPage
     && (!q.crawlState || (u.crawlState ?? 'fetched') === q.crawlState)
     && (!q.source || (u.foundVia ?? []).includes(q.source))
     && (!q.template || u.template === q.template)
+    && (!q.score || band(u) === q.score)
+    && (!q.check || (cbit !== undefined && (auditOf(u).todo & (1 << cbit)) !== 0))
     && (!needle || u.url.toLowerCase().includes(needle) || (u.title ?? '').toLowerCase().includes(needle)));
   if (q.sort) {
     const dir = q.dir === 'desc' ? -1 : 1;
@@ -82,6 +107,7 @@ export function queryCrawlRows(all: CrawledUrl[], q: CrawlPagesQuery): CrawlPage
         case 'issues': { const l = u.issues ?? []; return l.length * 10 + Math.max(0, ...l.map((i) => SEV[i.severity])); }
         case 'links': return u.internalLinks ?? -1;
         case 'inlinks': return u.inlinks ?? -1;
+        case 'score': { const v = scoreOf(u); return v < 0 ? 1000 : v; }
         default: return u.responseMs ?? -1;
       }
     };
@@ -89,6 +115,6 @@ export function queryCrawlRows(all: CrawledUrl[], q: CrawlPagesQuery): CrawlPage
   }
   const limit = Math.max(1, Math.min(500, Math.floor(Number(q.limit ?? 50)) || 50));
   const offset = Math.max(0, Math.min(Math.floor(Number(q.offset ?? 0)) || 0, rows.length));
-  const flagged = rows.slice(offset, offset + limit).map((u) => ({ ...u, flags: (Object.keys(CRAWL_PROBLEM_LABELS) as CrawlPageProblem[]).filter((p) => is(u, p)) }));
-  return { total: rows.length, offset, limit, rows: flagged, facets };
+  const flagged = rows.slice(offset, offset + limit).map((u) => { const v = scoreOf(u); const t = todoIds(auditOf(u).todo); return { ...u, flags: flagsOf(u), ...(v >= 0 ? { auditScore: v } : {}), ...(t.length ? { auditTodo: t } : {}) }; });
+  return { total: rows.length, offset, limit, rows: flagged, facets, auditLimits: DEFAULT_PAGE_AUDIT_LIMITS, scoreSummary: scoreSummaryFrom(sum, scored, byT) };
 }

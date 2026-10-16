@@ -66,6 +66,12 @@ type throttle struct {
 	limited   int64 // 429 / 503 answers seen (one burst usually holds several)
 	lastSlow  time.Time
 	waited    time.Duration
+	pauses    int64 // Retry-After pauses honoured
+	// learned: the slowest gap at which the site still rate limited, ×1.5 — normal answers do not bring the gap back
+	// below it (otherwise the crawl speeds up straight into the next 429 and its Retry-After pause). It decays by 10 %
+	// after every 100 normal answers in a row, so a site that recovers gets the configured pace back.
+	learned time.Duration
+	okLong  int
 }
 
 func newThrottle(min, max time.Duration) *throttle {
@@ -108,7 +114,11 @@ func (t *throttle) wait(ctx context.Context) error {
 // slowDown reacts to a 429 / 503. Several requests are usually in flight when a site starts rate limiting, and all
 // of them come back limited: those answers describe the pace that was already corrected, so the gap is widened once
 // per burst (window = the current gap, at least 2 s), not once per answer — otherwise 6 parallel 429s would turn
-// 250 ms into 30 s in one go. Retry-After is always honoured.
+// 250 ms into 30 s in one go.
+//
+// Retry-After is honoured as a PAUSE: no request to this host starts before it has passed. It is not adopted as the
+// gap between all later requests — "Retry-After: 30" means "come back in 30 s", not "send one request every 30 s"
+// (doing that made every following page wait 30 s and kept the crawl crawling at 2 pages a minute for many minutes).
 func (t *throttle) slowDown(retryAfter time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -120,16 +130,20 @@ func (t *throttle) slowDown(retryAfter time.Duration) {
 		window = 2 * time.Second
 	}
 	n := t.interval
+	t.okLong = 0
 	if t.lastSlow.IsZero() || now.Sub(t.lastSlow) >= window {
 		t.slowDowns++
 		t.lastSlow = now
+		if l := t.interval * 3 / 2; l > t.learned {
+			t.learned = l
+			if t.learned > t.maxD {
+				t.learned = t.maxD
+			}
+		}
 		n = t.interval * 2
 		if n < 500*time.Millisecond {
 			n = 500 * time.Millisecond
 		}
-	}
-	if retryAfter > n {
-		n = retryAfter
 	}
 	if n < t.floor {
 		n = t.floor
@@ -138,15 +152,40 @@ func (t *throttle) slowDown(retryAfter time.Duration) {
 		n = t.maxD
 	}
 	t.interval = n
-	if nx := t.lastStart.Add(n); nx.After(t.next) {
-		t.next = nx
+	next := t.lastStart.Add(n)
+	if retryAfter > 0 {
+		pause := retryAfter
+		if pause > t.maxD {
+			pause = t.maxD
+		}
+		if p := now.Add(pause); p.After(next) {
+			next = p
+		}
+		t.pauses++
+	}
+	if next.After(t.next) {
+		t.next = next
 	}
 }
 
 func (t *throttle) relax() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.interval <= t.floor {
+	if t.learned > 0 {
+		t.okLong++
+		if t.okLong >= 100 {
+			t.okLong = 0
+			t.learned = t.learned * 9 / 10
+			if t.learned <= t.floor {
+				t.learned = 0
+			}
+		}
+	}
+	low := t.floor
+	if t.learned > low {
+		low = t.learned
+	}
+	if t.interval <= low {
 		return
 	}
 	t.okRun++
@@ -158,9 +197,9 @@ func (t *throttle) relax() {
 		if t.interval >= 2*time.Second {
 			n = t.interval / 2
 		}
-		// Close to the configured gap: go straight back to it.
-		if n < t.floor || n-t.floor < 100*time.Millisecond {
-			n = t.floor
+		// Close to the configured (or learned) gap: go straight back to it.
+		if n < low || n-low < 100*time.Millisecond {
+			n = low
 		}
 		t.interval = n
 	}
@@ -195,6 +234,12 @@ func (t *throttle) limitedCount() int64 {
 	return t.limited
 }
 
+func (t *throttle) pauseCount() int64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.pauses
+}
+
 // ------------------------------------------------------------------------------------------- client
 
 type clientOpts struct {
@@ -205,7 +250,7 @@ type clientOpts struct {
 	Retries        int
 	MaxRetryWait   time.Duration
 	AllowLoopback  bool
-	Throttle       *throttle // the site's shared pace (nil for other hosts)
+	Throttle       *throttle     // the site's shared pace (nil for other hosts)
 	PerHostDelay   time.Duration // other hosts (CDN images, scripts, external links): a small gap per host, never the site's queue
 	Concurrency    int
 	OnRetry        func()
@@ -314,6 +359,7 @@ func newHTTPClient(o clientOpts) *httpClient {
 }
 
 var retryStatus = map[int]bool{429: true, 502: true, 503: true, 504: true}
+
 // Certificate problems are not transient: retrying them only slows the crawl down.
 var noRetryErr = regexp.MustCompile(`(?i)^(cancelled|blocked:|could not resolve|more than \d+ redirects)|no such host|invalid Location|server misbehaving|x509:|tls: failed to verify|certificate`)
 
@@ -499,7 +545,9 @@ func (h *httpClient) attempt(ctx context.Context, target string, ro reqOpts) sin
 		if thr == nil {
 			thr = h.hostThrottle(target)
 		}
-		if !ro.NoRetry && thr != nil {
+		// NoRetry only turns off retries: a 429 / 503 always slows the host down, whatever the request was for (an
+		// image or link check that ignored it kept hitting a site that was already limiting).
+		if thr != nil {
 			if s.status == 429 || s.status == 503 {
 				thr.slowDown(ra)
 			} else if s.status != 0 && s.status < 500 {
@@ -620,7 +668,12 @@ func (h *httpClient) request(ctx context.Context, target string, ro reqOpts) Fet
 
 // assetSize: HEAD content-length, else a GET counting bytes (capped at 20 MB, body discarded).
 func (h *httpClient) assetSize(ctx context.Context, target string, accept string) (status *int, size *int, ctype string, errMsg string) {
-	head := h.request(ctx, target, reqOpts{Method: http.MethodHead, NoRetry: true, Accept: accept})
+	// HEAD with the normal retries (Retry-After honoured). A site still answering 429 / 503 is not asked again with a
+	// GET: the answer is returned as it is and the caller reports the image as not checked.
+	head := h.request(ctx, target, reqOpts{Method: http.MethodHead, Accept: accept})
+	if head.FinalStatus != nil && (*head.FinalStatus == 429 || *head.FinalStatus == 503) {
+		return head.FinalStatus, nil, head.Headers["content-type"], fmt.Sprintf("rate limited (HTTP %d)", *head.FinalStatus)
+	}
 	if head.FinalStatus != nil && *head.FinalStatus < 400 {
 		if cl, err := strconv.Atoi(head.Headers["content-length"]); err == nil {
 			return head.FinalStatus, &cl, head.Headers["content-type"], ""

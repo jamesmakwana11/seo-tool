@@ -28,6 +28,8 @@ buttons (Admin / SEO Specialist / Developer) or any demo email with password `Se
 All 83 screens from prompt §4.2 are implemented (requirements `CUS-SCR-01…83` in `FEATURE_TRACEABILITY.md` map each to a route).
 60 routes plus dynamic detail routes:
 
+- Added 16 Oct 2026 (Phase 2): **All pages** `/pages` (site and template scores, to-do list, page list with scores, CSV export) and **Page report** `/pages/report?run=&url=` — see `docs/PAGE_AUDIT.md`.
+
 | Area | Routes |
 |---|---|
 | Auth & shell | `/login`, `/forgot-password`, `/reset-password`, app shell (collapsible sidebar, breadcrumbs, global search Ctrl K, notifications bell, account menu, DEV role preview), `/search`, `/notifications` (+ delivery log), `/profile` |

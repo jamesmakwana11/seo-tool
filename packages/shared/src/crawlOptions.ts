@@ -4,6 +4,7 @@
  */
 import { ApiError, type CrawlDetail } from './api';
 import type { CrawlOptions, CrawledUrl } from './types';
+import { PAGE_AUDIT_TODO_LABELS } from './pageAudit';
 
 /**
  * Bounds for the numeric settings. Pages and depth have NO upper bound: null means "crawl every page" / "follow links
@@ -138,6 +139,9 @@ const CSV_COLUMNS: { header: string; value: (u: CrawledUrl) => unknown }[] = [
   { header: 'broken_link_urls', value: (u) => u.brokenLinks?.join(' ') },
   { header: 'images', value: (u) => u.images },
   { header: 'images_missing_alt', value: (u) => u.imagesMissingAlt },
+  { header: 'audit_score', value: (u) => u.auditScore },
+  { header: 'audit_to_do', value: (u) => u.auditTodo?.map((id) => PAGE_AUDIT_TODO_LABELS[id] ?? id).join(' | ') },
+  { header: 'external_links', value: (u) => u.externalLinks },
   { header: 'response_ms', value: (u) => u.responseMs },
   { header: 'bytes', value: (u) => u.bytes },
   { header: 'issue_count', value: (u) => u.issues?.length },

@@ -287,8 +287,18 @@ type reqSample struct {
 	n int64
 }
 
-// checkGroup counts one group of post-crawl checks (link targets, images, scripts …) for the progress display.
-type checkGroup struct{ total, done atomic.Int64 }
+// checkGroup counts one group of post-crawl checks (link targets, images, scripts …): total = targets found,
+// done = checked (failed ⊂ done), deferred = not checked because of a cap or the time budget (never reported as
+// broken); a group is finished when done + deferred = total. excluded = left out on purpose (robots.txt, your
+// exclusions, filter / sort variants beyond the sample) and reused = already answered by the page crawl — neither
+// is in total.
+type checkGroup struct {
+	total, done, failed, deferred, excluded, reused atomic.Int64
+	atLeast                                         atomic.Bool // deferred was counted up to a bound: "at least"
+}
+
+// skip counts a target that is not checked because of a cap.
+func (g *checkGroup) skip() { g.total.Add(1); g.deferred.Add(1) }
 
 func (c *Crawler) group(name string, total int) *checkGroup {
 	c.checkMu.Lock()
@@ -310,15 +320,80 @@ func (c *Crawler) checkProgress() map[string]any {
 	c.checkMu.Lock()
 	defer c.checkMu.Unlock()
 	groups := map[string]any{}
-	var total, done int64
+	var total, done, deferred int64
 	for _, n := range c.checkOrder {
 		g := c.checkGroups[n]
 		t, d := g.total.Load(), g.done.Load()
 		total += t
 		done += d
-		groups[n] = map[string]int64{"total": t, "done": d}
+		deferred += g.deferred.Load()
+		gm := map[string]any{"total": t, "done": d, "failed": g.failed.Load(), "deferred": g.deferred.Load(), "excluded": g.excluded.Load(), "reused": g.reused.Load()}
+		if g.atLeast.Load() {
+			gm["deferredAtLeast"] = true
+		}
+		groups[n] = gm
 	}
-	return map[string]any{"total": total, "done": done, "groups": groups}
+	return map[string]any{"total": total, "done": done, "deferred": deferred, "groups": groups}
+}
+
+// Outcome of one post-crawl check.
+const (
+	checkOK = iota
+	checkFailed
+	// checkDeferred: the site was still rate limiting (429 / 503 after the retries) — the target was not really
+	// checked, so it is reported as deferred and never written as a broken link or image.
+	checkDeferred
+)
+
+// outcomeOf classifies a final status: 429 / 503 → deferred, no answer or ≥ 400 → failed.
+func outcomeOf(st *int) int {
+	switch {
+	case st != nil && (*st == 429 || *st == 503):
+		return checkDeferred
+	case st == nil || *st >= 400:
+		return checkFailed
+	}
+	return checkOK
+}
+
+// gcheck runs fn over items with n workers inside the check time budget. Items reached after the budget (or a stop),
+// and items the site would not answer because it was rate limiting, are counted as deferred and left out of the
+// results — the analysis then treats them as "not checked", not broken.
+func gcheck[T any, R any](c *Crawler, g *checkGroup, items []T, n int, fn func(T) (R, int)) []R {
+	type res struct {
+		r  R
+		ok bool
+	}
+	out := pool(items, n, func(it T) res {
+		if c.stopped() || c.pastCheckBudget() {
+			g.deferred.Add(1)
+			return res{}
+		}
+		r, oc := fn(it)
+		switch oc {
+		case checkDeferred:
+			g.deferred.Add(1)
+			return res{}
+		case checkFailed:
+			g.failed.Add(1)
+		}
+		g.done.Add(1)
+		return res{r, true}
+	})
+	kept := make([]R, 0, len(out))
+	for _, x := range out {
+		if x.ok {
+			kept = append(kept, x.r)
+		}
+	}
+	return kept
+}
+
+func (c *Crawler) pastCheckBudget() bool {
+	c.checkMu.Lock()
+	d := c.checkDeadline
+	c.checkMu.Unlock()
+	return !d.IsZero() && time.Now().After(d)
 }
 
 // gpool runs fn over items with n workers and counts each finished item in g.
@@ -394,12 +469,15 @@ type Crawler struct {
 	sitemapDone chan struct{}
 	sitemapURLs int
 
-	checkMu     sync.Mutex
-	checkOrder  []string
-	checkGroups map[string]*checkGroup // post-crawl checks: total / done per group (progress)
-	outMu       sync.Mutex
+	checkMu       sync.Mutex
+	checkOrder    []string
+	checkGroups   map[string]*checkGroup // post-crawl checks: total / done per group (progress)
+	checkDeadline time.Time              // post-crawl checks stop starting new requests after this
+	imageCount    map[string]int         // pages each collected image appears on (checked most-used first)
+	imagesOver    map[string]bool        // distinct images beyond the image cap (reported as deferred; bounded)
+	outMu         sync.Mutex
 
-	reqSamples  []reqSample  // (time, requests answered) every progress tick: requests per minute
+	reqSamples  []reqSample // (time, requests answered) every progress tick: requests per minute
 	completions []time.Time // recent fetch completions (pages per minute)
 	lastDone    time.Time
 	activeSince map[int32]time.Time
@@ -423,7 +501,7 @@ func newCrawler(ctx context.Context, cancel context.CancelFunc, job Job, ev *emi
 		return nil, fmt.Errorf("cannot create work directory: %v", err)
 	}
 	c := &Crawler{job: job, ctx: ctx, cancel: cancel, ev: ev, urls: map[string]*uState{}, paramCap: map[string]int{}, counts: map[uint8]int{}, excluded: map[uint8]int{},
-		canonTargets: map[string]bool{}, imageSeen: map[string]bool{}, externalSeen: map[string]bool{}, scriptSeen: map[string]bool{}, scopedSeen: map[string]bool{}, pagSeen: map[string]bool{},
+		canonTargets: map[string]bool{}, imageSeen: map[string]bool{}, imageCount: map[string]int{}, imagesOver: map[string]bool{}, externalSeen: map[string]bool{}, scriptSeen: map[string]bool{}, scopedSeen: map[string]bool{}, pagSeen: map[string]bool{},
 		sitemapDone: make(chan struct{}), activeSince: map[int32]time.Time{}, timings: map[string]int{}, t0: time.Now()}
 	c.cond = sync.NewCond(&c.mu)
 	c.stopWhy.Store("")
@@ -942,20 +1020,31 @@ func (c *Crawler) collectContext(r *PageRecord, h *ParsedHTML) {
 		}
 	}
 	if c.job.needs("images") {
+		// ALT text, dimensions and lazy-loading come from the HTML itself; only the weight / format of an image needs a
+		// request, and each distinct image file is requested once however many pages show it.
 		n := 0
 		for _, im := range h.Images {
 			if !im.InMain {
 				continue
 			}
-			if n >= l.ImagesPerPage || len(c.images) >= l.ImagesTotal {
-				break
-			}
-			n++
-			if !(isSameSite(im.Src, c.siteHost) || imageCDN.MatchString(hostOf(im.Src))) || c.imageSeen[im.Src] {
+			src := strings.SplitN(im.Src, "#", 2)[0]
+			if c.imageSeen[src] {
+				c.imageCount[src]++
 				continue
 			}
-			c.imageSeen[im.Src] = true
-			c.images = append(c.images, im.Src)
+			if !(isSameSite(src, c.siteHost) || imageCDN.MatchString(hostOf(src))) {
+				continue
+			}
+			if n >= l.ImagesPerPage || len(c.images) >= l.ImagesTotal {
+				if len(c.imagesOver) < 20000 {
+					c.imagesOver[src] = true
+				}
+				continue
+			}
+			n++
+			c.imageSeen[src] = true
+			c.imageCount[src] = 1
+			c.images = append(c.images, src)
 		}
 	}
 	if c.job.needs("external") {
@@ -1435,10 +1524,30 @@ func (c *Crawler) contextChecks() map[string]any {
 		conc = 8
 	}
 	var tasks []func()
-	// Link targets: canonicals, internal links and sitemap entries that were not crawled as pages.
+	// Time budget: requests to a rate-limited site are slow, so the checks get as long as the page crawl took (at least
+	// 5, at most 20 minutes) unless the job says otherwise; whatever is left is reported as deferred (not checked),
+	// never as broken. The most valuable targets go first (most-linked links, images shown on the most pages).
+	budget := time.Duration(j.ChecksBudgetMs) * time.Millisecond
+	if budget <= 0 {
+		budget = time.Duration(c.timings["crawlMs"]) * time.Millisecond
+		if budget < 5*time.Minute {
+			budget = 5 * time.Minute
+		}
+		if budget > 20*time.Minute {
+			budget = 20 * time.Minute
+		}
+	}
+	c.checkMu.Lock()
+	c.checkDeadline = time.Now().Add(budget)
+	c.checkMu.Unlock()
+	c.timings["checksBudgetMs"] = int(budget.Milliseconds())
+
+	// Link targets: canonicals, internal links and sitemap entries that were not crawled as pages. URLs the crawl
+	// already fetched are answered by the crawl (reused, no request); the rest are checked most-linked first.
 	if j.needs("linkTargets") || j.needs("sitemap") {
 		var targets []string
 		seen := map[string]bool{}
+		g := c.group("links", 0)
 		c.mu.Lock()
 		known := func(u string) bool {
 			st := c.urls[normalizeKey(u)]
@@ -1456,13 +1565,23 @@ func (c *Crawler) contextChecks() map[string]any {
 			ok, _ := c.robots.allowed(j.UserAgent, pq)
 			return ok
 		}
-		add := func(u string) bool {
-			if u == "" || seen[u] || !isSameSite(u, c.siteHost) || known(u) || !allowed(u) {
-				return false
+		// classify: 1 = will be checked, 0 = already handled / counted elsewhere.
+		add := func(u string) int {
+			k := normalizeKey(u)
+			if u == "" || seen[k] || !isSameSite(u, c.siteHost) {
+				return 0
 			}
-			seen[u] = true
+			seen[k] = true
+			switch {
+			case known(u):
+				g.reused.Add(1)
+				return 0
+			case !allowed(u):
+				g.excluded.Add(1)
+				return 0
+			}
 			targets = append(targets, u)
-			return true
+			return 1
 		}
 		if j.needs("linkTargets") {
 			c.ctxMu.Lock()
@@ -1470,79 +1589,109 @@ func (c *Crawler) contextChecks() map[string]any {
 				add(cn)
 			}
 			c.ctxMu.Unlock()
-			n, facets := 0, 0
+			var cands []*uState
 			for _, st := range c.byID {
-				if n >= j.Limits.LinkChecks {
-					break
-				}
 				if st.src&srcLink == 0 || st.state == stFetched || st.state == stRobots {
 					continue
 				}
-				// Never probe URLs excluded as traps, by your settings, as non-pages or as endless parameter variants;
-				// filter / sort variants only as a sample.
+				// Never probe URLs excluded as traps, by your settings or as non-pages; filter / sort variants only
+				// as a sample.
 				if st.state == stExcluded && st.reason != rFacet {
+					g.excluded.Add(1)
 					continue
 				}
-				if st.state == stExcluded && st.reason == rFacet {
-					if facets >= maxFacetProbes {
-						continue
-					}
-					facets++
+				cands = append(cands, st)
+			}
+			// Most-linked targets first: a broken URL linked from every page matters more than one linked once.
+			sort.SliceStable(cands, func(a, b int) bool { return cands[a].inlinks > cands[b].inlinks })
+			n, facets := 0, 0
+			for _, st := range cands {
+				isFacet := st.state == stExcluded && st.reason == rFacet
+				if isFacet && facets >= maxFacetProbes {
+					g.excluded.Add(1) // filter / sort variants are sampled on purpose
+					continue
 				}
-				if add(st.url) {
+				if n >= j.Limits.LinkChecks {
+					g.skip()
+					continue
+				}
+				if r := add(st.url); r == 1 {
 					n++
+					if isFacet {
+						facets++
+					}
 				}
 			}
 		}
 		if j.needs("sitemap") {
 			n := 0
 			for _, st := range c.byID {
-				if n >= j.Limits.SitemapChecks {
-					break
-				}
 				if st.src&srcSitemap == 0 {
 					continue
 				}
-				if add(st.url) {
-					n++
+				if n >= j.Limits.SitemapChecks {
+					if k := normalizeKey(st.url); !seen[k] && !known(st.url) {
+						seen[k] = true
+						g.skip()
+					}
+					continue
 				}
+				n += add(st.url)
 			}
 		}
 		c.mu.Unlock()
-		g := c.group("links", len(targets))
-		tasks = append(tasks, func() { set("linkTargets", gpool(g, targets, conc, func(u string) LinkStatus { return c.checkLink(u, false) })) })
+		g.total.Add(int64(len(targets)))
+		tasks = append(tasks, func() {
+			set("linkTargets", gcheck(c, g, targets, conc, func(u string) (LinkStatus, int) {
+				r := c.checkLink(u, false)
+				return r, outcomeOf(r.FinalStatus)
+			}))
+		})
 	}
 	c.ctxMu.Lock()
 	images, externals, scripts, slash := append([]string{}, c.images...), append([]string{}, c.externals...), append([]string{}, c.scripts...), c.slashSample
+	counts := make(map[string]int, len(c.imageCount))
+	for k, v := range c.imageCount {
+		counts[k] = v
+	}
+	imagesOver := len(c.imagesOver)
 	c.ctxMu.Unlock()
 	if j.needs("images") {
+		// Images shown on the most pages first.
+		sort.SliceStable(images, func(a, b int) bool { return counts[images[a]] > counts[images[b]] })
 		g := c.group("images", len(images))
+		for i := 0; i < imagesOver; i++ {
+			g.skip()
+		}
+		if imagesOver >= 20000 {
+			g.atLeast.Store(true)
+		}
 		tasks = append(tasks, func() {
-			set("images", gpool(g, images, conc, func(u string) AssetInfo {
+			set("images", gcheck(c, g, images, conc, func(u string) (AssetInfo, int) {
 				cl := c.ext // CDN-hosted images: paced per host, not in the site's queue
 				if isSameSite(u, c.siteHost) {
 					cl = c.site
 				}
 				st, sz, ct, e := cl.assetSize(c.ctx, u, "image/avif,image/webp,image/*,*/*;q=0.8")
-				return AssetInfo{URL: u, Status: st, Bytes: sz, ContentType: ct, Error: e}
+				return AssetInfo{URL: u, Status: st, Bytes: sz, ContentType: ct, Error: e}, outcomeOf(st)
 			}))
 		})
 	}
 	if j.needs("external") {
 		g := c.group("external", len(externals))
 		tasks = append(tasks, func() {
-			set("externalLinks", gpool(g, externals, conc, func(u string) AssetInfo {
+			set("externalLinks", gcheck(c, g, externals, conc, func(u string) (AssetInfo, int) {
 				r := c.checkLink(u, true)
-				return AssetInfo{URL: u, Status: r.FinalStatus, Error: r.Error}
+				return AssetInfo{URL: u, Status: r.FinalStatus, Error: r.Error}, outcomeOf(r.FinalStatus)
 			}))
 		})
 	}
 	if j.needs("scripts") {
 		g := c.group("scripts", len(scripts))
 		tasks = append(tasks, func() {
-			set("scripts", gpool(g, scripts, conc, func(u string) AssetInfo {
+			set("scripts", gcheck(c, g, scripts, conc, func(u string) (AssetInfo, int) {
 				st, sz, ct, e := c.ext.assetSize(c.ctx, u, "*/*")
-				return AssetInfo{URL: u, Status: st, Bytes: sz, ContentType: ct, Error: e}
+				return AssetInfo{URL: u, Status: st, Bytes: sz, ContentType: ct, Error: e}, outcomeOf(st)
 			}))
 		})
 	}
@@ -1618,6 +1767,7 @@ func (c *Crawler) contextChecks() map[string]any {
 		}(t)
 	}
 	wg.Wait()
+	out["checkStats"] = c.checkProgress()
 	return out
 }
 
@@ -1729,25 +1879,25 @@ func (c *Crawler) snapshot() map[string]any {
 		"requests":       reqs,
 		"requestsPerMin": rpm,
 		"lastRequestAt":  lastAt,
-		"discovered":   len(c.byID),
-		"queued":       c.counts[stQueued],
-		"waiting":      c.counts[stWaiting],
-		"active":       c.counts[stActive],
-		"processed":    c.processed,
-		"succeeded":    c.succeeded,
-		"failed":       c.failed,
-		"robots":       c.counts[stRobots],
-		"depthLimited": c.counts[stDepth],
-		"pageLimited":  c.counts[stLimit],
-		"excluded":     c.counts[stExcluded],
-		"excludedBy":   excl,
-		"notProcessed": c.counts[stNotProcessed],
-		"pagesPerMin":  perMin,
-		"sitemapUrls":  c.sitemapURLs,
+		"discovered":     len(c.byID),
+		"queued":         c.counts[stQueued],
+		"waiting":        c.counts[stWaiting],
+		"active":         c.counts[stActive],
+		"processed":      c.processed,
+		"succeeded":      c.succeeded,
+		"failed":         c.failed,
+		"robots":         c.counts[stRobots],
+		"depthLimited":   c.counts[stDepth],
+		"pageLimited":    c.counts[stLimit],
+		"excluded":       c.counts[stExcluded],
+		"excludedBy":     excl,
+		"notProcessed":   c.counts[stNotProcessed],
+		"pagesPerMin":    perMin,
+		"sitemapUrls":    c.sitemapURLs,
 		"politeness": map[string]any{"delayMs": interval.Milliseconds(), "floorMs": floor.Milliseconds(), "crawlDelayMs": c.crawlDelay.Milliseconds(), "slowDowns": slowDowns,
-			"retries": c.site.retries.Load() + c.ext.retries.Load(), "rateLimited": c.site.rate429.Load(), "unavailable503": c.site.rate503.Load(), "limitedAnswers": c.thr.limitedCount(),
+			"retries": c.site.retries.Load() + c.ext.retries.Load(), "rateLimited": c.site.rate429.Load(), "unavailable503": c.site.rate503.Load(), "limitedAnswers": c.thr.limitedCount(), "retryAfterPauses": c.thr.pauseCount(),
 			"waitedMs": waited.Milliseconds(), "avgLatencyMs": c.site.latency.avg()},
-		"checks": c.checkProgress(),
+		"checks":    c.checkProgress(),
 		"elapsedMs": now.Sub(c.t0).Milliseconds(),
 	}
 }

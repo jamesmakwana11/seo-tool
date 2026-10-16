@@ -1,5 +1,5 @@
 import {
-  CRAWL_DETAIL_ROW_LIMIT, CRAWL_EXPORT_NOTE, crawlCsvHeader, crawlCsvRow, crawlExportFilename, crawlResultsCsv, crawlResultsJson, validateCrawlOptions,
+  CRAWL_DETAIL_ROW_LIMIT, CRAWL_EXPORT_NOTE, auditLimitsFrom, auditPage, type CrawlPageReport, crawlCsvHeader, crawlCsvRow, crawlExportFilename, crawlResultsCsv, crawlResultsJson, validateCrawlOptions,
   type CrawlCoverageReport, type CrawlDetail, type CrawlerStatus, type CrawlOptions, type CrawlPagesQuery, type CrawlPagesResponse, type CrawlRun, type CrawlType,
   type CrawledUrl, type CrawledUrlIssue, type PageTemplate, type SitePage,
 } from '@sentinel/shared';
@@ -89,7 +89,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
   async function storeOf(id: string): Promise<CrawlResultStore> {
     const st = stores.get(id);
     if (st) return st;
-    return new MemoryResultStore((await r.crawlUrls.get(id))?.urls ?? []);
+    return new MemoryResultStore((await r.crawlUrls.get(id))?.urls ?? [], auditLimitsFrom((await r.config.get()).thresholds as unknown as Record<string, number>));
   }
 
   /**
@@ -466,7 +466,8 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     const diff = await r.sitemapDiffs.get(id);
     const store = stores.get(id);
     // Large runs: the rows are paged on the server (getCrawlPages); the detail carries only the count.
-    const rows = store ? await store.allIfSmall(CRAWL_DETAIL_ROW_LIMIT) : (await r.crawlUrls.get(id))?.urls ?? [];
+    // Rows kept in the repository (built-in crawler, DEMO) are all returned, with their audit score and to-do checks.
+    const rows = store ? await store.allIfSmall(CRAWL_DETAIL_ROW_LIMIT) : await (await storeOf(id)).allIfSmall(Number.MAX_SAFE_INTEGER);
     const urlCount = store ? store.count() : rows?.length ?? 0;
     return {
       run, urls: rows ?? [], urlCount, urlsPaged: !rows, sitemapDiff: diff ? (({ id: _id, ...rest }) => rest)(diff) : undefined, verification,
@@ -566,6 +567,30 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       await need(ctx, actor, 'crawls.view');
       if (!(await r.crawls.get(id))) throw notFound(`Crawl ${id}`);
       return (await storeOf(id)).query(q);
+    },
+    /**
+     * One URL of a crawl with its page audit (the page report). `id` may be "latest": the newest completed or cancelled
+     * crawl that still has page rows on this server.
+     */
+    async page(actor: Actor, id: string, url: string): Promise<CrawlPageReport> {
+      await need(ctx, actor, 'crawls.view');
+      if (!url) throw badRequest('url is required.');
+      let run = id === 'latest' ? undefined : await r.crawls.get(id);
+      if (id === 'latest') {
+        const runs = (await r.crawls.list()).filter((c) => (c.status === 'completed' || c.status === 'cancelled') && c.source !== 'simulated' && c.type !== 'reverify')
+          .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
+        run = runs[0];
+      }
+      if (!run) throw notFound(id === 'latest' ? 'A finished crawl' : `Crawl ${id}`);
+      const key = sameUrlKey(url);
+      let path = url;
+      try { path = new URL(url).pathname; } catch { /* keep */ }
+      const store = await storeOf(run.id);
+      const res = await store.query({ q: path === '/' ? url : path, limit: 500 });
+      const row = res.rows.find((x) => sameUrlKey(x.url) === key);
+      if (!row) throw notFound(`${url} in crawl ${run.id}`);
+      const limits = res.auditLimits ?? auditLimitsFrom((await r.config.get()).thresholds as unknown as Record<string, number>);
+      return { runId: run.id, crawledAt: run.startedAt, row, audit: auditPage(row, limits), limits, duplicates: await store.duplicatesOf(row.url) };
     },
     /**
      * The newest fetched row for one URL across the completed crawls this server still has (SEO editor: H1 source,

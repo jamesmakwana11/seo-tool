@@ -64,6 +64,7 @@ What the template sets (all variables are documented in `apps/api/.env.example`)
 | `CRAWLER_MAX_BODY_BYTES` | `5242880` | Largest page body read (5 MB); bigger pages are truncated |
 | `CRAWLER_MAX_CONCURRENT_JOBS` | `2` | Crawls that may run at the same time on the server |
 | `CRAWLER_RETRIES` | `2` | Retries after 429 / 502 / 503 / 504, a timeout or a dropped connection |
+| `CRAWLER_CHECKS_BUDGET_MINUTES` | automatic | Most time the post-crawl checks may take (default: as long as the page crawl, 5–20 min) |
 | `CRAWLER_STALL_MINUTES` | `20` | A crawl with no answered request for this long stops as partial (results kept) |
 | `CHANGE_SNAPSHOT_DIR` | temp folder | Change Monitor history (baseline, screenshots); see `docs/CHANGE_MONITOR.md` |
 | `CRAWLER_MAX_SITEMAP_FILES` | `1000` | Most sitemap files read (sitemap index files included) |
@@ -128,13 +129,26 @@ then use the Crawl Center. Each website's crawl is restricted to its own host.
 - **Polite and resilient over long runs.** Requests that fail with 429, 502, 503, 504, a timeout or a dropped
   connection are retried up to `CRAWLER_RETRIES` times with increasing waits, following the site's `Retry-After`. When
   the site answers 429 / 503 the gap between requests is widened — once per burst (parallel requests answered 429 at
-  the same moment count as one slow-down, so the gap no longer escalates to the 30 s maximum), honouring `Retry-After` —
-  then narrowed again after a run of normal answers. The robots.txt `Crawl-delay` for the crawler (or `*`) is honoured,
+  the same moment count as one slow-down, so the gap no longer escalates to the 30 s maximum) — then narrowed again
+  after a run of normal answers. `Retry-After` is honoured as a **pause**: no request goes to the site before it has
+  passed, but it does not become the gap between every later request (a "Retry-After: 30" used to hold the rest of the
+  crawl at one request per 30 s). The crawler also remembers the pace at which the site started limiting and does not
+  speed back up past it (that only led into the next 429 and its pause); after 100 normal answers in a row it tries
+  10 % faster again. Every request to the site — pages, link checks, images, bot probes — shares this one queue, and a
+  429 on any of them slows it down. The robots.txt `Crawl-delay` for the crawler (or `*`) is honoured,
   capped at `CRAWLER_MAX_CRAWL_DELAY_MS`. A page still failing after its retries is recorded as failed; certificate
   errors are not retried. Links to other websites, CDN images and scripts are paced per host (150 ms), not in the
   website's queue, and each target is checked once however many pages link to it.
 - **After the pages:** link-target, sitemap, image, script, bot-access, host-variant and TLS checks run as parallel
-  groups (each still paced and robots-aware); the progress panel shows each group's done / total.
+  groups (each still paced, robots-aware and in the same per-host queue as the pages). Nothing is requested twice:
+  URLs the crawl already fetched answer as link targets (*reused*), each image file is measured once however many pages
+  show it, and image ALT text, dimensions and lazy loading come from the HTML (only weight and format need a request).
+  The most-linked targets and the images on the most pages go first. The checks get a time budget — as long as the page
+  crawl took, 5–20 minutes (`CRAWLER_CHECKS_BUDGET_MINUTES`); targets left after it, beyond the caps, or still
+  answered 429 / 503 after the retries are reported as **deferred**: not checked, never counted as broken (a link or
+  image the site would not serve because it was rate limiting used to be reported as a 4xx / failed target).
+  Filter / sort variants beyond the probe sample count as excluded. Per group the progress panel and the run diagnostics show
+  checked, broken / failed, deferred, excluded (robots.txt, your exclusions) and answered-by-the-crawl.
 - **Never "Running" forever:** if no request is answered for `CRAWLER_STALL_MINUTES` (default 20) the crawl stops as
   *partial* with its results kept, and the progress panel shows the time since the last answer.
 - The progress panel shows the phase, the queue, the current gap, requests per minute (last minute), 429 / 503 answers,

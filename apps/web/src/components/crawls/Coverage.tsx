@@ -4,6 +4,7 @@ import { api } from '@/api/client';
 import { errorMessage, useApiQuery } from '@/api/hooks';
 import { Badge, EmptyState, KV, LoadingBlock, Mono, Notice, Panel } from '@/components/ui/primitives';
 import { fmtMs, fmtNum, shortUrl } from '@/lib/format';
+import { checkGroups, describeCheckGroup } from './format';
 
 const EXCLUSION_LABELS: Record<string, string> = {
   sort_filter_search_parameter: 'Sort / filter / search parameters',
@@ -48,6 +49,17 @@ export function RunDiagnostics({ run }: { run: CrawlRun }) {
       { k: 'Memory now / peak', v: `${fmtNum(Math.round(m.totalMB))} MB / ${fmtNum(Math.round(m.peakTotalMB))} MB${m.budgetMB ? ` of a ${fmtNum(m.budgetMB)} MB budget` : ' (no budget set)'}` },
       { k: 'By process', v: `API ${fmtNum(Math.round(m.nodeRssMB))} MB (heap ${fmtNum(Math.round(m.nodeHeapMB))}) · crawler ${m.goRssMB !== undefined ? `${fmtNum(Math.round(m.goRssMB))} MB` : '—'} · text core ${m.textCoreRssMB !== undefined ? `${fmtNum(Math.round(m.textCoreRssMB))} MB` : '—'}` },
     ] : []),
+    ...(c?.checks && (c.checks.total > 0 || checkGroups(c.checks.groups).length) ? [{
+      k: 'Checks after the crawl',
+      v: (
+        <span className="block">
+          {fmtNum(c.checks.done)} of {fmtNum(c.checks.total)} checked{c.checks.deferred ? `, ${fmtNum(c.checks.deferred)} deferred — not checked within the cap or the time budget${t.checksBudgetMs ? ` (${fmtMs(t.checksBudgetMs)})` : ''}, never counted as broken` : ''}{t.checksMs !== undefined ? ` · took ${fmtMs(t.checksMs)}` : ''}
+          <span className="mt-1 block space-y-0.5 text-xs text-ink-soft">{checkGroups(c.checks.groups).map(([k, g]) => <span key={k} className="block">{describeCheckGroup(k, g)}</span>)}</span>
+          <span className="mt-1 block text-xs text-muted">Image ALT text, dimensions and lazy loading are read from each page&apos;s HTML; only image weight and format need a request, made once per image file.</span>
+        </span>
+      ),
+    }] : []),
+    ...(c?.politeness?.retryAfterPauses ? [{ k: 'Retry-After', v: `The site asked to wait ${fmtNum(c.politeness.retryAfterPauses)} time(s); each was honoured as a pause before the next request` }] : []),
     phase('crawlProcessMs', 'Fetching (crawler process)'),
     phase('sitemapMs', 'Sitemaps'),
     phase('textMs', 'Text analysis (Rust)'),

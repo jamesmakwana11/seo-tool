@@ -2,9 +2,10 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowUpRight, ExternalLink, Search } from 'lucide-react';
 import {
-  CRAWL_PROBLEM_LABELS, CRAWL_STATE_LABELS, CRAWL_STATUS_LABELS, crawlRowStatus,
-  type CrawledUrl, type CrawledUrlIssue, type CrawlPageProblem, type CrawlPagesQuery, type Severity,
+  CRAWL_PROBLEM_LABELS, CRAWL_STATE_LABELS, CRAWL_STATUS_LABELS, PAGE_AUDIT_TODO, auditPage, crawlRowStatus,
+  type CrawledUrl, type CrawledUrlIssue, type CrawlPageProblem, type CrawlPagesQuery, type PageAuditLimits, type Severity,
 } from '@sentinel/shared';
+import { AuditChecks, ScoreBadge } from './PageAudit';
 import { api } from '@/api/client';
 import { errorMessage, useApiQuery } from '@/api/hooks';
 import { Badge, EmptyState, Input, LoadingBlock, Mono, Notice, Panel } from '@/components/ui/primitives';
@@ -23,7 +24,8 @@ const effStatus = (u: CrawledUrl) => crawlRowStatus(u);
 const SEV_RANK: Record<Severity, number> = { critical: 0, medium: 1, low: 2 };
 const topSeverity = (u: CrawledUrl): Severity | undefined => u.topSeverity ?? u.issues?.slice().sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity])[0]?.severity;
 const SOURCE_LABELS: Record<string, string> = { start: 'Start URL', link: 'Internal link', sitemap: 'Sitemap', pagination: 'Pagination', redirect: 'Redirect target', seed: 'Smart-crawl evidence' };
-const SORT_KEYS: Record<string, CrawlPagesQuery['sort']> = { page: 'url', status: 'status', depth: 'depth', index: 'indexable', issues: 'issues', links: 'links', inlinks: 'inlinks', ms: 'response' };
+const SORT_KEYS: Record<string, CrawlPagesQuery['sort']> = { page: 'url', score: 'score', status: 'status', depth: 'depth', index: 'indexable', issues: 'issues', links: 'links', inlinks: 'inlinks', ms: 'response' };
+const SCORE_LABELS: Record<string, string> = { poor: 'Poor (under 50)', fair: 'Fair (50–79)', good: 'Good (80+)', none: 'Not scored' };
 const PAGE_SIZE = 50;
 
 /** Debounced value (search box → server query). */
@@ -40,7 +42,11 @@ function useDebounced<T>(v: T, ms: number): T {
  * Every URL of one crawl — fetched pages and URLs found but not fetched — searched, filtered, sorted and paged on the
  * server, so a 50,000-page crawl loads one page of rows at a time.
  */
-export function PageResults({ runId, active }: { runId: string; active?: boolean }) {
+export function PageResults({ runId, active, check: checkProp, onCheck, scoreBand, onScoreBand }: {
+  runId: string; active?: boolean;
+  /** Controlled audit-check / score filters (the All Pages screen sets them from its to-do list). */
+  check?: string; onCheck?: (v: string) => void; scoreBand?: string; onScoreBand?: (v: string) => void;
+}) {
   const [text, setText] = useState('');
   const q = useDebounced(text.trim(), 300);
   const [status, setStatus] = useState('');
@@ -49,19 +55,26 @@ export function PageResults({ runId, active }: { runId: string; active?: boolean
   const [state, setState] = useState('');
   const [source, setSource] = useState('');
   const [template, setTemplate] = useState('');
+  const [checkOwn, setCheckOwn] = useState('');
+  const [scoreOwn, setScoreOwn] = useState('');
+  const check = checkProp ?? checkOwn;
+  const setCheck = onCheck ?? setCheckOwn;
+  const score = scoreBand ?? scoreOwn;
+  const setScore = onScoreBand ?? setScoreOwn;
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | undefined>();
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<CrawledUrl | null>(null);
-  useEffect(() => setPage(1), [q, status, index, problem, state, source, template, sort]);
+  useEffect(() => setPage(1), [q, status, index, problem, state, source, template, sort, check, score]);
   const query: CrawlPagesQuery = {
     offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE, q: q || undefined, status: (status || undefined) as CrawlPagesQuery['status'], indexable: (index || undefined) as CrawlPagesQuery['indexable'],
     problem: (problem || undefined) as CrawlPagesQuery['problem'], crawlState: (state || undefined) as CrawlPagesQuery['crawlState'], source: source || undefined, template: template || undefined,
+    check: check || undefined, score: (score || undefined) as CrawlPagesQuery['score'],
     sort: sort ? SORT_KEYS[sort.key] : undefined, dir: sort?.dir,
   };
   const res = useApiQuery(['crawlPages', runId, JSON.stringify(query)], () => api.getCrawlPages(runId, query), { refetchInterval: active ? 5000 : undefined });
   const f = res.data?.facets;
   const opts = (rec: Record<string, number> | undefined, labels: Record<string, string>) => Object.entries(rec ?? {}).filter(([, n]) => n > 0).map(([k, n]) => ({ value: k, label: `${labels[k] ?? k} (${fmtNum(n)})` }));
-  const filtered = !!(q || status || index || problem || state || source || template);
+  const filtered = !!(q || status || index || problem || state || source || template || check || score);
 
   return (
     <Panel title="Pages" subtitle="Every URL this crawl found: fetched pages and URLs it did not fetch (with the reason). Select a row for its details and issues." bodyClassName="p-3">
@@ -85,7 +98,9 @@ export function PageResults({ runId, active }: { runId: string; active?: boolean
             <FilterSelect label="Problem" value={problem} onChange={setProblem} options={(Object.keys(CRAWL_PROBLEM_LABELS) as CrawlPageProblem[]).map((k) => ({ value: k, label: `${CRAWL_PROBLEM_LABELS[k]} (${fmtNum(f?.problem[k] ?? 0)})` }))} />
             {!!Object.keys(f?.source ?? {}).length && <FilterSelect label="Found via" value={source} onChange={setSource} options={opts(f?.source, SOURCE_LABELS)} />}
             {!!Object.keys(f?.template ?? {}).length && <FilterSelect label="Template" value={template} onChange={setTemplate} options={opts(f?.template, {})} />}
-            <ClearFilters show={filtered} onClear={() => { setText(''); setStatus(''); setIndex(''); setProblem(''); setState(''); setSource(''); setTemplate(''); }} />
+            {!!Object.keys(f?.score ?? {}).length && <FilterSelect label="Audit score" value={score} onChange={setScore} options={['poor', 'fair', 'good', 'none'].filter((k) => f?.score?.[k]).map((k) => ({ value: k, label: `${SCORE_LABELS[k]} (${fmtNum(f!.score![k])})` }))} />}
+            {!!Object.keys(f?.check ?? {}).length && <FilterSelect label="Audit check" value={check} onChange={setCheck} options={PAGE_AUDIT_TODO.filter((t) => f?.check?.[t.id]).map((t) => ({ value: t.id, label: `${t.label} (${fmtNum(f!.check![t.id])})` }))} />}
+            <ClearFilters show={filtered} onClear={() => { setText(''); setStatus(''); setIndex(''); setProblem(''); setState(''); setSource(''); setTemplate(''); setCheck(''); setScore(''); }} />
             {res.isFetching && <span className="text-xs text-muted">Loading…</span>}
           </>
         }
@@ -100,6 +115,7 @@ export function PageResults({ runId, active }: { runId: string; active?: boolean
             ),
             sort: () => 0,
           },
+          { key: 'score', header: 'Score', cell: (u) => <ScoreBadge score={u.auditScore} />, sort: () => 0 },
           { key: 'status', header: 'Status', cell: (u) => statusCell(u), sort: () => 0 },
           { key: 'depth', header: 'Depth', hideOnMobile: true, className: 'tabular-nums', cell: (u) => <span className="text-xs">{u.depth ?? (u.reason === 'sitemap' ? 'sitemap' : '—')}</span>, sort: () => 0 },
           { key: 'index', header: 'Indexable', cell: (u) => (u.indexable === undefined || (u.crawlState && u.crawlState !== 'fetched') ? <span className="text-xs text-faint">—</span> : u.indexable ? <Badge tone="ok">Yes</Badge> : <Badge tone="med" title={u.indexabilityReason}>No</Badge>), sort: () => 0 },
@@ -112,7 +128,7 @@ export function PageResults({ runId, active }: { runId: string; active?: boolean
           { key: 'ms', header: 'Response', hideOnMobile: true, className: 'tabular-nums', cell: (u) => <span className={`text-xs ${u.responseMs && u.responseMs > 2000 ? 'font-medium text-med-ink' : ''}`}>{u.responseMs !== undefined ? fmtMs(u.responseMs) : '—'}</span>, sort: () => 0 },
         ]}
       />
-      <PageDrawer page={open} onClose={() => setOpen(null)} />
+      <PageDrawer page={open} runId={runId} limits={res.data?.auditLimits} onClose={() => setOpen(null)} />
     </Panel>
   );
 }
@@ -136,8 +152,9 @@ function Row({ k, children }: { k: string; children: ReactNode }) {
 
 const len = (s?: string) => (s ? <span className="ml-1 text-xs tabular-nums text-faint">({s.length} chars)</span> : null);
 
-function PageDrawer({ page: u, onClose }: { page: CrawledUrl | null; onClose: () => void }) {
+function PageDrawer({ page: u, runId, limits, onClose }: { page: CrawledUrl | null; runId: string; limits?: PageAuditLimits; onClose: () => void }) {
   const canEdit = useAuth().can('shopify.edit');
+  const audit = u ? auditPage(u, limits) : undefined;
   const dupTitle = !!u?.flags?.includes('dup-title');
   const dupMeta = !!u?.flags?.includes('dup-meta');
   return (
@@ -147,6 +164,16 @@ function PageDrawer({ page: u, onClose }: { page: CrawledUrl | null; onClose: ()
           <a href={u.url} target="_blank" rel="noreferrer noopener" className="inline-flex max-w-full items-center gap-1 break-all font-mono text-xs text-signal hover:underline">{u.url}<ExternalLink className="h-3 w-3 shrink-0" aria-hidden /></a>
           {canEdit && /\/(products|collections|pages|blogs)\//.test(u.url) && (
             <Link to={`/seo-editor?url=${encodeURIComponent(u.url)}`} className="ml-3 inline-flex items-center gap-1 text-xs font-medium text-signal hover:underline">Fix in SEO editor</Link>
+          )}
+          {audit && (
+            <section>
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-semibold">Page audit</h3>
+                <ScoreBadge score={audit.score ?? undefined} />
+                <Link to={`/pages/report?run=${encodeURIComponent(runId)}&url=${encodeURIComponent(u.url)}`} className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-signal hover:underline">Full page report <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+              </div>
+              <AuditChecks audit={audit} only="problems" />
+            </section>
           )}
           <section>
             <h3 className="mb-1 text-sm font-semibold">Response</h3>
@@ -209,7 +236,7 @@ function PageDrawer({ page: u, onClose }: { page: CrawledUrl | null; onClose: ()
   );
 }
 
-function IssueItem({ i }: { i: CrawledUrlIssue }) {
+export function IssueItem({ i }: { i: CrawledUrlIssue }) {
   return (
     <li className="rounded-ctl border border-line p-3">
       <div className="flex flex-wrap items-center gap-2">

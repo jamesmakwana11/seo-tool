@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { CrawlPageProblem, CrawlPagesQuery, CrawlPagesResponse, CrawlPageStatusGroup, CrawledUrl, CrawledUrlIssue, Severity } from '@sentinel/shared';
+import { auditPage, DEFAULT_PAGE_AUDIT_LIMITS, PAGE_AUDIT_TODO, scoreSummaryFrom, todoBit, todoIds, todoMask, WARN_PENALTY, type CrawlPageProblem, type CrawlPageReport, type PageScoreSummary, type CrawlPagesQuery, type CrawlPagesResponse, type CrawlPageStatusGroup, type CrawledUrl, type CrawledUrlIssue, type PageAuditLimits, type Severity } from '@sentinel/shared';
 
 export interface CrawlResultStore {
   readonly kind: 'memory' | 'file';
@@ -26,6 +26,8 @@ export interface CrawlResultStore {
   setIssues(map: Map<string, CrawledUrlIssue[]>, keyOf: (u: string) => string): void;
   /** URLs that answered (status not null) — used to decide which issues may auto-resolve. */
   answeredUrls(): Set<string>;
+  /** Other pages with the same title / meta description as `url` (page report). */
+  duplicatesOf(url: string): Promise<NonNullable<CrawlPageReport['duplicates']>>;
   dispose(): Promise<void>;
 }
 
@@ -76,17 +78,24 @@ class Columns {
   inlinks = new Int32Array(1024);
   issues = new Int32Array(1024);
   severity = new Uint8Array(1024);
+  /** Page audit score 0–100 (-1 = not scored), same rules as the page report (shared/pageAudit). */
+  score = new Int8Array(1024);
+  /** Page-audit to-do checks failed / warned (bit = PAGE_AUDIT_TODO index). */
+  todo = new Uint32Array(1024);
+  /** 32-bit hash of the normalised meta description of 200 HTML rows (0 = none) — finds same-description pages. */
+  metaHash = new Uint32Array(1024);
   n = 0;
+  constructor(readonly limits: PageAuditLimits = DEFAULT_PAGE_AUDIT_LIMITS) {}
 
   private grow() {
-    const g = <T extends Int16Array | Uint8Array | Int8Array | Uint16Array | Int32Array>(a: T): T => {
+    const g = <T extends Int16Array | Uint8Array | Int8Array | Uint16Array | Int32Array | Uint32Array>(a: T): T => {
       const b = new (a.constructor as new (n: number) => T)(a.length * 2);
       b.set(a);
       return b;
     };
     this.status = g(this.status); this.group = g(this.group); this.indexable = g(this.indexable); this.problems = g(this.problems);
     this.state = g(this.state); this.sources = g(this.sources); this.depth = g(this.depth); this.response = g(this.response);
-    this.links = g(this.links); this.inlinks = g(this.inlinks); this.issues = g(this.issues); this.severity = g(this.severity);
+    this.links = g(this.links); this.inlinks = g(this.inlinks); this.issues = g(this.issues); this.severity = g(this.severity); this.score = g(this.score); this.todo = g(this.todo); this.metaHash = g(this.metaHash);
   }
 
   add(u: CrawledUrl): number {
@@ -111,6 +120,9 @@ class Columns {
     this.response[i] = u.responseMs ?? -1;
     this.links[i] = u.internalLinks ?? -1;
     this.inlinks[i] = u.inlinks ?? -1;
+    const a = auditPage({ ...u, flags: undefined }, this.limits);
+    this.score[i] = a.score === null ? -1 : a.score;
+    this.todo[i] = todoMask(a);
     return i;
   }
 
@@ -125,18 +137,24 @@ class Columns {
       const t = this.title[i].trim().toLowerCase();
       if (t) { tk[i] = t; titles.set(t, (titles.get(t) ?? 0) + 1); }
       const m = metaOf(i)?.trim().toLowerCase();
-      if (m) { mk[i] = m; metas.set(m, (metas.get(m) ?? 0) + 1); }
+      if (m) { mk[i] = m; metas.set(m, (metas.get(m) ?? 0) + 1); this.metaHash[i] = fnv(m) || 1; }
     }
     const dt = 1 << PROBLEMS.indexOf('dup-title');
     const dm = 1 << PROBLEMS.indexOf('dup-meta');
+    // Duplicates are known only now: each one is a warning in the page audit, so it lowers the stored score too.
     for (let i = 0; i < this.n; i++) {
-      if (tk[i] && (titles.get(tk[i]!) ?? 0) > 1) this.problems[i] |= dt;
-      if (mk[i] && (metas.get(mk[i]!) ?? 0) > 1) this.problems[i] |= dm;
+      if (tk[i] && (titles.get(tk[i]!) ?? 0) > 1) { this.problems[i] |= dt; if (this.score[i] >= 0) { this.score[i] = Math.max(0, this.score[i] - WARN_PENALTY); this.todo[i] |= 1 << todoBit('title-duplicate')!; } }
+      if (mk[i] && (metas.get(mk[i]!) ?? 0) > 1) { this.problems[i] |= dm; if (this.score[i] >= 0) { this.score[i] = Math.max(0, this.score[i] - WARN_PENALTY); this.todo[i] |= 1 << todoBit('meta-duplicate')!; } }
     }
   }
 
+  scoreBand(i: number): 'poor' | 'fair' | 'good' | 'none' {
+    const v = this.score[i];
+    return v < 0 ? 'none' : v < 50 ? 'poor' : v < 80 ? 'fair' : 'good';
+  }
+
   facets(): CrawlPagesResponse['facets'] {
-    const f: CrawlPagesResponse['facets'] = { status: {}, problem: {}, crawlState: {}, source: {}, template: {}, indexable: {} };
+    const f: CrawlPagesResponse['facets'] = { status: {}, problem: {}, crawlState: {}, source: {}, template: {}, indexable: {}, score: {}, check: {} };
     const inc = (o: Record<string, number>, k: string) => { o[k] = (o[k] ?? 0) + 1; };
     for (let i = 0; i < this.n; i++) {
       inc(f.status, STATUS_GROUPS[this.group[i]]);
@@ -145,6 +163,8 @@ class Columns {
       for (let b = 0; b < SOURCES.length; b++) if (this.sources[i] & (1 << b)) inc(f.source, SOURCES[b]);
       if (this.template[i]) inc(f.template, this.template[i]);
       if (this.indexable[i] >= 0) inc(f.indexable, this.indexable[i] ? 'yes' : 'no');
+      inc(f.score!, this.scoreBand(i));
+      if (this.todo[i]) for (let b = 0; b < PAGE_AUDIT_TODO.length; b++) if (this.todo[i] & (1 << b)) inc(f.check!, PAGE_AUDIT_TODO[b].id);
     }
     return f;
   }
@@ -155,6 +175,8 @@ class Columns {
     const pb = q.problem ? 1 << PROBLEMS.indexOf(q.problem) : 0;
     const cs = q.crawlState ? STATES.indexOf(q.crawlState) + 1 : 0;
     const src = q.source ? 1 << SOURCES.indexOf(q.source as (typeof SOURCES)[number]) : 0;
+    const cb = q.check !== undefined ? todoBit(q.check) : undefined;
+    const ck = cb === undefined ? 0 : (1 << cb) >>> 0;
     const out: number[] = [];
     for (let i = 0; i < this.n; i++) {
       if (st >= 0 && this.group[i] !== st) continue;
@@ -163,6 +185,8 @@ class Columns {
       if (cs && this.state[i] !== cs) continue;
       if (src && !(this.sources[i] & src)) continue;
       if (q.template && this.template[i] !== q.template) continue;
+      if (q.score && this.scoreBand(i) !== q.score) continue;
+      if (q.check && (cb === undefined || !(this.todo[i] & ck))) continue;
       if (needle && !this.url[i].toLowerCase().includes(needle) && !this.title[i].toLowerCase().includes(needle)) continue;
       out.push(i);
     }
@@ -172,7 +196,8 @@ class Columns {
       const key: (i: number) => number | string =
         by === 'url' ? (i) => this.url[i] : by === 'title' ? (i) => this.title[i].toLowerCase() : by === 'status' ? (i) => (this.status[i] < 0 ? 999 : this.status[i])
           : by === 'depth' ? (i) => this.depth[i] : by === 'indexable' ? (i) => this.indexable[i] : by === 'issues' ? (i) => this.issues[i] * 10 + this.severity[i]
-            : by === 'links' ? (i) => this.problems[i] & 1 ? 1e6 + this.links[i] : this.links[i] : by === 'inlinks' ? (i) => this.inlinks[i] : (i) => this.response[i];
+            : by === 'links' ? (i) => this.problems[i] & 1 ? 1e6 + this.links[i] : this.links[i] : by === 'inlinks' ? (i) => this.inlinks[i]
+              : by === 'score' ? (i) => (this.score[i] < 0 ? 1000 : this.score[i]) : (i) => this.response[i];
       out.sort((a, b) => {
         const x = key(a);
         const y = key(b);
@@ -180,6 +205,50 @@ class Columns {
       });
     }
     return out;
+  }
+
+  /** Crawl-wide fields of row i: problem flags, audit score and the to-do checks. */
+  extras(i: number): Pick<CrawledUrl, 'flags' | 'auditScore' | 'auditTodo'> {
+    const t = this.todo[i] ? todoIds(this.todo[i]) : undefined;
+    return { flags: this.flagsOf(i), ...(this.score[i] >= 0 ? { auditScore: this.score[i] } : {}), ...(t ? { auditTodo: t } : {}) };
+  }
+
+  /** Average audit score of all scored rows, overall and per template. */
+  scoreSummary(): PageScoreSummary {
+    let sum = 0;
+    let n = 0;
+    const byT = new Map<string, { sum: number; n: number }>();
+    for (let i = 0; i < this.n; i++) {
+      const v = this.score[i];
+      if (v < 0) continue;
+      sum += v; n++;
+      const t = byT.get(this.template[i]) ?? { sum: 0, n: 0 };
+      t.sum += v; t.n++;
+      byT.set(this.template[i], t);
+    }
+    return scoreSummaryFrom(sum, n, byT);
+  }
+
+  indexOf(url: string): number {
+    const key = url.replace(/#.*$/, '');
+    for (let i = 0; i < this.n; i++) if (this.url[i] === key) return i;
+    const loose = key.replace(/\/$/, '').toLowerCase();
+    for (let i = 0; i < this.n; i++) if (this.url[i].replace(/\/$/, '').toLowerCase() === loose) return i;
+    return -1;
+  }
+
+  /** Rows (200 HTML) sharing row i's title, and candidates sharing its meta description hash (to be confirmed). */
+  sameAs(i: number): { title: number[]; meta: number[] } {
+    const title: number[] = [];
+    const meta: number[] = [];
+    const t = this.status[i] === 200 ? this.title[i].trim().toLowerCase() : '';
+    const h = this.metaHash[i];
+    for (let j = 0; j < this.n; j++) {
+      if (j === i || this.status[j] !== 200) continue;
+      if (t && this.title[j].trim().toLowerCase() === t) title.push(j);
+      if (h && this.metaHash[j] === h) meta.push(j);
+    }
+    return { title, meta };
   }
 
   /** Problem names of row i (shown on the row: duplicates are only known over the whole crawl). */
@@ -200,6 +269,31 @@ class Columns {
   }
 }
 
+/** FNV-1a 32-bit. */
+function fnv(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
+}
+
+const DUP_LIST = 10;
+/** Duplicates of row i: titles are compared in memory; meta descriptions are confirmed on the rows read back. */
+async function duplicates(cols: Columns, url: string, read: (idx: number[]) => Promise<CrawledUrl[]>): Promise<NonNullable<CrawlPageReport['duplicates']>> {
+  const none = { title: { urls: [], total: 0 }, meta: { urls: [], total: 0 } };
+  const i = cols.indexOf(url);
+  if (i < 0) return none;
+  const same = cols.sameAs(i);
+  let meta = { urls: [] as string[], total: 0 };
+  if (same.meta.length) {
+    const [self] = await read([i]);
+    const want = self.metaDescription?.trim().toLowerCase();
+    // Hash collisions are possible: confirm on the first rows, and count the rest as matches (≥ 1 in 4 billion odds).
+    const confirmed = (await read(same.meta.slice(0, DUP_LIST * 2))).filter((r) => r.metaDescription?.trim().toLowerCase() === want).map((r) => r.url);
+    meta = { urls: confirmed.slice(0, DUP_LIST), total: confirmed.length + Math.max(0, same.meta.length - DUP_LIST * 2) };
+  }
+  return { title: { urls: same.title.slice(0, DUP_LIST).map((j) => cols.url[j]), total: same.title.length }, meta };
+}
+
 const RANK_SEV: Record<number, Severity | undefined> = { 3: 'critical', 2: 'medium', 1: 'low' };
 const SEV_ORDER: Record<Severity, number> = { critical: 0, medium: 1, low: 2 };
 
@@ -218,10 +312,11 @@ function clampQuery(q: CrawlPagesQuery, total: number) {
 
 export class MemoryResultStore implements CrawlResultStore {
   readonly kind = 'memory' as const;
-  private cols = new Columns();
+  private cols: Columns;
   private issues?: Map<string, CrawledUrlIssue[]>;
   private keyOf: (u: string) => string = (u) => u;
-  constructor(private rows: CrawledUrl[]) {
+  constructor(private rows: CrawledUrl[], limits?: PageAuditLimits) {
+    this.cols = new Columns(limits);
     for (const r of rows) this.cols.add(r);
     this.cols.finishDuplicates((i) => rows[i].metaDescription);
   }
@@ -229,11 +324,13 @@ export class MemoryResultStore implements CrawlResultStore {
   async query(q: CrawlPagesQuery): Promise<CrawlPagesResponse> {
     const idx = this.cols.select(q);
     const { limit, offset } = clampQuery(q, idx.length);
-    return { total: idx.length, offset, limit, rows: idx.slice(offset, offset + limit).map((i) => ({ ...withIssues(this.rows[i], this.issues, this.keyOf), flags: this.cols.flagsOf(i) })), facets: this.cols.facets() };
+    return { total: idx.length, offset, limit, rows: idx.slice(offset, offset + limit).map((i) => this.row(i)), facets: this.cols.facets(), auditLimits: this.cols.limits, scoreSummary: this.cols.scoreSummary() };
   }
-  async forEach(fn: (row: CrawledUrl) => void | Promise<void>) { for (const r of this.rows) await fn(withIssues(r, this.issues, this.keyOf)); }
-  async *iterate() { for (const r of this.rows) yield withIssues(r, this.issues, this.keyOf); }
-  async allIfSmall(max: number) { return this.rows.length <= max ? this.rows.map((r) => withIssues(r, this.issues, this.keyOf)) : undefined; }
+  private row(i: number): CrawledUrl { return { ...withIssues(this.rows[i], this.issues, this.keyOf), ...this.cols.extras(i) }; }
+  async forEach(fn: (row: CrawledUrl) => void | Promise<void>) { for (let i = 0; i < this.rows.length; i++) await fn(this.row(i)); }
+  async *iterate() { for (let i = 0; i < this.rows.length; i++) yield this.row(i); }
+  async allIfSmall(max: number) { return this.rows.length <= max ? this.rows.map((_, i) => this.row(i)) : undefined; }
+  duplicatesOf(url: string) { return duplicates(this.cols, url, async (idx) => idx.map((i) => this.rows[i])); }
   setIssues(map: Map<string, CrawledUrlIssue[]>, keyOf: (u: string) => string) { this.issues = map; this.keyOf = keyOf; this.cols.setIssues(map, keyOf); }
   answeredUrls() { return new Set(this.rows.filter((u) => u.status !== null).map((u) => u.url)); }
   async dispose() { /* nothing on disk */ }
@@ -242,7 +339,7 @@ export class MemoryResultStore implements CrawlResultStore {
 /** Writes rows to disk as they are produced, then serves them by offset. */
 export class FileResultStore implements CrawlResultStore {
   readonly kind = 'file' as const;
-  private cols = new Columns();
+  private cols: Columns;
   private offsets: number[] = [];
   private lengths: number[] = [];
   private metas: (string | undefined)[] = [];
@@ -255,7 +352,8 @@ export class FileResultStore implements CrawlResultStore {
   private keyOf: (u: string) => string = (u) => u;
   readonly file: string;
 
-  constructor(readonly dir: string) {
+  constructor(readonly dir: string, limits?: PageAuditLimits) {
+    this.cols = new Columns(limits);
     fs.mkdirSync(dir, { recursive: true });
     this.file = path.join(dir, 'rows.ndjson');
     this.fd = fs.openSync(this.file, 'w');
@@ -300,7 +398,7 @@ export class FileResultStore implements CrawlResultStore {
       for (const i of indices) {
         const buf = Buffer.allocUnsafe(this.lengths[i]);
         await fh.read(buf, 0, buf.length, this.offsets[i]);
-        out.push({ ...withIssues(JSON.parse(buf.toString('utf8')) as CrawledUrl, this.issues, this.keyOf), flags: this.cols.flagsOf(i) });
+        out.push({ ...withIssues(JSON.parse(buf.toString('utf8')) as CrawledUrl, this.issues, this.keyOf), ...this.cols.extras(i) });
       }
       return out;
     } finally {
@@ -311,7 +409,7 @@ export class FileResultStore implements CrawlResultStore {
   async query(q: CrawlPagesQuery): Promise<CrawlPagesResponse> {
     const idx = this.cols.select(q);
     const { limit, offset } = clampQuery(q, idx.length);
-    return { total: idx.length, offset, limit, rows: await this.read(idx.slice(offset, offset + limit)), facets: this.cols.facets() };
+    return { total: idx.length, offset, limit, rows: await this.read(idx.slice(offset, offset + limit)), facets: this.cols.facets(), auditLimits: this.cols.limits, scoreSummary: this.cols.scoreSummary() };
   }
 
   async forEach(fn: (row: CrawledUrl) => void | Promise<void>) {
@@ -321,13 +419,16 @@ export class FileResultStore implements CrawlResultStore {
   async *iterate(): AsyncGenerator<CrawledUrl> {
     const stream = fs.createReadStream(this.file, { encoding: 'utf8', highWaterMark: 1 << 18 });
     let rest = '';
+    let i = 0;
+    // Rows are written in index order, so the i-th line is row i (its crawl-wide fields come from the columns).
+    const row = (line: string): CrawledUrl => ({ ...withIssues(JSON.parse(line) as CrawledUrl, this.issues, this.keyOf), ...(i < this.cols.n ? this.cols.extras(i++) : {}) });
     try {
       for await (const chunk of stream) {
         const parts = (rest + chunk).split('\n');
         rest = parts.pop() ?? '';
-        for (const line of parts) if (line) yield withIssues(JSON.parse(line) as CrawledUrl, this.issues, this.keyOf);
+        for (const line of parts) if (line) yield row(line);
       }
-      if (rest.trim()) yield withIssues(JSON.parse(rest) as CrawledUrl, this.issues, this.keyOf);
+      if (rest.trim()) yield row(rest);
     } finally {
       stream.destroy();
     }
@@ -342,6 +443,7 @@ export class FileResultStore implements CrawlResultStore {
 
   setIssues(map: Map<string, CrawledUrlIssue[]>, keyOf: (u: string) => string) { this.issues = map; this.keyOf = keyOf; this.cols.setIssues(map, keyOf); }
   answeredUrls() { return this.answered; }
+  duplicatesOf(url: string) { return duplicates(this.cols, url, (idx) => this.read(idx)); }
   async dispose() {
     if (this.fd !== undefined) { try { fs.closeSync(this.fd); } catch { /* closed */ } this.fd = undefined; }
     await fsp.rm(this.dir, { recursive: true, force: true });

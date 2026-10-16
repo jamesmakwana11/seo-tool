@@ -14,10 +14,10 @@ import {
   crawlExportFilename, crawlResultsCsv, crawlResultsJson,
   ApiError, CHECKS_BY_ID, DEMO_PASSWORD, INTEGRATION_CATALOG, PREVIEW_USER_BY_ROLE, TEAMS, ROLE_LABELS, buildDailyDigest,
   buildDashboard, buildModuleData, buildMonthlyReport, buildWeeklyReport, canTransition, computeHealthScore,
-  createSeed, evaluateRule, exportReport, filterIssues, queryCrawlRows, generateFixCard, globalSearch, hasPermission,
+  createSeed, evaluateRule, exportReport, filterIssues, queryCrawlRows, auditPage, DEFAULT_PAGE_AUDIT_LIMITS, generateFixCard, globalSearch, hasPermission,
   issueStatusForTask, paginate, ruleAppliesTo, seasonalPlan, setPriorityConfig, taskPriorityFromSeverity, validateRule,
   HEALTH_WEIGHTS, DEMO_WEBSITE_ID, SHOPIFY_OPTIONAL_SCOPES, SHOPIFY_REQUIRED_SCOPES, createEmptySite, demoWebsite, summarizeWebsite, validateWebsiteInput,
-  type ActivityEvent, type AllocationEvent, type ApiDiagnostics, type AuditLogEntry, type AuthResult, type SiteData, type Website,
+  type ActivityEvent, type AllocationEvent, type ApiDiagnostics, type AuditLogEntry, type AuthResult, type CrawledUrl, type SiteData, type Website,
   type CustomRule, type DeliveryAttempt, type DryRunResult, type Employee, type EmployeeInput, type IntegrationId,
   type IntegrationStatus, type Issue, type IssueDetail, type Permission, type PermissionMatrix, type Role, type SeedData,
   type SentinelApi, type SentinelConfig, type SentinelView, type SessionUser, type Task, type TeamId,
@@ -244,7 +244,7 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
       store.set(JSON.stringify({ userId: e.id, demo: false }));
       e.lastActiveAt = iso();
       audit('auth.login', 'auth', e.id, `${e.name} signed in (mock auth)`);
-      return { token: `mock.${e.id}`, user: sessionUser(e, false), expiresAt: new Date(now().getTime() + 8 * 3600000).toISOString() } satisfies AuthResult;
+      return { token: `mock.${e.id}`, user: sessionUser(e, false) } satisfies AuthResult;
     }),
     previewAs: (role) => call('previewAs', () => {
       const e = s.employees.find((x) => x.id === PREVIEW_USER_BY_ROLE[role])!;
@@ -252,7 +252,7 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
       sessionDemo = true;
       store.set(JSON.stringify({ userId: e.id, demo: true }));
       audit('auth.preview', 'auth', e.id, `DEVELOPMENT role preview as ${ROLE_LABELS[role]} (${e.name})`);
-      return { token: `mock.preview.${e.id}`, user: sessionUser(e, true), expiresAt: new Date(now().getTime() + 8 * 3600000).toISOString() };
+      return { token: `mock.preview.${e.id}`, user: sessionUser(e, true) };
     }),
     logout: () => call('logout', () => {
       sessionUserId = null;
@@ -508,7 +508,11 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
       need('crawls.view');
       const run = s.crawls.find((c) => c.id === id);
       if (!run) throw new ApiError(404, 'NOT_FOUND', `Crawl ${id} not found.`);
-      const d = { run, urls: s.crawlUrls[id] ?? [], sitemapDiff: s.sitemapDiffs[id], verification: [] };
+      // Rows with their crawl-wide fields (problem flags, audit score, to-do checks), in crawl order.
+      const all = s.crawlUrls[id] ?? [];
+      const urls: CrawledUrl[] = [];
+      for (let o = 0; o < all.length; o += 500) urls.push(...queryCrawlRows(all, { offset: o, limit: 500 }).rows);
+      const d = { run, urls, sitemapDiff: s.sitemapDiffs[id], verification: [] };
       return format === 'csv'
         ? { filename: crawlExportFilename(d, 'csv'), mimeType: 'text/csv;charset=utf-8', content: crawlResultsCsv(d) }
         : { filename: crawlExportFilename(d, 'json'), mimeType: 'application/json;charset=utf-8', content: crawlResultsJson(d, iso()) };
@@ -517,6 +521,24 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
       need('crawls.view');
       if (!s.crawls.some((c) => c.id === id)) throw new ApiError(404, 'NOT_FOUND', `Crawl ${id} not found.`);
       return queryCrawlRows(s.crawlUrls[id] ?? [], query);
+    }),
+    getCrawlPage: (id, url) => call('getCrawlPage', () => {
+      need('crawls.view');
+      const runs = s.crawls.filter((c) => (id === 'latest' ? (c.status === 'completed' || c.status === 'cancelled') && (s.crawlUrls[c.id]?.length ?? 0) > 0 : c.id === id))
+        .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
+      const run = runs[0];
+      if (!run) throw new ApiError(404, 'NOT_FOUND', id === 'latest' ? 'No finished crawl with page results.' : `Crawl ${id} not found.`);
+      const key = (u: string) => u.replace(/#.*$/, '').replace(/\/$/, '').toLowerCase();
+      const res = queryCrawlRows(s.crawlUrls[run.id] ?? [], { limit: 500, q: (() => { try { return new URL(url).pathname; } catch { return url; } })() });
+      const row = res.rows.find((r) => key(r.url) === key(url));
+      if (!row) throw new ApiError(404, 'NOT_FOUND', `${url} is not in crawl ${run.id}.`);
+      const all = s.crawlUrls[run.id] ?? [];
+      const same = (pick: (u: CrawledUrl) => string | undefined) => {
+        const v = pick(row)?.trim().toLowerCase();
+        const urls = v ? all.filter((u) => u.url !== row.url && u.status === 200 && pick(u)?.trim().toLowerCase() === v).map((u) => u.url) : [];
+        return { urls: urls.slice(0, 10), total: urls.length };
+      };
+      return { runId: run.id, crawledAt: run.startedAt, row, audit: auditPage(row, DEFAULT_PAGE_AUDIT_LIMITS), limits: DEFAULT_PAGE_AUDIT_LIMITS, duplicates: { title: same((u) => u.title), meta: same((u) => u.metaDescription) } };
     }),
     getCrawlCoverage: (id) => call('getCrawlCoverage', () => {
       need('crawls.view');
@@ -583,6 +605,7 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
     listChanges: () => call('listChanges', () => { need('crawls.view'); throw changesMock(); }),
     getChange: () => call('getChange', () => { need('crawls.view'); throw changesMock(); }),
     getChangeIssues: () => call('getChangeIssues', () => { need('crawls.view'); return {}; }),
+    getUrlChange: () => call('getUrlChange', () => { need('crawls.view'); return { change: null }; }),
     exportChanges: () => call('exportChanges', () => { need('crawls.view'); throw changesMock(); }),
     getCaptureStatus: () => call('getCaptureStatus', () => {
       need('crawls.view');

@@ -103,7 +103,7 @@ export function analyzeImages(prep: Prepared): AnalyzerResult {
     const heavy: string[] = [];
     const legacy: string[] = [];
     for (const i of main) {
-      const a = imgs.get(i.src);
+      const a = imgs.get(i.src) ?? imgs.get(i.src.split('#')[0]); // checked once per file (the crawler drops #fragments); unchecked → skipped, never "heavy"
       if (!a) continue;
       if (a.bytes !== undefined && a.bytes / 1024 > maxKb) heavy.push(`${i.src} — ${Math.round(a.bytes / 1024)} KB`);
       const fmt = imageFormat(i.src, a.contentType);

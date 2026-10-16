@@ -218,6 +218,8 @@ export interface SiteContext {
   discoveredBudgetUrls?: string[];
   /** Homepage requested with search/AI-crawler user-agents (firewall / bot-protection probe). */
   botProbes?: { bot: string; userAgent: string; status: number | null; error?: string }[];
+  /** The site answered this crawl itself with 429 / 503: a 429 to a bot probe may be our own rate limit, not bot blocking. */
+  crawlRateLimited?: boolean;
   /** BFS stopped at maxPages with links still queued (graph-based checks are then not evaluated). */
   bfsTruncated: boolean;
 }

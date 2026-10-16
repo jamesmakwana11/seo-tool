@@ -4,7 +4,15 @@ import { hashPassword, passwordPolicyError, randomToken, sha256, signToken, veri
 import { emailTransportReady } from '../notifications/adapters';
 import { actorFromEmployee, audit, toSessionUser, SYSTEM_ACTOR, type Actor, type Ctx } from './context';
 
-interface TokenPayload { sid: string; sub: string; exp: number }
+/**
+ * sid: session id · sub: employee id · exp: expiry in ms, 0 = no automatic expiry (signed in until sign-out) ·
+ * cv: fingerprint of the account's password hash (a password change or reset ends every older session, also after a
+ * restart) · demo: role-preview session.
+ */
+interface TokenPayload { sid: string; sub: string; exp: number; cv?: string; demo?: boolean }
+
+/** Short fingerprint of a stored password hash — never the hash itself. */
+const credentialVersion = (hash: string) => sha256(`session-cv:${hash}`).slice(0, 16);
 
 /**
  * TEMPORARY development authentication (Phase 2): credentials and sessions live in the in-memory
@@ -16,16 +24,25 @@ export function createAuthService(ctx: Ctx) {
   /** Attach server data provenance so every screen can label DEMO data honestly. */
   const withEnv = async (u: SessionUser): Promise<SessionUser> => ({ ...u, serverDemoData: (await r.metrics.get()).source === 'demo' });
 
+  /** The current credential fingerprint of an employee (undefined for accounts without a password, e.g. previews). */
+  async function cvOf(email: string): Promise<string | undefined> {
+    const cred = await r.credentials.get(email.trim().toLowerCase());
+    return cred ? credentialVersion(cred.hash) : undefined;
+  }
+
   async function issue(employeeId: string, demo: boolean): Promise<AuthResult> {
     const e = (await r.employees.get(employeeId))!;
     const now = ctx.clock();
-    const expiresAt = new Date(now.getTime() + ctx.env.SESSION_TTL_HOURS * 3600_000);
+    // SESSION_TTL_HOURS = 0 (default): the session lasts until the user signs out. A positive value caps it.
+    const ttlMs = ctx.env.SESSION_TTL_HOURS > 0 ? ctx.env.SESSION_TTL_HOURS * 3600_000 : 0;
+    const expiresAt = ttlMs ? new Date(now.getTime() + ttlMs) : undefined;
     const sid = randomToken(18);
-    await r.sessions.insert({ id: sid, employeeId, demo, createdAt: now.toISOString(), expiresAt: expiresAt.toISOString() });
-    const token = signToken({ sid, sub: employeeId, exp: expiresAt.getTime() } satisfies TokenPayload, ctx.sessionSecret);
+    await r.sessions.insert({ id: sid, employeeId, demo, createdAt: now.toISOString(), ...(expiresAt ? { expiresAt: expiresAt.toISOString() } : {}) });
+    const cv = await cvOf(e.email);
+    const token = signToken({ sid, sub: employeeId, exp: expiresAt?.getTime() ?? 0, ...(cv ? { cv } : {}), ...(demo ? { demo } : {}) } satisfies TokenPayload, ctx.sessionSecret);
     e.lastActiveAt = now.toISOString();
     await r.employees.update(e);
-    return { token, user: await withEnv(toSessionUser(e, await r.permissions.get(), demo)), expiresAt: expiresAt.toISOString() };
+    return { token, user: await withEnv(toSessionUser(e, await r.permissions.get(), demo)), ...(expiresAt ? { expiresAt: expiresAt.toISOString() } : {}) };
   }
 
   return {
@@ -61,18 +78,32 @@ export function createAuthService(ctx: Ctx) {
       const p = verifyToken<TokenPayload>(token, ctx.sessionSecret);
       if (!p) return;
       const sess = await r.sessions.get(p.sid);
-      if (sess && !sess.revokedAt) await r.sessions.update({ ...sess, revokedAt: ctx.clock().toISOString() });
+      const now = ctx.clock().toISOString();
+      if (sess && !sess.revokedAt) await r.sessions.update({ ...sess, revokedAt: now });
+      // Signed out after a restart (record not in memory): keep the revocation so the token cannot be taken back.
+      else if (!sess) await r.sessions.insert({ id: p.sid, employeeId: p.sub, demo: !!p.demo, createdAt: now, revokedAt: now });
     },
 
     /** Resolve a bearer token to an Actor; throws 401 when invalid/expired/revoked/inactive. */
     async authenticate(token: string | undefined): Promise<{ actor: Actor; user: SessionUser }> {
       if (!token) throw unauthorized();
       const p = verifyToken<TokenPayload>(token, ctx.sessionSecret);
-      if (!p || p.exp < ctx.clock().getTime()) throw unauthorized('Your session has expired. Sign in again.');
-      const sess = await r.sessions.get(p.sid);
-      if (!sess || sess.revokedAt || sess.employeeId !== p.sub) throw unauthorized('Your session is no longer valid.');
+      if (!p) throw unauthorized('Your session is no longer valid. Sign in again.');
+      if (p.exp && p.exp < ctx.clock().getTime()) throw unauthorized('Your session has expired. Sign in again.');
       const e = await r.employees.get(p.sub);
       if (!e || e.status !== 'active') throw unauthorized('Your account is not active.');
+      // A password change or reset ends every session issued before it.
+      const cv = await cvOf(e.email);
+      if (p.cv && p.cv !== cv) throw unauthorized('Your password was changed. Sign in again.');
+      let sess = await r.sessions.get(p.sid);
+      if (sess && (sess.revokedAt || sess.employeeId !== p.sub)) throw unauthorized('Your session is no longer valid.');
+      if (!sess) {
+        // Sessions are kept in memory, so a server restart (redeploy, Render spin-down) forgets them. A correctly signed
+        // token for the same, still active account with the same password is taken back instead of signing the user out.
+        if (!p.cv || p.cv !== cv) throw unauthorized('Your session is no longer valid. Sign in again.');
+        sess = { id: p.sid, employeeId: p.sub, demo: !!p.demo, createdAt: ctx.clock().toISOString(), ...(p.exp ? { expiresAt: new Date(p.exp).toISOString() } : {}) };
+        await r.sessions.insert(sess);
+      }
       const matrix = await r.permissions.get();
       return { actor: actorFromEmployee(e, matrix, sess.demo), user: await withEnv(toSessionUser(e, matrix, sess.demo)) };
     },

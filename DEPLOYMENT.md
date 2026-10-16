@@ -146,8 +146,15 @@ Dockerfile — the image stays the same for every website, and the environment d
 After the deploy, `https://<service>.onrender.com/api/health` shows `"crawler": {"ready": true, "baseUrl": "https://deodap.in"}`.
 To crawl another website, add it under **Manage websites** (its crawler is restricted to that site's own host).
 
+**Sign-in sessions** last until the user selects *Sign out* — they do not expire on their own and survive restarts,
+redeploys and Render spin-downs, as long as `SESSION_SECRET` stays the same (changing it signs everyone out). A session
+ends when the user signs out, their password is changed or reset, or their account is deactivated. Do not set
+`SESSION_TTL_HOURS` (or set it to `0`); a positive number of hours would cap every session again. Limit: sessions and
+sign-outs are kept in memory (no database), so a token signed out *before* a restart is no longer on the server's
+revoked list after it — the browser deletes its token at sign-out, and changing the password ends every session for sure.
+
 Set by the image, override only if needed: `PORT=8080`, `WEB_DIST_DIR=/app/apps/web/dist`. Optional: `LOG_LEVEL`,
-`SESSION_TTL_HOURS`, `TRUST_PROXY` (default 1 in production), `AUTH_RATE_LIMIT` (default 20 per IP per 15 min),
+`SESSION_TTL_HOURS` (default `0` = until sign-out), `TRUST_PROXY` (default 1 in production), `AUTH_RATE_LIMIT` (default 20 per IP per 15 min),
 `CORS_ORIGIN` (only if the web app is hosted on another origin — not needed with this setup).
 
 Integrations (each stays "Not connected" until its credentials are set **and** its connection test passes in

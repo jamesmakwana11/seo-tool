@@ -1,6 +1,6 @@
 import { createSeed } from '@sentinel/shared';
 import type { Repositories } from './types';
-import { hashPassword } from '../lib/passwords';
+import { hashPassword, sha256 } from '../lib/passwords';
 
 /**
  * Loads the deterministic DEMO seed into repositories. Every record carries `source: 'demo'`, so it can never be
@@ -16,7 +16,7 @@ export async function seedDemoData(repos: Repositories, now = new Date()): Promi
   await repos.permissions.set(s.permissions);
   await all(repos.employees, s.employees);
   for (const e of s.employees) {
-    const { hash, salt } = await hashPassword(s.passwords[e.email]);
+    const { hash, salt } = await hashPassword(s.passwords[e.email], sha256(`demo-salt:${e.email.toLowerCase()}`).slice(0, 32)); // DEMO accounts: stable across restarts
     await repos.credentials.insert({ id: e.email.toLowerCase(), employeeId: e.id, hash, salt, updatedAt: now.toISOString() });
   }
   await all(repos.sitePages, s.catalog.pages);

@@ -900,6 +900,7 @@ export function pageRows(pages: ParsedPage[], ctx: SiteContext, lookup?: TargetL
         if (broken.length >= 20) break;
       }
     }
+    const noAlt = h ? h.images.filter((i) => i.alt === null || !i.alt.trim()) : [];
     const row: CrawledUrl = {
       url: p.url, status: p.status, reason: p.reason, responseMs: p.responseMs, error: p.error,
       finalUrl: p.finalUrl !== p.url ? p.finalUrl : undefined, finalStatus, redirects: p.chain.length || undefined, redirectedFrom: p.derivedFrom,
@@ -910,8 +911,14 @@ export function pageRows(pages: ParsedPage[], ctx: SiteContext, lookup?: TargetL
       Object.assign(row, {
         title: h.title, metaDescription: h.metaDescription, h1: h.h1s, h2Count: h.headings.filter((x) => x.level === 2).length,
         canonical, metaRobots: h.metaRobots, xRobotsTag: xRobots, internalLinks: h.internalLinks.length, brokenLinks: broken,
-        images: h.images.length, imagesMissingAlt: h.images.filter((i) => i.alt === null || !i.alt.trim()).length,
+        images: h.images.length, imagesMissingAlt: noAlt.length, externalLinks: h.externalLinks.length,
       });
+      if (noAlt.length) row.imagesMissingAltSrc = noAlt.slice(0, 5).map((i) => i.src.slice(0, 200));
+      const nofollow = h.links.filter((l) => l.internal && /\bnofollow\b/i.test(l.rel ?? '')).length;
+      if (nofollow) row.nofollowLinks = nofollow;
+      if (h.titleCount > 1) row.titleCount = h.titleCount;
+      if (h.metaDescriptionCount > 1) row.metaDescriptionCount = h.metaDescriptionCount;
+      if (new Set(h.canonicals).size > 1) row.canonicalCount = new Set(h.canonicals).size;
     } else if (xRobots) row.xRobotsTag = xRobots;
     for (const k of Object.keys(row) as (keyof CrawledUrl)[]) if (row[k] === undefined) delete row[k];
     return row;

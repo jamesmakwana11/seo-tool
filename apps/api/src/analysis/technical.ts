@@ -280,7 +280,9 @@ export function analyze4xx(prep: Prepared): AnalyzerResult {
       add(p.template, 'look like soft 404s (200 status, "not found" content)', p.url, textEv(p.url, 'title / H1', t));
     }
   }
-  const searchBots = (prep.ctx.botProbes ?? []).filter((b) => (b.bot === 'Googlebot' || b.bot === 'Bingbot') && b.status === 429);
+  // A 429 to the search-bot probe only shows bot throttling when our own crawl was not being rate limited: otherwise it
+  // is most likely the same per-visitor limit the crawl hit, and claiming "Googlebot is blocked" would be a false alarm.
+  const searchBots = prep.ctx.crawlRateLimited ? [] : (prep.ctx.botProbes ?? []).filter((b) => (b.bot === 'Googlebot' || b.bot === 'Bingbot') && b.status === 429);
   if (searchBots.length) {
     const home = `${prep.ctx.origin}/`;
     findings.push({

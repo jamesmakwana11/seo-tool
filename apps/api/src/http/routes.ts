@@ -113,10 +113,10 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
   });
   add({
     method: 'get', path: '/api/crawls/:id/pages', permission: 'crawls.view',
-    description: 'Page rows of a crawl, paged on the server (query: offset, limit ≤ 500, q, status, indexable, problem, crawlState, source, template, sort, dir)',
+    description: 'Page rows of a crawl with their audit score, paged on the server (query: offset, limit ≤ 500, q, status, indexable, problem, crawlState, source, template, score = poor/fair/good/none, sort incl. score, dir)',
     handle: (req) => crawls.pages(actorOf(req), prm(req, 'id'), {
       offset: num(req.query.offset, 0), limit: num(req.query.limit, 50), q: optStr(req.query.q), status: optStr(req.query.status) as never, indexable: optStr(req.query.indexable) as never,
-      problem: optStr(req.query.problem) as never, crawlState: optStr(req.query.crawlState) as never, source: optStr(req.query.source), template: optStr(req.query.template),
+      problem: optStr(req.query.problem) as never, crawlState: optStr(req.query.crawlState) as never, source: optStr(req.query.source), template: optStr(req.query.template), score: optStr(req.query.score) as never, check: optStr(req.query.check),
       sort: optStr(req.query.sort) as never, dir: optStr(req.query.dir) as never,
     }),
   });
@@ -133,6 +133,7 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
     handle: (req) => changes.list(actorOf(req), prm(req, 'id'), changeQuery(req)),
   });
   add({ method: 'get', path: '/api/changes/runs/:id/url', permission: 'crawls.view', description: 'One URL\'s change record with old / new values, evidence and its open issues (query: url)', handle: (req) => changes.detail(actorOf(req), prm(req, 'id'), String(req.query.url ?? '')) });
+  add({ method: 'get', path: '/api/changes/for-url', permission: 'crawls.view', description: 'This URL\'s change record in the latest crawl that was compared with the baseline (query: url); null when there is none', handle: async (req) => ({ change: await changes.latestChange(String(req.query.url ?? '')) }) });
   add({ method: 'post', path: '/api/changes/issues', permission: 'crawls.view', description: 'Open issues on a page of URLs (body: urls, at most 200)', handle: (req) => changes.issuesFor(actorOf(req), Array.isArray(req.body?.urls) ? req.body.urls.map(String) : []) });
   add({
     method: 'get', path: '/api/changes/runs/:id/export', permission: 'crawls.view', description: 'Download a crawl\'s change records as CSV or JSON (same filters as the list), streamed', raw: true,
@@ -184,6 +185,7 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
   add({ method: 'post', path: '/api/shopify/theme-snapshots', permission: 'shopify.theme', description: 'Read a theme\'s source files (read-only, authorised connection) and keep them as a snapshot for comparison (body: themeId)', handle: (req) => shopify.themeSnapshot(actorOf(req), req.body?.themeId) });
   add({ method: 'get', path: '/api/shopify/theme-snapshots', permission: 'shopify.theme', description: 'Theme source snapshots, newest first', handle: (req) => shopify.themeSnapshots(actorOf(req)) });
   add({ method: 'get', path: '/api/shopify/theme-snapshots/diff', permission: 'shopify.theme', description: 'Theme files added / removed / changed between two snapshots; with file, its line diff (query: from, to, file)', handle: (req) => shopify.themeSnapshotDiff(actorOf(req), String(req.query.from ?? ''), String(req.query.to ?? ''), optStr(req.query.file)) });
+  add({ method: 'get', path: '/api/crawls/:id/page', permission: 'crawls.view', description: 'One page of a crawl with its SEO audit: every element checked, value found and what to do (id = crawl id or "latest"; query: url)', handle: (req) => crawls.page(actorOf(req), prm(req, 'id'), String(req.query.url ?? '')) });
   add({ method: 'get', path: '/api/lighthouse/status', permission: 'crawls.view', description: 'Whether Lighthouse / rendered checks can run on this server', handle: (req) => lighthouse.status(actorOf(req)) });
   add({ method: 'get', path: '/api/lighthouse/runs', permission: 'crawls.view', description: 'Recent Lighthouse audits and rendered checks', handle: (req) => lighthouse.list(actorOf(req)) });
   add({ method: 'post', path: '/api/lighthouse/runs', permission: 'crawls.run', status: 202, description: 'Queue Lighthouse audits (body: url, formFactors: ["mobile","desktop"], render)', handle: (req) => lighthouse.start(actorOf(req), req.body ?? {}) });

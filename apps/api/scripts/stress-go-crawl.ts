@@ -121,6 +121,11 @@ async function main() {
     else for await (const chunk of f.stream!) { bytes += chunk.length; rows += chunk.split('\r\n').length - 1; }
     return { bytes, rows };
   });
+  // Page audit: the to-do list filter, sort by score, and three full page reports (incl. same-title / meta lookups).
+  const todoFilter = await timed(() => crawls.pages(SYSTEM_ACTOR, run.id, { check: 'alt-missing', limit: 50 }));
+  const byScore = await timed(() => crawls.pages(SYSTEM_ACTOR, run.id, { sort: 'score', dir: 'asc', limit: 50 }));
+  const reports: number[] = [];
+  for (const u of [filt.v.rows[0]?.url, byScore.v.rows[0]?.url, firstPage.v.rows[0]?.url].filter(Boolean) as string[]) reports.push((await timed(() => crawls.page(SYSTEM_ACTOR, run.id, u))).ms);
   const issues = (await c.repos.issues.list()).filter((i) => i.crawlRunId === run.id);
   const result = {
     products: PRODUCTS, site: ready, concurrency: CONCURRENCY, budgetMB: BUDGET ? Number(BUDGET) : null, heapLimitMB: Math.round((await import('node:v8')).getHeapStatistics().heap_size_limit / 1048576),
@@ -132,6 +137,7 @@ async function main() {
     newIssues: done.newIssues,
     dupTitleSample: filt.v.rows.slice(0, 6).map((r) => [r.url, r.title, r.status, r.flags]),
     pagesApiMs: { first: firstPage.ms, last: deep.ms, filterDupTitle: filt.ms, search: search.ms, total: firstPage.v.total, dupTitleRows: filt.v.total, searchRows: search.v.total },
+    pageAuditMs: { todoFilter: todoFilter.ms, todoRows: todoFilter.v.total, sortByScore: byScore.ms, reports, scoreSummary: byScore.v.scoreSummary, todo: byScore.v.facets.check },
     coverageMs: cov.ms, coverageSummary: { sitemapNotCrawled: cov.v.sitemapNotCrawled.count, failed: cov.v.failed.count, redirects: cov.v.redirects.count, nearGroups: cov.v.duplicates.nearContent.count, titleGroups: cov.v.duplicates.titles.count, orphanCandidates: cov.v.orphanCandidates.count },
     exportCsv: { ms: exp.ms, ...exp.v },
     warnings: done.warnings,

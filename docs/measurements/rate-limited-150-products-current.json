@@ -1,0 +1,105 @@
+{
+  "store": "--products 150 --rate 3 --burst 6 --retry-after 30",
+  "bin": "bin/sentinel-crawler",
+  "status": "completed",
+  "outcome": "completed",
+  "wallMs": 397540,
+  "pages": 206,
+  "discovered": 377,
+  "pagesPerMinOverall": 31,
+  "store429": 5,
+  "storeRequests": 840,
+  "maxGapSeenMs": 607,
+  "politeness": {
+    "avgLatencyMs": 0,
+    "crawlDelayMs": 0,
+    "delayMs": 448,
+    "floorMs": 250,
+    "limitedAnswers": 5,
+    "rateLimited": 5,
+    "retries": 4,
+    "retryAfterPauses": 5,
+    "slowDowns": 3,
+    "unavailable503": 0,
+    "waitedMs": 3134166
+  },
+  "checks": {
+    "deferred": 1,
+    "done": 341,
+    "groups": {
+      "botProbes": {
+        "deferred": 0,
+        "done": 5,
+        "excluded": 0,
+        "failed": 0,
+        "reused": 0,
+        "total": 5
+      },
+      "external": {
+        "deferred": 0,
+        "done": 0,
+        "excluded": 0,
+        "failed": 0,
+        "reused": 0,
+        "total": 0
+      },
+      "images": {
+        "deferred": 1,
+        "done": 297,
+        "excluded": 0,
+        "failed": 0,
+        "reused": 0,
+        "total": 298
+      },
+      "links": {
+        "deferred": 0,
+        "done": 21,
+        "excluded": 149,
+        "failed": 0,
+        "reused": 183,
+        "total": 21
+      },
+      "samples": {
+        "deferred": 0,
+        "done": 18,
+        "excluded": 0,
+        "failed": 0,
+        "reused": 0,
+        "total": 18
+      },
+      "scripts": {
+        "deferred": 0,
+        "done": 0,
+        "excluded": 0,
+        "failed": 0,
+        "reused": 0,
+        "total": 0
+      }
+    },
+    "total": 342
+  },
+  "timings": {
+    "crawlProcessMs": 395861,
+    "crawlMs": 97788,
+    "checksMs": 292002,
+    "checksBudgetMs": 300000,
+    "sitemapMs": 5499
+  },
+  "phasesAtMs": {
+    "crawling": 504,
+    "samples": 98147,
+    "checks": 104157,
+    "analysing": 396236,
+    "saving": 397239
+  },
+  "peakMB": {
+    "apiRss": 128,
+    "go": 18
+  },
+  "memory": {
+    "nodeRssMB": 120.7,
+    "nodeHeapMB": 34.8,
+    "totalMB": 120.7,
+    "peakTotalMB": 133.6
+  }
+}

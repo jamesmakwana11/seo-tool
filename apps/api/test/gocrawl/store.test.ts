@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { CrawledUrl } from '@sentinel/shared';
+import { PAGE_AUDIT_TODO, auditPage, queryCrawlRows, type CrawledUrl } from '@sentinel/shared';
 import { FileResultStore, MemoryResultStore } from '../../src/results/store';
 import { tmpWork } from './goHelpers';
 
@@ -74,5 +74,51 @@ describe('crawl result stores', () => {
     expect(fs.existsSync(path.join(dir, 'rows.ndjson'))).toBe(true);
     await file.dispose();
     expect(fs.existsSync(dir)).toBe(false);
+  });
+
+  it('audit scores and to-do checks agree in memory, on disk and with the shared page audit', async () => {
+    const file = new FileResultStore(path.join(tmpWork(), 'audit-results'));
+    for (const r of data) file.add(r);
+    file.seal();
+    const ref = queryCrawlRows(data, { limit: 1 });
+    const a = await mem.query({ limit: 1 });
+    const b = await file.query({ limit: 1 });
+    expect(a.facets.score).toEqual(ref.facets.score);
+    expect(b.facets.score).toEqual(ref.facets.score);
+    expect(b.facets.check).toEqual(ref.facets.check);
+    expect(Object.keys(b.facets.check ?? {}).length).toBeGreaterThan(4);
+    for (const t of PAGE_AUDIT_TODO) {
+      const q = { check: t.id, limit: 500, sort: 'url' as const };
+      const x = await file.query(q);
+      expect(x.total, t.id).toBe(ref.facets.check?.[t.id] ?? 0);
+      expect(x.rows.map((r) => r.url), t.id).toEqual((await mem.query(q)).rows.map((r) => r.url));
+    }
+    for (const band of ['poor', 'fair', 'good', 'none'] as const) expect((await file.query({ score: band })).total, band).toBe(ref.facets.score?.[band] ?? 0);
+    // The score on each row is the score of its full audit (duplicate flags included).
+    const page = await file.query({ sort: 'score', dir: 'asc', limit: 200 });
+    for (const r of page.rows) expect(r.auditScore ?? null, r.url).toBe(auditPage(r).score);
+    const scores = page.rows.map((r) => r.auditScore ?? 1000);
+    expect(scores).toEqual([...scores].sort((x, y) => x - y));
+    expect(page.auditLimits?.titleMaxChars).toBe(60);
+    expect(page.scoreSummary).toEqual(ref.scoreSummary);
+    expect((await mem.query({ limit: 1 })).scoreSummary).toEqual(ref.scoreSummary);
+    // Exports stream rows with the same crawl-wide fields as the page list.
+    let k = 0;
+    const listed = await file.query({ limit: 500 });
+    for await (const r of file.iterate()) {
+      if (k >= 500) break;
+      expect({ s: r.auditScore, t: r.auditTodo, f: r.flags }, r.url).toEqual({ s: listed.rows[k].auditScore, t: listed.rows[k].auditTodo, f: listed.rows[k].flags });
+      k++;
+    }
+    // Same-title pages: every 10th row shares "Same title | Shop" (only rows answering 200 count).
+    const sameTitle = data.filter((r) => r.title === 'Same title | Shop' && r.status === 200).map((r) => r.url);
+    for (const st of [file, mem]) {
+      const d = await st.duplicatesOf(sameTitle[0]);
+      expect(d.title.total).toBe(sameTitle.length - 1);
+      expect(d.title.urls).toEqual(sameTitle.slice(1, 11));
+      const one = await st.duplicatesOf(data[1].url);
+      expect(one.title.total).toBe(0);
+    }
+    await file.dispose();
   });
 });

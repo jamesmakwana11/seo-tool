@@ -1,0 +1,77 @@
+{
+  "store": "--products 150 --rate 3 --burst 6 --retry-after 30",
+  "bin": "/tmp/claude-0/-home-claude/a838812b-62cc-52e5-a605-f3e1ba2be3ac/scratchpad/oldgo/sentinel-crawler-old",
+  "status": "cancelled",
+  "outcome": "cancelled",
+  "wallMs": 1501814,
+  "pages": 206,
+  "discovered": 377,
+  "pagesPerMinOverall": 8,
+  "store429": 7,
+  "storeRequests": 540,
+  "maxGapSeenMs": 30000,
+  "politeness": {
+    "avgLatencyMs": 0,
+    "crawlDelayMs": 0,
+    "delayMs": 444,
+    "floorMs": 250,
+    "limitedAnswers": 7,
+    "rateLimited": 7,
+    "retries": 7,
+    "slowDowns": 3,
+    "unavailable503": 0,
+    "waitedMs": 11336251
+  },
+  "checks": {
+    "done": 342,
+    "groups": {
+      "botProbes": {
+        "done": 5,
+        "total": 5
+      },
+      "external": {
+        "done": 0,
+        "total": 0
+      },
+      "images": {
+        "done": 298,
+        "total": 298
+      },
+      "links": {
+        "done": 21,
+        "total": 21
+      },
+      "samples": {
+        "done": 18,
+        "total": 18
+      },
+      "scripts": {
+        "done": 0,
+        "total": 0
+      }
+    },
+    "total": 342
+  },
+  "timings": {
+    "crawlProcessMs": 1500339,
+    "crawlMs": 1185153,
+    "checksMs": 179887,
+    "sitemapMs": 5500
+  },
+  "phasesAtMs": {
+    "crawling": 503,
+    "samples": 1185928,
+    "checks": 1320603,
+    "analysing": 1501513
+  },
+  "peakMB": {
+    "apiRss": 119,
+    "go": 18
+  },
+  "memory": {
+    "nodeRssMB": 110.8,
+    "nodeHeapMB": 29.1,
+    "totalMB": 110.8,
+    "peakTotalMB": 135.4
+  }
+}

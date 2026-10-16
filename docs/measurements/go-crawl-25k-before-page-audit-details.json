@@ -1,0 +1,293 @@
+{
+  "products": 25000,
+  "site": {
+    "ready": true,
+    "url": "http://127.0.0.1:39417/",
+    "products": 25000,
+    "collections": 250,
+    "collectionPages": 1250,
+    "articles": 100
+  },
+  "concurrency": 16,
+  "budgetMB": null,
+  "heapLimitMB": 304,
+  "status": "completed",
+  "outcome": "completed",
+  "wallMs": 105343,
+  "phasesAtMs": {
+    "crawling": 252,
+    "checks": 33395,
+    "text_analysis": 33646,
+    "analysing": 42665,
+    "saving": 98461
+  },
+  "timings": {
+    "checksBudgetMs": 300000,
+    "checksMs": 133,
+    "crawlMs": 33237,
+    "robotsMs": 1,
+    "sitemapMs": 1511,
+    "textMs": 8820,
+    "crawlProcessMs": 42499,
+    "indexMs": 13804,
+    "heapAfterIndexMB": 91,
+    "textCoreReadMs": 272,
+    "heapAfterTextCoreMB": 102,
+    "wholeCrawlMs": 1628,
+    "heapAfterWholeCrawlMB": 115,
+    "heapAfterReleaseMB": 120,
+    "batchAnalysisMs": 38252,
+    "heapAfterBatchesMB": 128,
+    "coverageRowsMs": 1611,
+    "analysisTotalMs": 55740
+  },
+  "coverage": {
+    "discovered": 53491,
+    "queued": 0,
+    "waiting": 0,
+    "active": 0,
+    "processed": 26633,
+    "succeeded": 26508,
+    "failed": 125,
+    "robots": 0,
+    "depthLimited": 0,
+    "pageLimited": 0,
+    "excluded": 26735,
+    "excludedBy": {
+      "cart_account_or_app_path": 2,
+      "collection_scoped_product_path": 24992,
+      "sort_filter_search_parameter": 1741
+    },
+    "notProcessed": 0,
+    "sitemapUrls": 25235,
+    "pagesPerMin": 5784,
+    "politeness": {
+      "avgLatencyMs": 13,
+      "crawlDelayMs": 0,
+      "delayMs": 0,
+      "floorMs": 0,
+      "limitedAnswers": 0,
+      "rateLimited": 0,
+      "retries": 0,
+      "retryAfterPauses": 0,
+      "slowDowns": 0,
+      "unavailable503": 0,
+      "waitedMs": 0
+    },
+    "requests": 27390,
+    "requestsPerMin": 39001,
+    "lastRequestAt": "2026-10-16T12:00:05.461Z",
+    "checks": {
+      "deferred": 20000,
+      "done": 348,
+      "groups": {
+        "botProbes": {
+          "deferred": 0,
+          "done": 5,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 5
+        },
+        "external": {
+          "deferred": 0,
+          "done": 0,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 0
+        },
+        "images": {
+          "deferred": 20000,
+          "deferredAtLeast": true,
+          "done": 300,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 20300
+        },
+        "links": {
+          "deferred": 0,
+          "done": 25,
+          "excluded": 26710,
+          "failed": 0,
+          "reused": 25427,
+          "total": 25
+        },
+        "samples": {
+          "deferred": 0,
+          "done": 18,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 18
+        },
+        "scripts": {
+          "deferred": 0,
+          "done": 0,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 0
+        }
+      },
+      "total": 20348
+    }
+  },
+  "rows": 53491,
+  "textCore": {
+    "ok": true
+  },
+  "peaksMB": {
+    "nodeRss": 304,
+    "nodeHeap": 161,
+    "go": 62,
+    "textCore": 19,
+    "total": 304
+  },
+  "runMemory": {
+    "nodeRssMB": 291.6,
+    "nodeHeapMB": 107.6,
+    "totalMB": 291.6,
+    "peakTotalMB": 291.6
+  },
+  "issues": {
+    "total": 48,
+    "byCheck": {
+      "TECH-SITEMAP": 1,
+      "TECH-4XX": 153,
+      "TECH-DISCONTINUED": 125,
+      "TECH-DUPLICATE": 1897,
+      "ONP-TPL-HOME": 1,
+      "AEO-ENTITY": 1,
+      "GEO-EEAT": 101,
+      "AIC-01": 14883,
+      "TECH-BROKEN-INTERNAL": 630,
+      "TECH-THIN": 14977,
+      "TECH-SCHEMA-PRESENCE": 251,
+      "PERF-IMAGES": 150,
+      "ONP-TITLE": 25238,
+      "ONP-META": 2305,
+      "ONP-H1": 2076,
+      "ONP-BREADCRUMBS": 250,
+      "ONP-IMAGES": 1081,
+      "ONP-TPL-COLLECTION": 250,
+      "ONP-TPL-PRODUCT": 24875,
+      "AEO-ANSWER-BLOCK": 1,
+      "AEO-FAQ": 25125,
+      "AEO-EXTRACTABILITY": 1,
+      "GEO-STRUCTURE": 3,
+      "AIC-02": 610,
+      "AIC-09": 14713,
+      "GEO-FRESHNESS": 100,
+      "AIC-05": 100
+    }
+  },
+  "newIssues": 48,
+  "dupTitleSample": [
+    [
+      "http://127.0.0.1:39417/collections/kitchen-scales-6",
+      "Kitchen Scales | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:39417/collections/storage-boxs-1",
+      "Storage Boxs | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:39417/collections/vegetable-choppers-0",
+      "Vegetable Choppers | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:39417/collections/wall-hooks-3",
+      "Wall Hooks | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:39417/collections/water-bottles-2",
+      "Water Bottles | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:39417/collections/mixing-bowls-15",
+      "Mixing Bowls | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ]
+  ],
+  "pagesApiMs": {
+    "first": 45,
+    "last": 47,
+    "filterDupTitle": 26,
+    "search": 39,
+    "total": 53491,
+    "dupTitleRows": 2406,
+    "searchRows": 4028
+  },
+  "coverageMs": 0,
+  "coverageSummary": {
+    "sitemapNotCrawled": 0,
+    "failed": 125,
+    "redirects": 125,
+    "nearGroups": 1,
+    "titleGroups": 807,
+    "orphanCandidates": 0
+  },
+  "exportCsv": {
+    "ms": 1251,
+    "bytes": 39080922,
+    "rows": 53492
+  },
+  "warnings": [],
+  "changeMonitorFirst": {
+    "afterCompletedMs": 5221,
+    "summary": {
+      "runId": "CRL-0001",
+      "snapshotId": "20261016T115932Z-CRL-0001",
+      "crawlType": "full",
+      "outcome": "completed",
+      "observedAt": "2026-10-16T11:59:32.036Z",
+      "finishedAt": "2026-10-16T12:01:11.997Z",
+      "urls": 53491,
+      "baseline": null,
+      "baselineEffect": "created",
+      "baselineNote": "This full crawl is now the baseline: changes are reported from the next crawl.",
+      "notes": [
+        "No baseline to compare with yet."
+      ],
+      "compareMs": 5328
+    },
+    "diskBytes": 20457166
+  }
+}

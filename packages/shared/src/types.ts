@@ -661,17 +661,32 @@ export interface CrawlCoverageCounts {
     unavailable503?: number;
     /** 429 + 503 answers in total (a burst counts once in slowDowns). */
     limitedAnswers?: number;
+    /** Times the site's Retry-After was honoured as a pause before the next request. */
+    retryAfterPauses?: number;
   };
   /** Requests answered so far (pages, samples and checks; every host). */
   requests?: number;
   requestsPerMin?: number;
   /** When the last request was answered — a stall shows here first. */
   lastRequestAt?: string;
-  /** Post-crawl checks (link targets, images, scripts, host variants, TLS, samples): done / total per group. */
-  checks?: { total: number; done: number; groups: Record<string, { total: number; done: number }> };
+  /** Post-crawl checks (link targets, images, scripts, host variants, TLS, samples) per group. */
+  checks?: CrawlCheckProgress;
   /** Phase reported by the crawler with this progress. */
   phase?: string;
 }
+
+/**
+ * Post-crawl checks of one crawl. Per group: total = targets found; done = checked (failed = checked and answered
+ * ≥ 400 or not at all); deferred = not checked because of a cap or the time budget — never reported as broken;
+ * a group is finished when done + deferred = total. excluded (robots.txt, your exclusions, filter / sort variants
+ * beyond the sample) and reused (already answered by the page crawl, no extra request) are outside total.
+ */
+export interface CrawlCheckGroup {
+  total: number; done: number; failed?: number; deferred?: number; excluded?: number; reused?: number;
+  /** deferred (and total) were counted up to a bound: show them as "at least". */
+  deferredAtLeast?: boolean;
+}
+export interface CrawlCheckProgress { total: number; done: number; deferred?: number; groups: Record<string, CrawlCheckGroup> }
 
 export interface CrawlMemory {
   nodeRssMB: number;
@@ -738,6 +753,16 @@ export interface CrawledUrl {
   brokenLinks?: string[];
   images?: number;
   imagesMissingAlt?: number;
+  /** Sources of the first images without ALT text (≤ 5, each ≤ 200 characters). */
+  imagesMissingAltSrc?: string[];
+  /** Links to other websites on the page. */
+  externalLinks?: number;
+  /** Internal links marked rel="nofollow". */
+  nofollowLinks?: number;
+  /** Set only when the page has more than one <title> / meta description / canonical tag. */
+  titleCount?: number;
+  metaDescriptionCount?: number;
+  canonicalCount?: number;
   inSitemap?: boolean;
   issues?: CrawledUrlIssue[];
   // ---- coverage (Go crawler)
@@ -757,6 +782,10 @@ export interface CrawledUrl {
   uniqueWords?: number;
   issueCount?: number;
   topSeverity?: Severity;
+  /** Page audit score 0–100 (Pages API rows; absent = not scored). */
+  auditScore?: number;
+  /** Ids of the page-audit checks this page fails or should improve (Pages API rows and exports). */
+  auditTodo?: string[];
   /** Page problems worked out over the whole crawl (dup-title, dup-meta, broken, …) — set on rows read from the Pages API. */
   flags?: string[];
 }

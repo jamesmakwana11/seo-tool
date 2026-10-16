@@ -59,6 +59,82 @@ node scripts/package-review.mjs <dir>
 
 ## 3. Verification
 
+### 16 Oct 2026 (fourth pass) — Phase 2: All pages and the page audit
+
+Done and tested (details, checks, score rules and limits: `docs/PAGE_AUDIT.md`):
+- Each crawl row now also records the first 5 images without ALT text, links to other websites, internal nofollow
+  links and repeated title / meta description / canonical tags (Go and built-in crawler, same code path).
+- Page audit (`packages/shared/src/pageAudit.ts`): 29 to-do checks with recommendations across response, title, meta
+  description, H1–H3, canonical, indexability, content, links and images; one scoring rule shared by the server,
+  the page list and the page report.
+- Server: score / check filters and sort, site average and per-template average, same-title / same-meta pages for the
+  page report, `audit_score` / `audit_to_do` in CSV / JSON exports.
+- Screens: All pages (`/pages`), page report (`/pages/report`), audit in the page drawer.
+- Tests: shared audit rules, memory / file store / shared reference agree, HTTP API (filters, summary, duplicates,
+  export), Go crawl of the local fixture store (planted missing ALT and canonical are reported with the HTML evidence).
+- Measured on the 25,000-product synthetic store: crawl 105 s → 109–111 s, peak RSS 304 → 308 MB, page report 35–59 ms.
+
+### 16 Oct 2026 (third pass) — sign-in sessions; page audit groundwork
+
+**Sessions no longer expire on their own.** Before: every session ended after 8 hours (`SESSION_TTL_HOURS=8`), every
+server restart (Render redeploy / spin-down / memory restart) forgot all sessions because they are kept in memory, and the
+browser signed the user out whenever `/api/auth/me` failed for any reason — including the server still starting up.
+Now:
+- `SESSION_TTL_HOURS` defaults to `0` = signed in until *Sign out* (a positive value still caps sessions).
+- The signed token carries the account id and a fingerprint of the password hash. After a restart a correctly signed
+  token for the same active account with the same password is accepted again; the first admin and DEMO accounts get the
+  same password hash at every start (salt keyed with `SESSION_SECRET`), so their sessions survive restarts.
+- A session still ends at sign-out, password change or reset, account deactivation, or a changed `SESSION_SECRET`.
+- The browser signs out only on a 401; while the server is unreachable or answers 5xx it keeps the session and retries
+  for up to 3 minutes ("Waiting for the server to start — you are still signed in"), then offers *Try again*.
+- Limit (no database): the revoked-session list is in memory, so a token signed out *before* a restart is not on it
+  afterwards. The browser deletes its token at sign-out; changing the password ends every session for certain.
+- Tests: `apps/api/test/api/sessions.test.ts` (no expiry after 400 days, survives restart, sign-out, password change,
+  other secret, other account, optional cap) and `apps/web/test/authSession.test.tsx` (retries on network error / 502,
+  signs out only on 401).
+
+**Page audit groundwork (Phase 2, partly done, working and tested):** per-page audit score and checks with
+recommendations (`packages/shared/src/pageAudit.ts`), score / to-do filters in the page list API,
+`GET /api/crawls/:id/page?url=` and `GET /api/changes/for-url?url=`, the *All pages* screen (`/pages`) and the page
+report (`/pages/report`). Phases 3 (Shopify edit verification from the page report) and 4 (change-history integration)
+are not continued in this pass.
+
+Results of this pass: Go + Rust tests pass · API 441 passed, 1 skipped · shared 92 · web 42 · typecheck, lint and
+`build:prod` clean. The full 3-role × 3-width route smoke was not completed in the sandbox time limit; `/pages`,
+`/pages/report` and a reload while signed in were checked in Chromium at 1440 px and 390 px (no errors, no overflow).
+
+### 16 Oct 2026 (second pass) — crawl performance under rate limiting
+
+Causes found in the code and fixed:
+1. **Retry-After became the permanent gap.** A 429 with `Retry-After: 30` set the gap between *all* later requests to 30 s,
+   and normal answers took dozens of requests to bring it down. Now it is a one-time pause; the gap doubles at most once per burst.
+2. **The crawl sped straight back into the limit.** After a 429 the gap relaxed below the pace that triggered it, causing the next
+   429 and pause. The crawler now remembers that pace (×1.5) and decays it by 10 % per 100 normal answers.
+3. **Image and asset checks ignored 429s.** They used `NoRetry`, which also skipped the slow-down, and then repeated each limited
+   HEAD as a GET. A 429 on any request now slows the shared per-host queue; a limited HEAD is not repeated.
+4. **Rate-limited link / image targets were reported as broken.** A link target answering 429 counted as a "4xx internal link".
+   Answers that are still 429 / 503 after the retries are now *deferred* (not checked) and never written as results.
+5. **Post-crawl checks had no bound** and ran in discovery order. They now get a time budget (as long as the page crawl, 5–20 min,
+   `CRAWLER_CHECKS_BUDGET_MINUTES`), the most-linked targets and images on the most pages go first, and the rest is *deferred*.
+6. **No accounting.** Each group (links, images, external, scripts, host, TLS, bot probes, samples) now reports checked, failed,
+   deferred, excluded (robots.txt, your exclusions, filter variants beyond the sample) and reused (already answered by the crawl),
+   live and in Run diagnostics. Image ALT / dimensions / lazy-loading come from the HTML; each image file is requested once.
+7. A 429 to the Googlebot / Bingbot probe is no longer reported as "search bots blocked" when the crawl itself was being rate limited.
+
+Measured on a rate-limited synthetic store (150 products, token bucket 3 req/s burst 6, `429 + Retry-After: 30`; same job:
+8 workers, 250 ms delay; `docs/measurements/rate-limited-150-products-*.json`):
+
+| | Previous crawler (this morning's build) | Current |
+|---|---|---|
+| Page crawl (206 pages) | 1,185 s | 98 s |
+| Whole run | stopped by the 25-min measurement limit | 398 s, completed |
+| 429 answers from the store | 7 (each made the gap 30 s) | 5 (each a 30 s pause, gap ≤ 450 ms) |
+| Images reported failed / not checked | — | 0 failed, 1 deferred (an intermediate build that ignored image 429s: 50 × 429, 24 "failed") |
+
+25,000-product crawl (no rate limit, 288 MB heap): 26,634 pages, ~5,400 pages/min, peak API RSS 305 MB / heap 154 MB, Go 64 MB —
+unchanged from before. Tests: Go 25 tests (new: Retry-After pause, deferral over the budget, link accounting, rate-limited image
+checks) · API 436 · shared 85 · web 38 — all pass; typecheck and lint clean.
+
 ### 16 Oct 2026 — crawl speed / reliability, Change Monitor, visual and code comparison
 
 | Suite | Result |

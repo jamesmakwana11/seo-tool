@@ -12,7 +12,8 @@ const schema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   /** HMAC secret for session tokens. Required in production; a random per-process secret is generated otherwise. */
   SESSION_SECRET: z.string().min(32).optional(),
-  SESSION_TTL_HOURS: z.coerce.number().positive().default(8),
+  /** 0 (default) = a session lasts until the user signs out; a positive number of hours caps it. */
+  SESSION_TTL_HOURS: z.coerce.number().min(0).default(0),
   /** Load the deterministic DEMO seed into the in-memory repositories on start (development default). */
   SEED_DEMO_DATA: bool(true),
   /** DEVELOPMENT ONLY: allow /auth/preview role switching with mock users. Refused when NODE_ENV=production. */
@@ -99,6 +100,11 @@ const schema = z.object({
   CRAWLER_GO_MEMORY_MB: z.coerce.number().int().min(32).max(8192).optional(),
   /** Stop a crawl (outcome partial, results kept) when no request has been answered for this many minutes. */
   CRAWLER_STALL_MINUTES: z.coerce.number().int().min(3).max(240).default(20),
+  /**
+   * Most minutes the post-crawl checks (link targets, images, scripts, host variants) may take. Targets left after it
+   * are reported as deferred — not checked, never as broken. Unset = automatic: as long as the page crawl took, 5–20 minutes.
+   */
+  CRAWLER_CHECKS_BUDGET_MINUTES: z.coerce.number().min(0.5).max(240).optional(),
   /** Pages a smart crawl may fetch (its priority budget). */
   CRAWLER_SMART_MAX_PAGES: z.coerce.number().int().min(10).max(1_000_000).default(500),
   /** Finished crawls whose page rows stay available for paging and export (older ones are deleted from disk). */

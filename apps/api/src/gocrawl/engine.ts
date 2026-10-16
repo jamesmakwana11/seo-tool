@@ -28,6 +28,8 @@ import { readNdjsonGz } from './files';
 import { analyzablePages, memoryPlan, nodeMemory } from './memoryBudget';
 
 export interface GoEngineOptions {
+  /** Time budget of the post-crawl checks (ms); undefined = the crawler's automatic budget. */
+  checksBudgetMs?: number;
   /** Write Change Monitor snapshots during analysis (default true). */
   changeSnapshots?: boolean;
   baseUrl?: string;
@@ -131,6 +133,7 @@ export function createGoCrawlEngine(o: GoEngineOptions): CrawlEngine & { binarie
       needs: ALL_NEEDS, limits: scaled, botProbes: BOT_PROBES,
       textCore: { bin: bins.textCore.path && !bins.textCore.problem ? bins.textCore.path : '', brand: o.config.site.brand ?? '', disabled: !bins.textCore.path || !!bins.textCore.problem },
       memoryLimitMB: mem.goMemoryMB, progressMs: 1000, skipTls: local,
+      ...(o.checksBudgetMs ? { checksBudgetMs: Math.round(o.checksBudgetMs) } : {}),
     };
 
     // ---- live state: coverage, memory of all processes, warnings
@@ -353,6 +356,7 @@ async function readContext(workDir: string, plan: CrawlPlan, o: GoEngineOptions,
     trailingSlash: raw.trailingSlash as SiteContext['trailingSlash'],
     discoveredBudgetUrls: raw.discoveredBudgetUrls as string[] | undefined,
     botProbes: raw.botProbes as SiteContext['botProbes'],
+    crawlRateLimited: (((raw.counts as { politeness?: { limitedAnswers?: number } } | undefined)?.politeness?.limitedAnswers) ?? 0) > 0,
     bfsTruncated: truncated || raw.bfsTruncated === true || raw.bfsTruncated === undefined,
     resolvedStart: raw.resolvedStartUrl as string | undefined,
     resolvedFrom: raw.resolvedFrom as string | undefined,

@@ -40,6 +40,9 @@ type Job struct {
 	TextCore      TextCoreConf `json:"textCore"`
 	MemoryLimitMB int          `json:"memoryLimitMB"` // stop taking new pages above this Go heap size (resource stop)
 	ProgressMs    int          `json:"progressMs"`
+	// ChecksBudgetMs: time the post-crawl checks may take; what is left after it is reported as deferred, never as
+	// broken. 0 = automatic (as long as the page crawl took, at least 5 and at most 20 minutes).
+	ChecksBudgetMs int `json:"checksBudgetMs,omitempty"`
 	// Testing only: skip the TLS certificate probe (local fixtures have no certificate).
 	SkipTLS bool `json:"skipTls"`
 }

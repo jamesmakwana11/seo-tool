@@ -33,6 +33,8 @@ const P = {
   CrawlRun: L(() => import('@/pages/crawls/CrawlRunPage')),
   Compare: L(() => import('@/pages/crawls/ComparePage')),
   Verification: L(() => import('@/pages/crawls/VerificationPage')),
+  AllPages: L(() => import('@/pages/pages/AllPagesPage')),
+  PageReport: L(() => import('@/pages/pages/PageReportPage')),
   Issues: L(() => import('@/pages/issues/IssuesBoardPage')),
   Issue: L(() => import('@/pages/issues/IssueDetailPage')),
   IssueGroups: L(() => import('@/pages/issues/IssueGroupsPage')),
@@ -79,9 +81,23 @@ function Guard({ perm, children }: { perm?: Permission; children: ReactNode }) {
 }
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, ready } = useAuth();
+  const { user, ready, unreachable, refresh } = useAuth();
   const loc = useLocation();
-  if (!ready) return <div className="p-8"><LoadingBlock rows={3} label="Checking session" /></div>;
+  if (!ready) {
+    return (
+      <div className="p-8">
+        {unreachable && <p className="mb-3 text-sm text-muted">Waiting for the server to start — you are still signed in. ({unreachable})</p>}
+        <LoadingBlock rows={3} label="Checking session" />
+      </div>
+    );
+  }
+  if (!user && unreachable) {
+    return (
+      <div className="p-8">
+        <EmptyState title="The server cannot be reached" description={`You are still signed in. ${unreachable}`} action={<button type="button" className="text-sm font-medium text-signal hover:underline" onClick={() => void refresh()}>Try again</button>} />
+      </div>
+    );
+  }
   if (!user) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
   return <>{children}</>;
 }
@@ -119,6 +135,8 @@ export function AppRoutes() {
         <Route path="crawls/compare" element={g(P.Compare, 'crawls.view')} />
         <Route path="crawls/:id" element={g(P.CrawlRun, 'crawls.view')} />
         <Route path="verification" element={g(P.Verification, 'crawls.view')} />
+        <Route path="pages" element={g(P.AllPages, 'crawls.view')} />
+        <Route path="pages/report" element={g(P.PageReport, 'crawls.view')} />
 
         <Route path="issues" element={g(P.Issues, 'issues.view')} />
         <Route path="issues/groups" element={g(P.IssueGroups, 'issues.view')} />
@@ -168,7 +186,7 @@ export function AppRoutes() {
 export const SMOKE_PATHS = [
   '/', '/health', '/search?q=schema', '/notifications', '/profile', '/modules/technical', '/modules/technical/crawlability', '/modules/technical/responses',
   '/modules/technical/canonicals', '/modules/technical/security', '/modules/technical/structured-data', '/modules/performance', '/modules/content', '/modules/onpage',
-  '/modules/offpage', '/modules/offpage/backlinks', '/modules/aeo', '/modules/geo', '/modules/ai-compliance', '/modules/ai-visibility', '/crawls', '/crawls/compare', '/verification',
+  '/modules/offpage', '/modules/offpage/backlinks', '/modules/aeo', '/modules/geo', '/modules/ai-compliance', '/modules/ai-visibility', '/crawls', '/crawls/compare', '/verification', '/pages',
   '/issues', '/issues/groups', '/issues/exclusions', '/websites', '/websites/overview', '/team/employees', '/team/roles',
   '/team/allocations', '/opportunities', '/opportunities/keywords', '/opportunities/gaps', '/opportunities/briefs', '/opportunities/clusters', '/opportunities/seasonal',
   '/opportunities/link-building', '/opportunities/mentions', '/competitors', '/reports/daily', '/reports/weekly', '/reports/monthly', '/reports/history',

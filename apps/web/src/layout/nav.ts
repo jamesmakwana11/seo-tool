@@ -34,6 +34,7 @@ export const NAV: NavSection[] = [
     items: [
       { to: '/health', label: 'Health score', icon: Gauge, perm: 'dashboard.view' },
       { to: '/issues', label: 'Issues board', icon: CircleAlert, perm: 'issues.view', end: true },
+      { to: '/pages', label: 'All pages', icon: ListChecks, perm: 'crawls.view' },
       { to: '/verification', label: 'Verification', icon: BadgeCheck, perm: 'crawls.view' },
       { to: '/crawls', label: 'Crawl Center', icon: Radar, perm: 'crawls.view' },
       { to: '/seo-editor', label: 'SEO editor', icon: FilePenLine, anyOf: ['shopify.edit', 'shopify.theme'] },

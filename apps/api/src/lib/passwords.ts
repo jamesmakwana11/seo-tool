@@ -3,8 +3,12 @@ import { promisify } from 'node:util';
 
 const scrypt = promisify(_scrypt) as (pw: string, salt: string, keylen: number) => Promise<Buffer>;
 
-export async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
-  const salt = randomBytes(16).toString('hex');
+/**
+ * scrypt hash with a random salt. `fixedSalt` is only for passwords set from configuration at every start (first admin,
+ * DEMO accounts): the same password then gives the same hash after a restart, so signed-in sessions stay valid.
+ */
+export async function hashPassword(password: string, fixedSalt?: string): Promise<{ hash: string; salt: string }> {
+  const salt = fixedSalt ?? randomBytes(16).toString('hex');
   const hash = (await scrypt(password, salt, 64)).toString('hex');
   return { hash, salt };
 }

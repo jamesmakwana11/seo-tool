@@ -34,11 +34,11 @@ export interface GoProgress {
   notProcessed: number;
   pagesPerMin: number;
   sitemapUrls: number;
-  politeness?: { delayMs: number; floorMs?: number; crawlDelayMs?: number; slowDowns: number; retries: number; rateLimited?: number; waitedMs?: number; avgLatencyMs?: number; unavailable503?: number; limitedAnswers?: number };
+  politeness?: { delayMs: number; floorMs?: number; crawlDelayMs?: number; slowDowns: number; retries: number; rateLimited?: number; waitedMs?: number; avgLatencyMs?: number; unavailable503?: number; limitedAnswers?: number; retryAfterPauses?: number };
   requests?: number;
   requestsPerMin?: number;
   lastRequestAt?: string | null;
-  checks?: { total: number; done: number; groups: Record<string, { total: number; done: number }> };
+  checks?: import('@sentinel/shared').CrawlCheckProgress;
   memory?: { goRssMB: number; goHeapMB: number; textCoreRssMB: number; goPeakMB: number; textCorePeakMB: number };
   elapsedMs: number;
 }

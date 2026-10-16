@@ -14,7 +14,7 @@ import { RoleBadge } from '@/components/domain/badges';
 
 const CRUMB: Record<string, string> = {
   health: 'Health Score', issues: 'Issues', websites: 'Websites', overview: 'All websites',
-  verification: 'Verification', modules: 'Audit modules', technical: 'Technical SEO', crawlability: 'Crawlability & indexability', responses: 'Response codes & links',
+  verification: 'Verification', pages: 'All pages', report: 'Page report', modules: 'Audit modules', technical: 'Technical SEO', crawlability: 'Crawlability & indexability', responses: 'Response codes & links',
   canonicals: 'Canonicals & duplication', security: 'Security, mobile & rendering', 'structured-data': 'Structured data', performance: 'Performance & CWV',
   content: 'Content', onpage: 'On-page', offpage: 'Off-page', backlinks: 'Backlinks', aeo: 'AEO', geo: 'GEO', 'ai-compliance': 'AI content compliance',
   'ai-visibility': 'AI visibility', crawls: 'Crawl Center', groups: 'Template-level issues', exclusions: 'Exclusions', opportunities: 'Opportunities',

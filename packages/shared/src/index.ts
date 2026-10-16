@@ -24,3 +24,4 @@ export * from './lighthouse';
 export * from './shopify';
 export * from './checks/notBuilt';
 export * from './changes';
+export * from './pageAudit';

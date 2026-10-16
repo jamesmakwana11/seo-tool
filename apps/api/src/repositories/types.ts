@@ -42,7 +42,8 @@ export interface PageTextDoc { id: string /* url */; url: string; template: Page
 export interface PageSnapshot { id: string /* url */; url: string; runId: string; at: string; status: number | null; noindex: boolean; title?: string; canonical?: string; scripts?: string[]; robotsTxt?: string }
 /** Last crawl observation (robots.txt, head scripts, indexable URLs…) used as the next run's baseline. */
 export interface CrawlStateDoc { id: string /* 'latest' or run id */; runId: string; at: string; state: import('../services/ports').PreviousCrawlState }
-export interface SessionDoc { id: string /* session id */; employeeId: string; demo: boolean; createdAt: string; expiresAt: string; revokedAt?: string }
+/** expiresAt absent = no automatic expiry (signed in until sign-out). */
+export interface SessionDoc { id: string /* session id */; employeeId: string; demo: boolean; createdAt: string; expiresAt?: string; revokedAt?: string }
 
 export interface MetricsDoc {
   source: DataSource;
