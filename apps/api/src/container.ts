@@ -184,8 +184,10 @@ export async function createContainer(o: ContainerOptions) {
   changes.setOnRecorded((s) => { void captures.afterCrawl(s.runId, s.snapshotId, !!s.counts).catch((e) => log.warn({ err: (e as Error).message }, 'after-crawl captures failed')); });
   const crawls = createCrawlService(ctx, issues, rules, changes);
   if (o.persistence) {
-    const interrupted = await crawls.recoverInterrupted();
-    if (interrupted) log.warn({ scope, interrupted }, 'crawls interrupted by the last restart were marked failed');
+    // Crawls a restart / redeploy interrupted: started again from their stored settings (or marked failed with the reason).
+    const interrupted = await crawls.resumeInterrupted();
+    if (interrupted.resumed.length) log.warn({ scope, crawls: interrupted.resumed }, 'crawls interrupted by the last restart were started again');
+    if (interrupted.failed.length) log.warn({ scope, crawls: interrupted.failed }, 'crawls interrupted by the last restart could not be started again and were marked failed');
   }
   // Image Audit: started by a user for one finished crawl; a separate Go process, never part of a crawl.
   const imageAudits = createImageAuditService(ctx, {

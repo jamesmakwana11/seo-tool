@@ -96,3 +96,35 @@ export async function waitForCrawl(b: Booted, siteId: string, runId: string, tim
     await new Promise((res) => setTimeout(res, 200));
   }
 }
+
+/** The API as a real separate process (`tsx src/server.ts`), as on Render: started, stopped with a signal, started again. */
+export interface ServerProcess {
+  port: number;
+  /** Fetch an /api path with an optional bearer token. */
+  api: (p: string, init?: RequestInit, token?: string) => Promise<Response>;
+  /** Stop it: SIGTERM = redeploy / restart / idle stop (graceful), SIGKILL = crash. Resolves with the exit code. */
+  stop: (signal?: NodeJS.Signals) => Promise<number | null>;
+  output: () => string;
+}
+
+export async function startServerProcess(env: Record<string, string>, port: number): Promise<ServerProcess> {
+  const { spawn } = await import('node:child_process');
+  const root = path.resolve(__dirname, '../..');
+  const child = spawn(process.execPath, ['--import', 'tsx', 'src/server.ts'], { cwd: root, env: { ...process.env, ...env, PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '';
+  child.stdout.on('data', (d) => { out += d; });
+  child.stderr.on('data', (d) => { out += d; });
+  const exited = new Promise<number | null>((res) => child.once('exit', (c) => res(c)));
+  for (let i = 0; ; i++) {
+    try { if ((await fetch(`http://127.0.0.1:${port}/healthz`)).ok) break; } catch { /* not yet */ }
+    if (child.exitCode !== null) throw new Error(`server exited: ${out}`);
+    if (i > 150) { child.kill('SIGKILL'); throw new Error(`server did not start: ${out}`); }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return {
+    port,
+    api: (p, init = {}, token) => fetch(`http://127.0.0.1:${port}/api${p}`, { ...init, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...(init.headers as Record<string, string> | undefined) } }),
+    stop: async (signal = 'SIGTERM') => { if (child.exitCode === null) child.kill(signal); return exited; },
+    output: () => out,
+  };
+}

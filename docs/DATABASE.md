@@ -50,8 +50,8 @@ issue, the Health Score is unchanged, the latest page report stays on the last c
 baseline is kept.
 
 Not kept across restarts: Image Audit jobs and the image references of crawls, Change Monitor screenshots / rendered
-HTML / theme snapshots, Lighthouse runs, the Shopify OAuth token, in-flight crawls (a crawl running during a restart is
-lost — start it again), and the page rows of crawls older than the `CRAWLER_KEEP_RESULTS` most recent ones (their run,
+HTML / theme snapshots, Lighthouse runs, the Shopify OAuth token, the progress of a crawl running during a restart (it is started again
+automatically from its stored settings — from the beginning, see "Crawls are background jobs" in `DEPLOYMENT.md`), and the page rows of crawls older than the `CRAWLER_KEEP_RESULTS` most recent ones (their run,
 issues and findings stay).
 
 ## Local setup and tests

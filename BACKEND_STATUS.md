@@ -59,6 +59,43 @@ node scripts/package-review.mjs <dir>
 
 ## 3. Verification
 
+### 17 Oct 2026 (third pass) — Background crawls: independent of the browser, restarted after a server restart
+
+**Root cause.** A crawl was already started as a server-side job (a detached promise driving the Go crawler process;
+nothing in the web app or the HTTP request stopped it). What stopped crawls nobody was watching was the server itself:
+1. Render stops idle services by *incoming* traffic — free instances spin down 15 minutes after the last request. While
+   the Crawl Center was open, its progress polling kept the server up; after the browser or laptop was closed nothing did,
+   so the process (and the crawl with it) was stopped mid-run.
+2. A crawl cut off by any restart (spin-down, redeploy, crash) was then marked *failed* at the next start, and its
+   settings were never used again: nothing resumed it.
+3. Two Start requests arriving together (double click, two tabs) could both pass the "already running?" check, which
+   ran before several awaits; a second crawl of the same website could start.
+
+**Fix** (`apps/api/src/services/crawls.ts`, `jobs/keepAwake.ts`, `server.ts`, `container.ts`, `config/env.ts`):
+crawls run through one `launch()` that owns the job (no request, tab or session involved); one start at a time per
+website (a lock taken before any await) and `409 CRAWL_ALREADY_RUNNING` with the running crawl's id; on `SIGTERM` a
+running crawl is left *running* in the database instead of being finalised as failed / cancelled; at start-up
+`resumeInterrupted()` starts each interrupted crawl again under the same id with its stored type and settings (waiting
+for a free slot), at most `CRAWLER_RESUME_MAX_ATTEMPTS` times, otherwise marks it failed with the reason — never
+completed; while a crawl runs or waits, the server requests its own public `/healthz` every 5 minutes
+(`RENDER_EXTERNAL_URL` / `KEEP_AWAKE_URL`, `CRAWL_KEEP_AWAKE`). Web: a 409 reloads the crawl list so the running crawl and
+its progress appear; a restarted crawl says so; the progress panel says closing the page does not stop the crawl.
+
+**Tests** (`apps/api/test/persistence/backgroundCrawl.test.ts`; local fixture site, Go crawler): the browser's start
+request is destroyed before the answer → the crawl still runs, progress grows, a second sign-in sees the same job, it
+completes; 5 simultaneous Start requests from two sessions → one crawl, four `409 CRAWL_ALREADY_RUNNING`; cancel from
+another session → cancelled, no request reaches the site after it, no job left; keep-awake requests only while a
+crawl is busy. With PostgreSQL, real API process (`tsx src/server.ts`): SIGTERM and SIGKILL mid-crawl → stored as
+*running* while down → after the restart the same crawl id is running again with `resume.attempts = 1`, the same
+options, no second crawl, a new Start is refused, and it completes with issues; restarted too often or restarting off →
+failed with the reason; a restarted crawl can be cancelled. Built bundle check: SIGTERM at 54 pages → same crawl
+resumed and finished.
+
+**Limits.** Restarted crawls begin again from the first page (no page-level checkpoint in the Go crawler: its results,
+link graph and duplicate analysis need the whole crawl in one process). Without `DATABASE_URL` a restart loses a running
+crawl. Image Audits are not restarted. The keep-awake ping cannot help when the host stops the service for other reasons
+(redeploys, the free plan's monthly hours, out-of-memory restarts) — those are covered by the restart.
+
 ### 17 Oct 2026 (second pass) — PostgreSQL persistence: websites, crawls, results, Health Score
 
 **Root cause of "websites disappear" and "no audit data yet".**
@@ -76,7 +113,8 @@ node scripts/package-review.mjs <dir>
 `docs/DATABASE.md`); websites are rows of `sentinel_websites` and all their data is keyed by the website id; page rows
 of recent crawls, coverage reports and the Change Monitor history are stored too and restored after a restart;
 changes are answered only once stored, a crawl stores everything before it ends, SIGTERM flushes; database failures
-answer 503 and show on System health (no silent fallback); crawls interrupted by a restart are marked failed; the
+answer 503 and show on System health (no silent fallback); crawls interrupted by a restart are marked failed (since
+replaced: they are started again — see "Background crawls" below); the
 latest page report never uses a cancelled crawl. Web: website list refetched when a crawl finishes and every minute,
 site screens refreshed on crawl completion, selection kept in `localStorage`; storage notices follow the server.
 

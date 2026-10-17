@@ -621,6 +621,11 @@ export interface CrawlRun {
   warnings?: { code: string; message: string; at: ISODate }[];
   /** Duplicate-content analysis (Rust text core) ran for this crawl. */
   textCore?: { ok: boolean; error?: string };
+  /**
+   * Set when a server restart interrupted this crawl and it was started again automatically with the same settings
+   * (from the beginning: page-level checkpoints are not kept). attempts = restarts so far.
+   */
+  resume?: { attempts: number; lastAt: ISODate; firstStartedAt?: ISODate; pagesBeforeRestart: number };
 }
 
 export type CrawlPhase =

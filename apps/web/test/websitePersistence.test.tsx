@@ -34,3 +34,19 @@ describe('after a crawl finishes', () => {
     expect(spy.mock.calls.map((c) => c[0]?.queryKey)).toEqual([['site', 'site-grab'], ['websites']]);
   });
 });
+
+describe('starting a crawl that is already running', () => {
+  it('reloads the crawl list so the running crawl (started in another tab or browser) and its progress are shown', async () => {
+    const { useApiMutation } = await import('../src/api/hooks');
+    const { ToastProvider } = await import('../src/components/ui/Toast');
+    const { ApiError } = await import('@sentinel/shared');
+    const { act, waitFor } = await import('@testing-library/react');
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}><ToastProvider>{children}</ToastProvider></QueryClientProvider>;
+    const { result } = renderHook(() => useApiMutation(async () => { throw new ApiError(409, 'CRAWL_ALREADY_RUNNING', 'Crawl CRL-0004 is already running', { runId: 'CRL-0004' }); }, { invalidate: [['crawls']], silentError: true }), { wrapper });
+    act(() => result.current.mutate());
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(spy.mock.calls.map((c) => c[0]?.queryKey)).toEqual([['site', 'site-deodap', 'crawls']]);
+  });
+});

@@ -62,6 +62,9 @@ export function useApiMutation<V = void, R = unknown>(fn: (v: V) => Promise<R>, 
       opts.onSuccess?.(r);
     },
     onError: (e) => {
+      // 409: the screen is out of date (e.g. a crawl of this website is already running, started in another tab or
+      // browser). Reload the listed data so the screen shows the real state — the running crawl and its progress.
+      if (e instanceof ApiError && e.status === 409) for (const k of opts.invalidate ?? []) void qc.invalidateQueries({ queryKey: siteKey(k) });
       if (!opts.silentError) toast.error(errorMessage(e));
     },
   });

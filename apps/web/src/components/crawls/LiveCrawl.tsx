@@ -293,7 +293,12 @@ export function CrawlProgress({ run, showLink = true }: { run: CrawlRun; showLin
           </dl>
         );
       })()}
-      {active && <p className="text-xs text-muted" aria-live="polite">{phaseText}</p>}
+      {run.resume && (
+        <p className="text-xs text-ink-soft" data-testid="crawl-resumed">
+          Started again automatically after a server restart ({run.resume.attempts === 1 ? 'once' : `${run.resume.attempts} times`}; {fmtNum(run.resume.pagesBeforeRestart)} pages had been fetched before the last restart and are fetched again).
+        </p>
+      )}
+      {active && <p className="text-xs text-muted" aria-live="polite">{phaseText} The crawl runs on the server: closing or refreshing this page does not stop it — only Cancel crawl does.</p>}
       {!active && run.status === 'completed' && (
         <p className="text-sm text-ink-soft">
           Finished: {fmtNum(processed)} pages processed · <span className={run.newIssues ? 'font-medium text-crit-ink' : ''}>{run.newIssues} new</span> / {run.resolvedIssues} resolved / {run.recurringIssues} recurring issues.

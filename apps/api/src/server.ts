@@ -3,6 +3,8 @@ import { createLogger } from './lib/logger';
 import { createContainer } from './container';
 import { createApp } from './http/app';
 import { describeDatabaseUrl, openPersistence } from './repositories/postgres/persistence';
+import { busyCrawlJobs, suspendCrawlsForShutdown } from './services/crawls';
+import { startKeepAwake } from './jobs/keepAwake';
 
 async function main() {
   const env = loadEnv();
@@ -17,6 +19,11 @@ async function main() {
   await (app.locals.ready as () => Promise<void>)();
 
   if (env.SCHEDULER_ENABLED) container.scheduler.start();
+  // Crawls are background jobs of this server; keep an idle-stopping host from stopping it while one runs.
+  const keepAwake = startKeepAwake({
+    enabled: env.CRAWL_KEEP_AWAKE, url: env.KEEP_AWAKE_URL ?? env.RENDER_EXTERNAL_URL, intervalMs: env.KEEP_AWAKE_INTERVAL_SECONDS * 1000,
+    busy: () => busyCrawlJobs() > 0, log,
+  });
 
   const server = app.listen(env.PORT, () => {
     log.info({ port: env.PORT, env: env.NODE_ENV, scheduler: env.SCHEDULER_ENABLED, demoSeed: env.SEED_DEMO_DATA }, `DeoDap SEO Sentinel API listening on :${env.PORT}`);
@@ -30,6 +37,10 @@ async function main() {
     stopping = true;
     log.info({ sig }, 'shutting down');
     container.scheduler.stop();
+    keepAwake.stop();
+    // A crawl still running is left "running" in the database (never recorded as failed or cancelled because of the
+    // shutdown) and is started again when the server is back.
+    suspendCrawlsForShutdown();
     // Render sends SIGTERM before a redeploy / restart: store every queued write first.
     let closing: Promise<void> | undefined;
     const done = () => (closing ??= (persistence ? persistence.close() : Promise.resolve()).catch((e: Error) => log.error({ err: e.message }, 'could not store every change before shutting down')));

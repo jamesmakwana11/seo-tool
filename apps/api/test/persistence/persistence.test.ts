@@ -154,20 +154,22 @@ describe.skipIf(!DB_URL || !HAVE_GO)('PostgreSQL persistence', () => {
     expect(runs.find((r) => r.id === slow.body.id)?.status).toBe('cancelled');
   }, 180_000);
 
-  it('a crawl interrupted by a restart is marked failed and does not block the next crawl', async () => {
+  it('a crawl interrupted by a restart is started again from its stored settings and does not block the next crawl', async () => {
     const { url } = await db();
     const s = await startFixtureSite();
     sites.push(s);
     let b = running = await boot(url, s.origin);
     const done = await waitForCrawl(b, 'site-deodap', (await b.agent.post('/api/crawls').set(b.auth).send({ type: 'full' })).body.id) as CrawlRun;
     // As if the process died mid-crawl: the run is stored as running.
-    await b.container.repos.crawls.insert({ ...done, id: 'CRL-0099', status: 'running', outcome: undefined, finishedAt: undefined });
+    await b.container.repos.crawls.insert({ ...done, id: 'CRL-0099', status: 'running', outcome: undefined, finishedAt: undefined, urlsCrawled: 4 });
     await b.persistence.flush();
     await b.stop();
     b = running = await boot(url, s.origin);
-    const stale = (await b.agent.get('/api/crawls/CRL-0099').set(b.auth)).body.run as CrawlRun;
-    expect([stale.status, stale.outcome]).toEqual(['failed', 'failed']);
-    expect(stale.error).toMatch(/server restarted/);
+    const back = (await b.agent.get('/api/crawls/CRL-0099').set(b.auth)).body.run as CrawlRun;
+    expect(['queued', 'running']).toContain(back.status);
+    expect(back.resume).toMatchObject({ attempts: 1, pagesBeforeRestart: 4 });
+    const again = await waitForCrawl(b, 'site-deodap', 'CRL-0099') as CrawlRun;
+    expect([again.status, again.outcome]).toEqual(['completed', 'completed']);
     const next = await b.agent.post('/api/crawls').set(b.auth).send({ type: 'full' });
     expect(next.status, JSON.stringify(next.body)).toBe(200);
     expect((await waitForCrawl(b, 'site-deodap', next.body.id) as CrawlRun).outcome).toBe('completed');

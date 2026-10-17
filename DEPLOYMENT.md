@@ -99,6 +99,8 @@ Crawling and scheduling (needed for real audits):
 | `CRAWLER_USER_AGENT` | optional; allow-list it in Shopify bot protection |
 | `SCHEDULER_ENABLED` | `true` for the daily/weekly crawls, escalations and digest |
 | `CRAWLER_MAX_PAGES`, `CRAWLER_REQUEST_DELAY_MS`, `CRAWLER_MAX_BODY_BYTES`, `CRAWLER_MAX_CONCURRENT_JOBS` | crawl limits: optional page cap (unset = no limit) / 250 ms / 5 MB / 2 — see `LOCAL_CRAWLING.md` |
+| `CRAWLER_RESUME_INTERRUPTED`, `CRAWLER_RESUME_MAX_ATTEMPTS` | with a database: start a crawl interrupted by a restart again automatically (default `true`), at most this many times (default 2) — see [Crawls are background jobs](#crawls-are-background-jobs) |
+| `CRAWL_KEEP_AWAKE`, `KEEP_AWAKE_URL`, `KEEP_AWAKE_INTERVAL_SECONDS` | while a crawl runs, request the server's own `/healthz` (default on; address `KEEP_AWAKE_URL`, else Render's `RENDER_EXTERNAL_URL`; every 300 s) so an idle-stopping host does not stop it |
 | `CRAWLER_ENGINE` | `auto` (default: Go crawler when installed — always in the Docker image) / `go` / `node` |
 | `CRAWLER_MEMORY_BUDGET_MB` | optional; default 85 % of the container memory limit (API + crawler + text core) |
 | `CRAWLER_SMART_MAX_PAGES` | pages a Smart crawl fetches, highest priority first (default and maximum 1,000; Full crawls have no such budget) |
@@ -191,6 +193,27 @@ preview, exposing reset tokens in API responses.
 If the database cannot be reached at start-up, the API does not start (the log says why) — it never silently runs on
 temporary memory with `DATABASE_URL` set. If it becomes unreachable while running, changes answer **503 — not saved
 yet**, System health shows *Storage: down* with the error, and queued changes are written as soon as it is back.
+
+### Crawls are background jobs
+
+A crawl runs on the server until it finishes or someone selects **Cancel crawl** (an explicit `POST /api/crawls/:id/cancel`).
+Closing or refreshing the browser, signing in from another browser or shutting down the laptop does not stop it; any
+browser that opens the Crawl Center shows the same crawl and its live progress. A second **Start** while a crawl of that
+website runs (double click, another tab or browser) is refused with `409 CRAWL_ALREADY_RUNNING` and the running crawl's id.
+
+- **Idle stop.** Render's free instances spin down after 15 minutes without *incoming* requests, however busy the
+  server is — that used to cut off crawls nobody was watching. While a crawl runs, the server therefore requests its own
+  public `/healthz` every 5 minutes (`RENDER_EXTERNAL_URL`, set by Render; or `KEEP_AWAKE_URL`). Nothing is requested
+  when no crawl runs. Turn it off with `CRAWL_KEEP_AWAKE=false`. A paid instance (Starter or above) never spins down
+  and is the dependable choice for long crawls.
+- **Restart / redeploy / crash.** With `DATABASE_URL`, the crawl's job record (type, start URL, limits, exclusions,
+  trigger, progress) is in PostgreSQL. On `SIGTERM` a running crawl is left as *running* (never recorded as failed or
+  completed because of the shutdown); when the server is back it is **started again automatically under the same id
+  with the same settings**, at most `CRAWLER_RESUME_MAX_ATTEMPTS` (2) times. It starts **from the beginning**: the crawler
+  keeps no page-level checkpoint, so pages fetched before the restart are fetched again, and issues are updated only
+  when the restarted crawl finishes. The crawl shows *Started again automatically after a server restart*. A crawl that
+  cannot be started again (restarted too often, `CRAWLER_RESUME_INTERRUPTED=false`, crawler not ready) is marked
+  **failed** with the reason — never completed. Without a database the job exists only in memory and a restart loses it.
 
 Data that is still not kept across restarts (by design, see `docs/DATABASE.md`): Image Audit results and the image
 references of crawls, Change Monitor screenshots / captured HTML / theme snapshots (only the crawl comparison history

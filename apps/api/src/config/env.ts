@@ -89,6 +89,22 @@ const schema = z.object({
   /** Crawls that may run at the same time across all websites on this server. */
   CRAWLER_MAX_CONCURRENT_JOBS: z.coerce.number().int().min(1).max(10).default(2),
   /**
+   * With a database: a crawl that a server restart / redeploy interrupted is started again automatically, with the same
+   * settings, when the server is back (from the beginning — page-level checkpoints are not kept). false = mark it failed.
+   */
+  CRAWLER_RESUME_INTERRUPTED: bool(true),
+  /** Automatic restarts per crawl; a crawl interrupted more often (e.g. the server keeps crashing) is marked failed. */
+  CRAWLER_RESUME_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(2),
+  /**
+   * While a crawl runs, request this server's own public /healthz every few minutes, so a host that stops idle services
+   * (Render's free instances spin down after 15 minutes without incoming requests) does not stop a crawl that nobody is
+   * watching. Uses KEEP_AWAKE_URL, else RENDER_EXTERNAL_URL (set by Render). Nothing is requested when no crawl runs.
+   */
+  CRAWL_KEEP_AWAKE: bool(true),
+  KEEP_AWAKE_URL: z.string().url().optional(),
+  RENDER_EXTERNAL_URL: z.string().url().optional(),
+  KEEP_AWAKE_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(840).default(300),
+  /**
    * Which crawler runs full and smart crawls: "go" = the Go crawler + Rust text core (bounded memory; required for large
    * sites), "node" = the built-in Node.js crawler, "auto" (default) = Go when its binary is installed, otherwise Node.
    * Re-verification of fixed issues always uses the built-in crawler (a few explicit URLs).
