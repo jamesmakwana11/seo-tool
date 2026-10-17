@@ -17,6 +17,7 @@
  * full page at once.
  */
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { CrawlCoverageReport, CrawledUrl, PageTemplate, PageTier } from '@sentinel/shared';
 import { wordCount } from '@sentinel/shared';
@@ -35,6 +36,9 @@ import { auditLimitsFrom } from '@sentinel/shared';
 import { SNAPSHOT_TEXT_CHARS, snapFromPage, snapFromRow } from '../changes/snapshot';
 import { enrichLite, Interner, litePage, toParsedPage, type GoPage, type PageRecord, type UrlRecord } from './convert';
 import { FindingMerger } from './merge';
+import { IMAGE_REFS_FILE, imageRefsOf, imageRefsWriter } from '../images/refs';
+
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif|svg|bmp|ico|tiff?|heic)$/i;
 
 /** Checks that compare pages across the whole crawl or read only site-level data: run once over the lite index. */
 export const WHOLE_CRAWL_CHECKS = new Set([
@@ -90,6 +94,8 @@ export interface AnalyzeOutput {
   textsFile?: string;
   /** Compact per-URL snapshot for the Change Monitor (gzip NDJSON of SnapRec). */
   snapshotFile?: string;
+  /** Image references of every HTML page (for an Image Audit started later; no image was requested). */
+  imageRefsFile?: string;
   textsCount: number;
   pages: number;
   timings: Record<string, number>;
@@ -407,6 +413,8 @@ export async function analyzeGoCrawl(input: AnalyzeInput): Promise<AnalyzeOutput
   // Change Monitor: one compact record per URL, written as the rows are made (never the whole crawl in memory).
   const snapshotFile = input.snapshot === false ? undefined : path.join(input.resultsDir, 'snapshot.ndjson.gz');
   const snaps = snapshotFile ? gzWriter(snapshotFile) : undefined;
+  const imageRefsFile = path.join(input.resultsDir, IMAGE_REFS_FILE);
+  const imageRefs = imageRefsWriter(imageRefsFile);
   const textLimit = input.collectTexts === true ? Number.POSITIVE_INFINITY : typeof input.collectTexts === 'number' ? input.collectTexts : 0;
   let textsCount = 0;
   const lookup = (l: string) => {
@@ -449,6 +457,8 @@ export async function analyzeGoCrawl(input: AnalyzeInput): Promise<AnalyzeOutput
       }
       store.add(row);
       if (snaps) await snaps.write(snapFromPage(p, row, SNAPSHOT_TEXT_CHARS));
+      const refs = imageRefsOf(p, isOkPage(p) || (!!p.derivedFrom && p.status === 200 && !!p.html));
+      if (refs) await imageRefs.write(refs);
       if (texts && textsCount < textLimit && p.status === 200 && p.html?.mainText) {
         await texts.write({ url: p.url, template: p.template, text: p.html.mainText.slice(0, 50_000) });
         textsCount++;
@@ -500,6 +510,10 @@ export async function analyzeGoCrawl(input: AnalyzeInput): Promise<AnalyzeOutput
     if (snaps) await snaps.write(snapFromRow(row));
   }
   await snaps?.close();
+  await imageRefs.close();
+  // Link targets the crawl already checked that are image files: an Image Audit reuses a definite answer (4xx).
+  const checkedImages = [...ctx.linkTargets.values()].filter((l) => IMAGE_EXT.test(l.url.split(/[?#]/)[0]));
+  if (checkedImages.length) await fsp.writeFile(path.join(input.resultsDir, 'images-checked.json'), JSON.stringify(checkedImages.slice(0, 20000).map((l) => ({ url: l.url, status: l.status, finalStatus: l.finalStatus, finalUrl: l.finalUrl, error: l.error }))));
   if (s3.missing) readProblems.push('the URL coverage file is missing (the crawler stopped before writing it)');
   else if (s3.truncated) readProblems.push(`the URL coverage file ended early (${s3.truncated})`);
   store.seal();
@@ -526,7 +540,7 @@ export async function analyzeGoCrawl(input: AnalyzeInput): Promise<AnalyzeOutput
   input.log?.info({ pages: s2.lines, timings, slowAnalyzers: Object.fromEntries(slow) }, 'go crawl analysis finished');
   return {
     findings, evaluatedChecks, evaluatedTemplates, notEvaluated, sitemapDiff, snapshot, store, coverage,
-    textsFile: texts ? path.join(input.resultsDir, 'texts.ndjson.gz') : undefined, snapshotFile, textsCount, pages: s2.lines, timings, readProblems,
+    textsFile: texts ? path.join(input.resultsDir, 'texts.ndjson.gz') : undefined, snapshotFile, imageRefsFile, textsCount, pages: s2.lines, timings, readProblems,
   };
 }
 

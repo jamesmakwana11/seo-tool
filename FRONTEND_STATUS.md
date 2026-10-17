@@ -29,6 +29,7 @@ All 83 screens from prompt §4.2 are implemented (requirements `CUS-SCR-01…83`
 60 routes plus dynamic detail routes:
 
 - Added 16 Oct 2026 (Phase 2): **All pages** `/pages` (site and template scores, to-do list, page list with scores, CSV export) and **Page report** `/pages/report?run=&url=` — see `docs/PAGE_AUDIT.md`.
+- Added 17 Oct 2026: **Image Audit** `/images` (start / cancel, progress, results by state and problem, image details with the pages showing it, CSV / JSON export) — see `docs/IMAGE_AUDIT.md`; Smart Crawl budget (1,000 pages) and pending URLs on the Crawl Center and run pages.
 
 | Area | Routes |
 |---|---|

@@ -104,6 +104,8 @@ export interface CrawlerStatus {
   siteUrl: string;
   /** Optional server-wide page cap (CRAWLER_MAX_PAGES); null = no cap, every page can be crawled. */
   maxPagesCap: number | null;
+  /** Pages one Smart Crawl may fetch (at most SMART_CRAWL_PAGE_BUDGET = 1,000). */
+  smartPageBudget?: number;
   /** Crawl jobs and results live in server memory only. */
   temporaryStorage: boolean;
   schedulerEnabled: boolean;
@@ -345,6 +347,13 @@ export interface SentinelApi {
   getChange(id: string, url: string): Promise<ChangeDetail>;
   /** This URL in the latest crawl that was compared with the baseline (null = never compared). */
   getUrlChange(url: string): Promise<{ change: import('./changes').ChangeRecord | null }>;
+  // ---- Image Audit (separate from crawling; started explicitly)
+  getImageAuditStatus(): Promise<import('./imageAudit').ImageAuditStatusResponse>;
+  startImageAudit(runId: string): Promise<import('./imageAudit').ImageAuditJob>;
+  getImageAudit(id: string): Promise<import('./imageAudit').ImageAuditJob>;
+  cancelImageAudit(id: string): Promise<import('./imageAudit').ImageAuditJob>;
+  listImageAudit(id: string, query: import('./imageAudit').ImageAuditQuery): Promise<import('./imageAudit').ImageAuditListResponse>;
+  exportImageAudit(id: string, format: 'csv' | 'json', query: import('./imageAudit').ImageAuditQuery): Promise<{ filename: string; mimeType: string; content: string | Blob }>;
   /** Open issues on a page of URLs (keys: normalised URLs). */
   getChangeIssues(urls: string[]): Promise<Record<string, ChangeDetail['issues']>>;
   exportChanges(id: string, format: 'csv' | 'json', query: ChangeListQuery): Promise<{ filename: string; mimeType: string; content: string | Blob }>;

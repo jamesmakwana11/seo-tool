@@ -25,6 +25,7 @@ import { createRuleService } from './services/rules';
 import { createCrawlService } from './services/crawls';
 import { createChangeService, urlKey } from './changes/service';
 import { createCaptureService } from './changes/capture';
+import { createImageAuditService } from './images/audit';
 import { safeName } from './changes/store';
 import { createReportService } from './services/reports';
 import { createInsightService } from './services/insights';
@@ -169,6 +170,14 @@ export async function createContainer(o: ContainerOptions) {
   });
   changes.setOnRecorded((s) => { void captures.afterCrawl(s.runId, s.snapshotId, !!s.counts).catch((e) => log.warn({ err: (e as Error).message }, 'after-crawl captures failed')); });
   const crawls = createCrawlService(ctx, issues, rules, changes);
+  // Image Audit: started by a user for one finished crawl; a separate Go process, never part of a crawl.
+  const imageAudits = createImageAuditService(ctx, {
+    refsOf: (id) => crawls.imageRefsOf(id), runsWithRefs: () => crawls.runsWithImageRefs(),
+    siteUrl: async () => engine.readiness().baseUrl ?? env.CRAWLER_BASE_URL ?? (await repos.config.get()).site.baseUrl,
+    goBinary: () => goEngine.binaries().crawler, allowLoopback: engineOpts.allowLoopback ?? false, userAgent: engineOpts.userAgent,
+    timeoutMs: engineOpts.timeoutMs, requestDelayMs: env.CRAWLER_REQUEST_DELAY_MS, retries: env.CRAWLER_RETRIES, maxRetryWaitMs: env.CRAWLER_MAX_RETRY_WAIT_MS,
+    maxCrawlDelayMs: env.CRAWLER_MAX_CRAWL_DELAY_MS, respectRobots: async () => (await repos.config.get()).crawl.respectRobots, workDir,
+  });
   const lighthouse = createLighthouseService(ctx, env, baseEngine.collector, { allowLoopback: engineOpts.allowLoopback ?? false, userAgent: engineOpts.userAgent });
   // SHOPIFY_ADMIN_TOKEN belongs to the primary website only; added websites connect their own store with OAuth.
   const shopify = createShopifyService(ctx, {
@@ -197,7 +206,7 @@ export async function createContainer(o: ContainerOptions) {
     env, log, clock, repos, ctx, diagnostics, recent,
     /** Injected outbound fetch (tests); undefined in production → adapters use global fetch. */
     fetchImpl,
-    services: { auth, tasks, issues, rules, crawls, changes, captures, reports, insights, admin, lighthouse, shopify },
+    services: { auth, tasks, issues, rules, crawls, changes, captures, imageAudits, reports, insights, admin, lighthouse, shopify },
     scheduler,
     refreshVerifierInputs,
     runEscalations: () => runEscalations(ctx, issues),

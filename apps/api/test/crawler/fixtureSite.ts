@@ -27,6 +27,10 @@ export interface FixtureOptions {
   missingAlt: string[];
   /** Product handles whose main image is a 300 KB JPEG. */
   largeImage: string[];
+  /** Product handles whose main image answers 404. */
+  brokenImages: string[];
+  /** Every page shows the same decorative banner (alt="", no width / height); the homepage also a second URL of it. */
+  sharedBanner: boolean;
   /** Product handles whose Product JSON-LD has no offers. */
   noOffers: string[];
   /** Template-level bug: EVERY product's JSON-LD loses `offers`. */
@@ -63,7 +67,7 @@ export interface FixtureOptions {
 
 export const defaultFixtureOptions = (): FixtureOptions => ({
   noindex: [], xRobotsNoindex: [], deletedProducts: [], missingCanonical: [], duplicateTitle: [], thinCollections: [], longTitle: [], missingMeta: [],
-  multipleH1: [], missingAlt: [], largeImage: [], noOffers: [], productTemplateNoOffers: false, priceMismatch: {}, reviewMarkupWithoutReviews: [],
+  multipleH1: [], missingAlt: [], largeImage: [], brokenImages: [], sharedBanner: false, noOffers: [], productTemplateNoOffers: false, priceMismatch: {}, reviewMarkupWithoutReviews: [],
   robotsDisallowCollections: false, robotsBlockGptBot: false, aiBoilerplate: [], ymylClaim: [], newHeadScriptOnProducts: false, linkErrorRoutes: false,
   slowMs: 1500, ssrfRedirect: false, malformedPage: false, orphanInSitemap: false, scopedSelfCanonical: false, unavailable: [], themeVersion: 1,
 });
@@ -200,7 +204,7 @@ ${headScripts}
 ${p.headExtra ?? ''}
 ${p.jsonld.map((j) => `<script type="application/ld+json">${JSON.stringify(j)}</script>`).join('\n')}
 </head><body>
-<header class="header"><a href="/" class="header__heading-link">DeoDap</a>
+<header class="header"><a href="/" class="header__heading-link">DeoDap</a>${opts.sharedBanner ? `<img src="/cdn/img/banner.webp?v=1" alt="">${path === '/' ? '<img src="/cdn/img/banner.webp?v=2" alt="Festive sale">' : ''}` : ''}
 <nav class="header__menu" aria-label="Main"><ul>
 <li><a href="/">Home</a></li>${COLLECTIONS.map((c) => `<li><a href="/collections/${c.handle}">${c.name}</a></li>`).join('')}<li><a href="/blogs/news">Blog</a></li>
 </ul></nav></header>
@@ -236,7 +240,7 @@ ${p.body}
       aggregateRating: { '@type': 'AggregateRating', ratingValue: '4.4', reviewCount: '2' },
     };
     if (!noOffers) product.offers = { '@type': 'Offer', price: jsonPrice, priceCurrency: 'INR', availability: 'https://schema.org/InStock', url: `${origin}/products/${p.handle}` };
-    const imgName = opts.largeImage.includes(p.handle) ? 'big-photo.jpg' : `${p.handle}.webp`;
+    const imgName = opts.brokenImages.includes(p.handle) ? `missing-${p.handle}.webp` : opts.largeImage.includes(p.handle) ? 'big-photo.jpg' : `${p.handle}.webp`;
     const alt = opts.missingAlt.includes(p.handle) ? '' : ` alt="${esc(p.name)} – ${esc(p.material.split(' ')[0])} – DeoDap"`;
     const boiler = opts.aiBoilerplate.includes(p.handle) ? `<p>In today's fast-paced world, every kitchen deserves the best tools. Unlock the power of effortless cooking with this amazing product.</p>` : '';
     const ymyl = opts.ymylClaim.includes(p.handle) ? `<p>This product is completely BPA-free and safe for the whole family.</p>` : '';
@@ -394,6 +398,7 @@ ${a.sections.map(([h, t]) => `<h2>${esc(h)}</h2><p>${esc(t)}</p>`).join('\n')}
     if (opts.unavailable.includes(path)) return send(res, 503, '<h1>Service Unavailable</h1>', {}, method);
     if (path === '/robots.txt') return send(res, 200, robotsTxt(), { 'content-type': 'text/plain' }, method);
     if (path === '/sitemap.xml') return send(res, 200, sitemapXml(), { 'content-type': 'application/xml' }, method);
+    if (path.startsWith('/cdn/img/missing-')) return send(res, 404, 'Not found', { 'content-type': 'text/plain' }, method);
     if (path.startsWith('/cdn/img/')) {
       const big = path.endsWith('big-photo.jpg');
       const size = big ? 300 * 1024 : 18 * 1024;

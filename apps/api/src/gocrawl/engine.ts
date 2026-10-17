@@ -15,9 +15,9 @@ import v8 from 'node:v8';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { CrawlCoverageCounts, CrawlMemory, CrawlRun, SentinelConfig } from '@sentinel/shared';
+import { SMART_CRAWL_PAGE_BUDGET, type CrawlCoverageCounts, type CrawlMemory, type CrawlRun, type SentinelConfig } from '@sentinel/shared';
 import type { CrawlEngine, CrawlPlan, EngineRunResult } from '../services/ports';
-import { ALL_NEEDS, BOT_PROBES, engineReadiness } from '../crawler/engine';
+import { BOT_PROBES, CRAWL_NEEDS, engineReadiness } from '../crawler/engine';
 import { parseRobots } from '../crawler/robots';
 import type { AssetInfo, CrawlLog, HostVariant, LinkStatus, SitemapEntry, SitemapFile, SiteContext, TlsInfo } from '../crawler/types';
 import { hostOf, isLocalHost, normalizeUrl } from '../crawler/url';
@@ -113,7 +113,9 @@ export function createGoCrawlEngine(o: GoEngineOptions): CrawlEngine & { binarie
     const mem = memoryPlan({ CRAWLER_MEMORY_BUDGET_MB: o.memoryBudgetMB, CRAWLER_GO_MEMORY_MB: o.goMemoryMB });
     const smart = plan.type === 'smart';
     const n = plan.maxPages;
-    const requested = smart ? Math.max(Number.isFinite(n) ? n : 0, o.smartMaxPages ?? 500) : Number.isFinite(n) ? n : 0;
+    // Smart Crawl: a fixed page budget (highest priority first), never more than SMART_CRAWL_PAGE_BUDGET. Full Crawl: the
+    // requested limit, or none — only the memory cap below applies.
+    const requested = smart ? Math.min(o.smartMaxPages ?? SMART_CRAWL_PAGE_BUDGET, SMART_CRAWL_PAGE_BUDGET) : Number.isFinite(n) ? n : 0;
     // The API analyses the fetched pages after the crawl; never fetch more than its heap can analyse, so a huge site
     // ends as "stopped for memory" with a reason instead of crashing the server during analysis.
     const memCap = o.analysisPageCap ?? analyzablePages();
@@ -130,7 +132,7 @@ export function createGoCrawlEngine(o: GoEngineOptions): CrawlEngine & { binarie
       requestDelayMs: plan.requestDelayMs ?? o.requestDelayMs ?? 0, retries: o.retries ?? 2, maxRetryWaitMs: o.maxRetryWaitMs, maxCrawlDelayMs: o.maxCrawlDelayMs,
       userAgent: o.userAgent, respectRobots: o.respectRobots, maxBodyBytes: o.maxBodyBytes, maxSitemapFiles: o.maxSitemapFiles, maxSitemapBytes: o.maxSitemapBytes,
       allowLoopback: o.allowLoopback ?? false, workDir, excludePatterns: plan.excludePatterns ?? [], seeds,
-      needs: ALL_NEEDS, limits: scaled, botProbes: BOT_PROBES,
+      needs: CRAWL_NEEDS, limits: scaled, botProbes: BOT_PROBES,
       textCore: { bin: bins.textCore.path && !bins.textCore.problem ? bins.textCore.path : '', brand: o.config.site.brand ?? '', disabled: !bins.textCore.path || !!bins.textCore.problem },
       memoryLimitMB: mem.goMemoryMB, progressMs: 1000, skipTls: local,
       ...(o.checksBudgetMs ? { checksBudgetMs: Math.round(o.checksBudgetMs) } : {}),
@@ -295,12 +297,12 @@ export function createGoCrawlEngine(o: GoEngineOptions): CrawlEngine & { binarie
       }
     };
     if (rowsOnly) {
-      return { urls: [], findings: [], evaluatedChecks: [], evaluatedTemplates: {}, stats, cancelled: outcome === 'cancelled', failed, store: analysis.store, coverageReport: analysis.coverage, answeredUrls: analysis.store.answeredUrls(), snapshotFile: analysis.snapshotFile, cleanup };
+      return { urls: [], findings: [], evaluatedChecks: [], evaluatedTemplates: {}, stats, cancelled: outcome === 'cancelled', failed, store: analysis.store, coverageReport: analysis.coverage, answeredUrls: analysis.store.answeredUrls(), snapshotFile: analysis.snapshotFile, imageRefsFile: analysis.imageRefsFile, cleanup };
     }
     return {
       urls: [], findings: analysis.findings, evaluatedChecks: analysis.evaluatedChecks, evaluatedTemplates: analysis.evaluatedTemplates,
       sitemapDiff: analysis.sitemapDiff, snapshot: analysis.snapshot, stats, memoryStopped: outcome === 'resource_stopped',
-      store: analysis.store, coverageReport: analysis.coverage, answeredUrls: analysis.store.answeredUrls(), textsFile: analysis.textsFile, snapshotFile: analysis.snapshotFile, cleanup,
+      store: analysis.store, coverageReport: analysis.coverage, answeredUrls: analysis.store.answeredUrls(), textsFile: analysis.textsFile, snapshotFile: analysis.snapshotFile, imageRefsFile: analysis.imageRefsFile, cleanup,
     };
   }
 
@@ -318,7 +320,7 @@ function scopeOf(c: Omit<GoProgress, 'type'> | undefined, smart?: { budget: numb
     { label: 'Not fetched: page limit reached', count: c.pageLimited },
     { label: 'Not fetched: crawl stopped first', count: c.notProcessed + c.queued + c.waiting },
   ];
-  if (smart) out.push({ label: `Smart crawl budget ${smart.budget} pages; ${smart.prioritized} prioritised by evidence; not audited this run`, count: smart.notAudited });
+  if (smart) out.push({ label: `Smart Crawl budget ${smart.budget.toLocaleString('en-US')} pages; ${smart.prioritized} prioritised by evidence; eligible URLs pending (not crawled, not audited)`, count: smart.notAudited });
   return out.filter((x, i) => i < 2 || x.count > 0);
 }
 

@@ -81,6 +81,9 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	if start.Job.Mode == "images" {
+		os.Exit(runImagesJob(ctx, cancel, start.Job, ev, in))
+	}
 	c, err := newCrawler(ctx, cancel, start.Job, ev)
 	if err != nil {
 		ev.emit(map[string]any{"type": "error", "code": "bad_job", "message": err.Error()})
@@ -110,3 +113,36 @@ func main() {
 	time.Sleep(10 * time.Millisecond)
 	os.Exit(code)
 }
+
+// runImagesJob runs an Image Audit job (mode "images") with the same control protocol as a crawl.
+func runImagesJob(ctx context.Context, cancel context.CancelFunc, job Job, ev *emitter, in *bufio.Reader) int {
+	a, err := newImageAuditor(ctx, cancel, job, ev)
+	if err != nil {
+		ev.emit(map[string]any{"type": "error", "code": "bad_job", "message": err.Error()})
+		ev.emit(map[string]any{"type": "done", "state": "failed", "reason": err.Error()})
+		return 1
+	}
+	go func() {
+		for {
+			l, err := in.ReadString('\n')
+			if strings.TrimSpace(l) != "" {
+				var m struct {
+					Type   string `json:"type"`
+					Reason string `json:"reason"`
+				}
+				if json.Unmarshal([]byte(l), &m) == nil && m.Type == "cancel" {
+					a.stop(m.Reason)
+				}
+			}
+			if err != nil {
+				a.stop("parent_gone")
+				return
+			}
+		}
+	}()
+	code := a.run()
+	time.Sleep(10 * time.Millisecond)
+	return code
+}
+
+func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }

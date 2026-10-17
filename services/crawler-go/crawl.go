@@ -1345,8 +1345,10 @@ func (c *Crawler) run() int {
 		state, reason = "resource_stopped", "Stopped taking new pages because the server's memory limit was close."
 	case why == "stalled":
 		state, reason = "partial", "Stopped because no request was answered for a long time (the site stopped answering or kept rate limiting). Everything fetched until then is kept."
+	case c.capHit && j.Mode == "smart":
+		state, reason = "partial", fmt.Sprintf("The Smart Crawl budget of %d pages was reached; %d eligible URLs were not fetched (listed as \"page limit reached\"). Run a Full Crawl to process every eligible URL.", j.MaxPages, c.counts[stLimit])
 	case c.capHit:
-		state, reason = "partial", fmt.Sprintf("The page limit (%d) was reached with eligible URLs still queued.", j.MaxPages)
+		state, reason = "partial", fmt.Sprintf("The page limit (%d) was reached; %d eligible URLs were not fetched (listed as \"page limit reached\").", j.MaxPages, c.counts[stLimit])
 	case c.counts[stNotProcessed] > 0:
 		state, reason = "partial", "Some eligible URLs were not fetched."
 	}

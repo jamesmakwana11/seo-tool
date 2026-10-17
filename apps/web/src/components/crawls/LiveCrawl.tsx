@@ -254,6 +254,14 @@ export function CrawlProgress({ run, showLink = true }: { run: CrawlRun; showLin
           <SmallCount label="Not processed" value={run.coverage.notProcessed} />
         </dl>
       )}
+      {run.type === 'smart' && run.smart && (
+        <p className="text-sm text-ink-soft" data-testid="smart-budget-live">
+          Smart Crawl budget: <strong>{fmtNum(run.smart.budget)} pages</strong> · {fmtNum(processed)} processed
+          {active ? ' · URLs beyond the budget will be reported as pending' : run.smart.notAudited > 0
+            ? <> · <span className="font-medium text-med-ink">{fmtNum(run.smart.notAudited)} eligible URLs pending</span> (not crawled, not audited — run a full crawl to process them)</>
+            : ' · no eligible URL left pending'}
+        </p>
+      )}
       {run.memory && (
         <p className="text-xs text-muted">
           Memory: {fmtNum(Math.round(run.memory.totalMB))} MB in use (API {fmtNum(Math.round(run.memory.nodeRssMB))} · crawler {run.memory.goRssMB !== undefined ? fmtNum(Math.round(run.memory.goRssMB)) : '—'} · text core {run.memory.textCoreRssMB !== undefined ? fmtNum(Math.round(run.memory.textCoreRssMB)) : '—'} MB)

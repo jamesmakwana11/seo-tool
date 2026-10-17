@@ -119,12 +119,14 @@ describe('analyzers detect injected defects', () => {
     expect(img.evidence.some((e) => e.kind === 'html_snippet' && e.content?.includes('/cdn/img/adhesive-wall-hooks.webp'))).toBe(true);
   });
 
-  it('PERF-IMAGES: image > 200 KB in a legacy format', () => {
-    const f = findingsFor(out.findings, 'PERF-IMAGES', 'product')[0];
-    expect(f.urls).toEqual([P('/products/led-fairy-lights-10m')]);
-    const ev = f.evidence.find((e) => e.label.includes('> 200 KB'))!;
-    expect(String((ev.data?.images as string[])[0])).toMatch(/big-photo\.jpg — 300 KB/);
-    expect(f.title).toMatch(/heavier than 200 KB/);
+  it('PERF-IMAGES: a normal crawl never requests images, so it claims no image weight (the Image Audit measures it)', () => {
+    // led-fairy-lights-10m shows a 300 KB JPEG: weight and format are reported by the Image Audit (test/gocrawl/image-audit.test.ts),
+    // never guessed by a crawl that did not request the image.
+    const all = out.findings.filter((f) => f.checkId === 'PERF-IMAGES');
+    expect(all.some((f) => /heavier than|legacy formats/.test(f.title) || f.evidence.some((e) => e.label.includes('KB')))).toBe(false);
+    expect(out.evaluatedChecks).toContain('PERF-IMAGES'); // width / height and lazy-loading are still checked from the HTML
+    expect(site.requests.filter((r) => r.path.startsWith('/cdn/img/')), 'the built-in crawler requested images').toEqual([]);
+    expect((out as { imageRefsFile?: string }).imageRefsFile, 'image references are recorded for a later Image Audit').toBeTruthy();
   });
 
   it('TECH-SCHEMA-PRESENCE: Product without offers; TECH-SCHEMA-ERRORS: price mismatch + review markup without visible reviews', () => {

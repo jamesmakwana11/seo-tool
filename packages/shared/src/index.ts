@@ -25,3 +25,4 @@ export * from './shopify';
 export * from './checks/notBuilt';
 export * from './changes';
 export * from './pageAudit';
+export * from './imageAudit';

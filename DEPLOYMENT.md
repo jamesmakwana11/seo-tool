@@ -98,7 +98,8 @@ Crawling and scheduling (needed for real audits):
 | `CRAWLER_MAX_PAGES`, `CRAWLER_REQUEST_DELAY_MS`, `CRAWLER_MAX_BODY_BYTES`, `CRAWLER_MAX_CONCURRENT_JOBS` | crawl limits: optional page cap (unset = no limit) / 250 ms / 5 MB / 2 — see `LOCAL_CRAWLING.md` |
 | `CRAWLER_ENGINE` | `auto` (default: Go crawler when installed — always in the Docker image) / `go` / `node` |
 | `CRAWLER_MEMORY_BUDGET_MB` | optional; default 85 % of the container memory limit (API + crawler + text core) |
-| `CRAWLER_SMART_MAX_PAGES` | pages a Smart crawl fetches, highest priority first (default 500) |
+| `CRAWLER_SMART_MAX_PAGES` | pages a Smart crawl fetches, highest priority first (default and maximum 1,000; Full crawls have no such budget) |
+| `IMAGE_AUDIT_MAX_IMAGES` / `IMAGE_AUDIT_BUDGET_MINUTES` / `IMAGE_AUDIT_CONCURRENCY` | Image Audit: unique images per audit (50,000), time budget (30 min), images at once (4, max 8) — see `docs/IMAGE_AUDIT.md` |
 | `CRAWLER_KEEP_RESULTS` | recent crawls whose page rows stay browsable (default 3, temporary files) |
 | `CRAWLER_GO_BIN`, `TEXTCORE_BIN`, `CRAWLER_WORK_DIR` | set by the image (`/app/bin/…`, `/tmp/sentinel-crawls`) |
 | `CRAWLER_STALL_MINUTES` | stop a crawl as *partial* (results kept) when no request was answered for this long (default 20) |

@@ -34,6 +34,7 @@ const P = {
   Compare: L(() => import('@/pages/crawls/ComparePage')),
   Verification: L(() => import('@/pages/crawls/VerificationPage')),
   AllPages: L(() => import('@/pages/pages/AllPagesPage')),
+  ImageAudit: L(() => import('@/pages/crawls/ImageAuditPage')),
   PageReport: L(() => import('@/pages/pages/PageReportPage')),
   Issues: L(() => import('@/pages/issues/IssuesBoardPage')),
   Issue: L(() => import('@/pages/issues/IssueDetailPage')),
@@ -136,6 +137,7 @@ export function AppRoutes() {
         <Route path="crawls/:id" element={g(P.CrawlRun, 'crawls.view')} />
         <Route path="verification" element={g(P.Verification, 'crawls.view')} />
         <Route path="pages" element={g(P.AllPages, 'crawls.view')} />
+        <Route path="images" element={g(P.ImageAudit, 'crawls.view')} />
         <Route path="pages/report" element={g(P.PageReport, 'crawls.view')} />
 
         <Route path="issues" element={g(P.Issues, 'issues.view')} />
@@ -186,7 +188,7 @@ export function AppRoutes() {
 export const SMOKE_PATHS = [
   '/', '/health', '/search?q=schema', '/notifications', '/profile', '/modules/technical', '/modules/technical/crawlability', '/modules/technical/responses',
   '/modules/technical/canonicals', '/modules/technical/security', '/modules/technical/structured-data', '/modules/performance', '/modules/content', '/modules/onpage',
-  '/modules/offpage', '/modules/offpage/backlinks', '/modules/aeo', '/modules/geo', '/modules/ai-compliance', '/modules/ai-visibility', '/crawls', '/crawls/compare', '/verification', '/pages',
+  '/modules/offpage', '/modules/offpage/backlinks', '/modules/aeo', '/modules/geo', '/modules/ai-compliance', '/modules/ai-visibility', '/crawls', '/crawls/compare', '/verification', '/pages', '/images',
   '/issues', '/issues/groups', '/issues/exclusions', '/websites', '/websites/overview', '/team/employees', '/team/roles',
   '/team/allocations', '/opportunities', '/opportunities/keywords', '/opportunities/gaps', '/opportunities/briefs', '/opportunities/clusters', '/opportunities/seasonal',
   '/opportunities/link-building', '/opportunities/mentions', '/competitors', '/reports/daily', '/reports/weekly', '/reports/monthly', '/reports/history',

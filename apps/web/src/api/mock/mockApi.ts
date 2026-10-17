@@ -14,7 +14,7 @@ import {
   crawlExportFilename, crawlResultsCsv, crawlResultsJson,
   ApiError, CHECKS_BY_ID, DEMO_PASSWORD, INTEGRATION_CATALOG, PREVIEW_USER_BY_ROLE, TEAMS, ROLE_LABELS, buildDailyDigest,
   buildDashboard, buildModuleData, buildMonthlyReport, buildWeeklyReport, canTransition, computeHealthScore,
-  createSeed, evaluateRule, exportReport, filterIssues, queryCrawlRows, auditPage, DEFAULT_PAGE_AUDIT_LIMITS, generateFixCard, globalSearch, hasPermission,
+  createSeed, evaluateRule, exportReport, filterIssues, queryCrawlRows, SMART_CRAWL_PAGE_BUDGET, auditPage, DEFAULT_PAGE_AUDIT_LIMITS, generateFixCard, globalSearch, hasPermission,
   issueStatusForTask, paginate, ruleAppliesTo, seasonalPlan, setPriorityConfig, taskPriorityFromSeverity, validateRule,
   HEALTH_WEIGHTS, DEMO_WEBSITE_ID, SHOPIFY_OPTIONAL_SCOPES, SHOPIFY_REQUIRED_SCOPES, createEmptySite, demoWebsite, summarizeWebsite, validateWebsiteInput,
   type ActivityEvent, type AllocationEvent, type ApiDiagnostics, type AuditLogEntry, type AuthResult, type CrawledUrl, type SiteData, type Website,
@@ -502,7 +502,7 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
     }),
     getCrawlerStatus: () => call('getCrawlerStatus', () => {
       need('crawls.view');
-      return { ready: false, reason: MOCK_NO_LIVE_CRAWL, siteUrl: s.config.site.baseUrl, maxPagesCap: null, temporaryStorage: true, schedulerEnabled: false, respectsRobots: true, requestDelayMs: 0, maxBodyBytes: 0 };
+      return { ready: false, reason: MOCK_NO_LIVE_CRAWL, siteUrl: s.config.site.baseUrl, maxPagesCap: null, smartPageBudget: SMART_CRAWL_PAGE_BUDGET, temporaryStorage: true, schedulerEnabled: false, respectsRobots: true, requestDelayMs: 0, maxBodyBytes: 0 };
     }),
     exportCrawl: (id, format) => call('exportCrawl', () => {
       need('crawls.view');
@@ -606,6 +606,16 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
     getChange: () => call('getChange', () => { need('crawls.view'); throw changesMock(); }),
     getChangeIssues: () => call('getChangeIssues', () => { need('crawls.view'); return {}; }),
     getUrlChange: () => call('getUrlChange', () => { need('crawls.view'); return { change: null }; }),
+    // The Image Audit requests real images from the API server; the browser-only demo never makes up results.
+    getImageAuditStatus: () => call('getImageAuditStatus', () => {
+      need('crawls.view');
+      return { runs: [], jobs: [], available: false, reason: 'The Image Audit runs on the API server and checks real images. This browser-only demo has no crawl to audit.', limits: { maxImages: 50000, budgetMinutes: 30, concurrency: 4, probeKb: 64 } };
+    }),
+    startImageAudit: () => call('startImageAudit', () => { need('crawls.run'); throw new ApiError(409, 'IMAGE_AUDIT_UNAVAILABLE', 'The Image Audit runs on the API server; it is not available in the browser-only demo.'); }),
+    getImageAudit: (id) => call('getImageAudit', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
+    cancelImageAudit: (id) => call('cancelImageAudit', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
+    listImageAudit: (id) => call('listImageAudit', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
+    exportImageAudit: (id) => call('exportImageAudit', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
     exportChanges: () => call('exportChanges', () => { need('crawls.view'); throw changesMock(); }),
     getCaptureStatus: () => call('getCaptureStatus', () => {
       need('crawls.view');

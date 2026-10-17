@@ -1,0 +1,97 @@
+{
+  "store": "--products 150 --rate 3 --burst 6 --retry-after 30",
+  "bin": "bin/sentinel-crawler",
+  "status": "completed",
+  "outcome": "completed",
+  "wallMs": 114446,
+  "pages": 206,
+  "discovered": 377,
+  "pagesPerMinOverall": 110,
+  "store429": 3,
+  "storeRequests": 243,
+  "maxGapSeenMs": 500,
+  "politeness": {
+    "avgLatencyMs": 0,
+    "crawlDelayMs": 0,
+    "delayMs": 303,
+    "floorMs": 250,
+    "limitedAnswers": 3,
+    "rateLimited": 3,
+    "retries": 3,
+    "retryAfterPauses": 3,
+    "slowDowns": 1,
+    "unavailable503": 0,
+    "waitedMs": 798581
+  },
+  "checks": {
+    "deferred": 0,
+    "done": 44,
+    "groups": {
+      "botProbes": {
+        "deferred": 0,
+        "done": 5,
+        "excluded": 0,
+        "failed": 0,
+        "reused": 0,
+        "total": 5
+      },
+      "external": {
+        "deferred": 0,
+        "done": 0,
+        "excluded": 0,
+        "failed": 0,
+        "reused": 0,
+        "total": 0
+      },
+      "links": {
+        "deferred": 0,
+        "done": 21,
+        "excluded": 149,
+        "failed": 0,
+        "reused": 183,
+        "total": 21
+      },
+      "samples": {
+        "deferred": 0,
+        "done": 18,
+        "excluded": 0,
+        "failed": 0,
+        "reused": 0,
+        "total": 18
+      },
+      "scripts": {
+        "deferred": 0,
+        "done": 0,
+        "excluded": 0,
+        "failed": 0,
+        "reused": 0,
+        "total": 0
+      }
+    },
+    "total": 44
+  },
+  "timings": {
+    "crawlProcessMs": 112593,
+    "crawlMs": 97789,
+    "checksMs": 8739,
+    "checksBudgetMs": 300000,
+    "sitemapMs": 5500
+  },
+  "phasesAtMs": {
+    "crawling": 504,
+    "samples": 98124,
+    "checks": 104133,
+    "analysing": 112644,
+    "saving": 113644
+  },
+  "peakMB": {
+    "apiRss": 136,
+    "go": 18
+  },
+  "memory": {
+    "nodeRssMB": 128.8,
+    "nodeHeapMB": 36.8,
+    "totalMB": 128.8,
+    "peakTotalMB": 150.2
+  }
+}

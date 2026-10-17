@@ -26,6 +26,7 @@ import { groupFor, isAllowed, parseRobots, pathAndQuery } from './robots';
 import { fetchSitemaps } from './sitemap';
 import { checkCertificate } from './tls';
 import type { AssetInfo, CrawlLog, FetchResult, HostVariant, LinkStatus, ParsedPage, RobotsInfo, SiteContext, TlsInfo } from './types';
+import { writeImageRefsFile } from '../images/refs';
 import { SNAPSHOT_TEXT_CHARS, snapFromPage } from '../changes/snapshot';
 import { crawlBudgetReason, crawlTrapReason, hostOf, isLocalHost, isSameSite, normalizeUrl, pageParam, paginationPage, sameUrl, templateOf, urlKey } from './url';
 
@@ -132,6 +133,12 @@ export type ContextNeed =
   | 'robots' | 'sitemap' | 'linkTargets' | 'images' | 'external' | 'scripts' | 'tls' | 'host' | 'bfs' | 'collectionScoped' | 'budget' | 'pagination' | 'botProbe';
 
 export const ALL_NEEDS: ContextNeed[] = ['robots', 'sitemap', 'linkTargets', 'images', 'external', 'scripts', 'tls', 'host', 'collectionScoped', 'budget', 'pagination', 'botProbe'];
+/**
+ * What a normal Smart / Full crawl checks after fetching pages. Images are NOT requested: ALT text, dimensions and
+ * lazy-loading come from the HTML already fetched; availability, weight and format are checked only by an Image Audit
+ * the user starts (services/imageAudit.ts).
+ */
+export const CRAWL_NEEDS: ContextNeed[] = ALL_NEEDS.filter((n) => n !== 'images');
 
 export interface CollectParams {
   type: CrawlType;
@@ -797,7 +804,7 @@ export function createCrawlEngine(opts: CrawlEngineOptions): CrawlEngine & { col
           if (startUrl) startUrl = r.finalUrl;
         }
       }
-      const needs = new Set<ContextNeed>(ALL_NEEDS);
+      const needs = new Set<ContextNeed>(CRAWL_NEEDS);
       if (plan.type === 'full') needs.add('bfs');
       const collected = await runCollector.collect({
         type: plan.type, baseUrl: base, urls: plan.urls ?? [], maxPages: plan.maxPages, tierOf: plan.tierOf, previous: plan.previous, needs, onProgress,
@@ -819,10 +826,12 @@ export function createCrawlEngine(opts: CrawlEngineOptions): CrawlEngine & { col
         ...(resolvedFrom ? { resolvedStartUrl: startUrl ?? base, resolvedFrom } : {}),
       };
       const urls = pageRows(pages, ctx);
+      // Image references from the HTML already fetched (input of an Image Audit the user may start later).
+      const imageRefsFile = plan.type === 'reverify' ? undefined : await writeImageRefsFile(pages, (p) => !p.skippedByRobots && !p.budgetSample && !p.scopedSample && !p.paginated && p.status === 200 && !!p.html, plan.runId ?? 'run').catch(() => undefined);
       const snapshotRecords = opts.changeSnapshots === false ? undefined : pages.map((p, i) => snapFromPage(p, urls[i], SNAPSHOT_TEXT_CHARS));
       if (collected.cancelled || plan.signal?.aborted) {
         // A partial crawl is never analysed: missing pages would wrongly "resolve" issues.
-        return { urls, findings: [], evaluatedChecks: [], evaluatedTemplates: {}, pageTexts: [], stats, cancelled: true, snapshotRecords };
+        return { urls, findings: [], evaluatedChecks: [], evaluatedTemplates: {}, pageTexts: [], stats, cancelled: true, snapshotRecords, imageRefsFile };
       }
       plan.onPhase?.('analysing');
       const tAnalysis = Date.now();
@@ -841,6 +850,7 @@ export function createCrawlEngine(opts: CrawlEngineOptions): CrawlEngine & { col
         pageTexts,
         snapshot: snapshotFromPages(pages, ctx, prepared),
         snapshotRecords,
+        imageRefsFile,
         stats,
         memoryStopped: collected.memoryStopped,
       };

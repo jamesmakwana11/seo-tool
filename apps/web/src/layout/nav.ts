@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
+  Images,
   LayoutDashboard, Gauge, CircleAlert, Users, Globe, FolderCog, Radar, Wrench, Zap, FileText, Code2, Link2, MessageSquareQuote,
   Sparkles, ShieldCheck, Bot, Lightbulb, Search, Layers, CalendarRange, Swords, Megaphone, AtSign, Newspaper, CalendarDays, CalendarClock,
   History, Bell, Plug, SlidersHorizontal, Settings2, ScrollText, Activity, Terminal, ListChecks, KeyRound, ArrowLeftRight, BadgeCheck,
@@ -37,6 +38,7 @@ export const NAV: NavSection[] = [
       { to: '/pages', label: 'All pages', icon: ListChecks, perm: 'crawls.view' },
       { to: '/verification', label: 'Verification', icon: BadgeCheck, perm: 'crawls.view' },
       { to: '/crawls', label: 'Crawl Center', icon: Radar, perm: 'crawls.view' },
+      { to: '/images', label: 'Image Audit', icon: Images, perm: 'crawls.view' },
       { to: '/seo-editor', label: 'SEO editor', icon: FilePenLine, anyOf: ['shopify.edit', 'shopify.theme'] },
     ],
   },

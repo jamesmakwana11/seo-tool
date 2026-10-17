@@ -139,11 +139,11 @@ then use the Crawl Center. Each website's crawl is restricted to its own host.
   capped at `CRAWLER_MAX_CRAWL_DELAY_MS`. A page still failing after its retries is recorded as failed; certificate
   errors are not retried. Links to other websites, CDN images and scripts are paced per host (150 ms), not in the
   website's queue, and each target is checked once however many pages link to it.
-- **After the pages:** link-target, sitemap, image, script, bot-access, host-variant and TLS checks run as parallel
+- **After the pages:** link-target, sitemap, script, bot-access, host-variant and TLS checks run as parallel
   groups (each still paced, robots-aware and in the same per-host queue as the pages). Nothing is requested twice:
-  URLs the crawl already fetched answer as link targets (*reused*), each image file is measured once however many pages
-  show it, and image ALT text, dimensions and lazy loading come from the HTML (only weight and format need a request).
-  The most-linked targets and the images on the most pages go first. The checks get a time budget — as long as the page
+  URLs the crawl already fetched answer as link targets (*reused*). **Images are not requested by a crawl** (since
+  17 Oct 2026): ALT text, width / height and lazy loading come from the HTML already fetched, and the image references
+  are kept for an **Image Audit** you start separately (`docs/IMAGE_AUDIT.md`). The most-linked targets go first. The checks get a time budget — as long as the page
   crawl took, 5–20 minutes (`CRAWLER_CHECKS_BUDGET_MINUTES`); targets left after it, beyond the caps, or still
   answered 429 / 503 after the retries are reported as **deferred**: not checked, never counted as broken (a link or
   image the site would not serve because it was rate limiting used to be reported as a 4xx / failed target).
@@ -215,8 +215,11 @@ the delay for a site you own and whose server can take the load. The crawl's **R
 the response times, retries, slow-downs and the memory of each process.
 
 **Smart and full crawls.** A *Smart crawl* fetches the most important URLs first (homepage, URLs to re-verify, pages
-changed in the last 48 h, collections, top products) up to `CRAWLER_SMART_MAX_PAGES` (default 500) and lists what it
-did not fetch. A *Full crawl* has no page or depth limit.
+changed in the last 48 h, collections, top products, then what they link to) up to its page budget of **1,000 pages**
+(`CRAWLER_SMART_MAX_PAGES`, default and maximum 1,000). When eligible URLs are left, the crawl ends as *Partially
+completed* and reports how many are pending ("page limit reached") — they are never counted as crawled, audited or
+passed. A *Full crawl* has no page budget: it processes every eligible URL it discovers (only an optional server cap
+`CRAWLER_MAX_PAGES`, the memory budget and cancellation stop it, each reported as such).
 
 **Results.** The Pages table is paged, searched, filtered and sorted on the server (any crawl size). **Export CSV /
 Export JSON** streams every row. The most recent `CRAWLER_KEEP_RESULTS` (default 3) crawls keep their page rows in

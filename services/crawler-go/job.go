@@ -9,7 +9,7 @@ import (
 // Job is the crawl request sent by the Node.js API (protocol v1). Zero values mean "use the default".
 type Job struct {
 	JobID           string `json:"jobId"`
-	Mode            string `json:"mode"` // "full" | "smart"
+	Mode            string `json:"mode"` // "full" | "smart" | "images" (Image Audit)
 	StartURL        string `json:"startUrl"`
 	BaseURL         string `json:"baseUrl"`
 	ResolveStart    bool   `json:"resolveStart"`
@@ -45,6 +45,10 @@ type Job struct {
 	ChecksBudgetMs int `json:"checksBudgetMs,omitempty"`
 	// Testing only: skip the TLS certificate probe (local fixtures have no certificate).
 	SkipTLS bool `json:"skipTls"`
+	// Image Audit ("images" mode): NDJSON file of {"url": …} (unique images, most important first) and the bytes read
+	// from the start of each image (format and pixel size; the total size comes from the response headers).
+	ImagesFile string `json:"imagesFile,omitempty"`
+	ProbeBytes int    `json:"probeBytes,omitempty"`
 }
 
 type Seed struct {
@@ -80,8 +84,8 @@ func (j *Job) normalize() error {
 	if j.Mode == "" {
 		j.Mode = "full"
 	}
-	if j.Mode != "full" && j.Mode != "smart" {
-		return errors.New("mode must be full or smart")
+	if j.Mode != "full" && j.Mode != "smart" && j.Mode != "images" {
+		return errors.New("mode must be full, smart or images")
 	}
 	if j.WorkDir == "" {
 		return errors.New("workDir is required")

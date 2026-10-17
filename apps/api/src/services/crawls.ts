@@ -1,8 +1,10 @@
 import {
-  CRAWL_DETAIL_ROW_LIMIT, CRAWL_EXPORT_NOTE, auditLimitsFrom, auditPage, type CrawlPageReport, crawlCsvHeader, crawlCsvRow, crawlExportFilename, crawlResultsCsv, crawlResultsJson, validateCrawlOptions,
+  CRAWL_DETAIL_ROW_LIMIT, SMART_CRAWL_PAGE_BUDGET, CRAWL_EXPORT_NOTE, auditLimitsFrom, auditPage, type CrawlPageReport, crawlCsvHeader, crawlCsvRow, crawlExportFilename, crawlResultsCsv, crawlResultsJson, validateCrawlOptions,
   type CrawlCoverageReport, type CrawlDetail, type CrawlerStatus, type CrawlOptions, type CrawlPagesQuery, type CrawlPagesResponse, type CrawlRun, type CrawlType,
   type CrawledUrl, type CrawledUrlIssue, type PageTemplate, type SitePage,
 } from '@sentinel/shared';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
 import { readNdjsonGz } from '../gocrawl/files';
 import { MemoryResultStore, type CrawlResultStore } from '../results/store';
 import type { PageTextDoc } from '../repositories/types';
@@ -83,6 +85,19 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       stores.delete(oldest);
       coverageReports.delete(oldest);
       await st?.dispose().catch(() => undefined);
+    }
+  }
+  /** Image references of recent crawls (input of an Image Audit), kept like page rows (CRAWLER_KEEP_RESULTS). */
+  const imageRefs = new Map<string, { file: string; checkedFile?: string; owned: boolean }>();
+  function keepImageRefs(id: string, file: string) {
+    // Go crawls write it into their results folder (removed with it); the built-in crawler into a temporary file.
+    imageRefs.set(id, { file, checkedFile: path.join(path.dirname(file), 'images-checked.json'), owned: !stores.has(id) });
+    const keep = ctx.env.CRAWLER_KEEP_RESULTS ?? 3;
+    while (imageRefs.size > keep) {
+      const oldest = imageRefs.keys().next().value as string;
+      const ref = imageRefs.get(oldest);
+      imageRefs.delete(oldest);
+      if (ref?.owned) void fsp.rm(ref.file, { force: true }).catch(() => undefined);
     }
   }
   /** Rows of a run: its store, else the rows saved with the run (built-in crawler / small runs). */
@@ -189,7 +204,9 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     for (const p of pages.filter((x) => x.lastModified && new Date(x.lastModified).getTime() >= changedSince)) urls.push({ url: p.url, reason: 'changed_48h' });
     for (const u of fixedUrls) urls.push({ url: u, reason: 'reverify' });
     const dedup = [...new Map(urls.map((u) => [u.url, u])).values()].map((u) => ({ ...u, url: onSite(u.url) ?? u.url }));
-    return { type, baseUrl, previous: prev, urls: dedup, maxPages: dedup.length + 50, tierOf };
+    // Never more than the Smart Crawl budget (the Go crawler also enforces it; the built-in crawler fetches only these URLs).
+    const budget = Math.min(ctx.env.CRAWLER_SMART_MAX_PAGES, SMART_CRAWL_PAGE_BUDGET);
+    return { type, baseUrl, previous: prev, urls: dedup.slice(0, budget), maxPages: Math.min(dedup.length + 50, budget), tierOf };
   }
 
   async function recordPages(urls: CrawledUrl[] | CrawlResultStore, tierOf: (u: string) => SitePage['tier']) {
@@ -321,6 +338,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       const inlineRows = async () => (out.store ? (await out.store.allIfSmall(CRAWL_DETAIL_ROW_LIMIT)) ?? [] : out.urls);
       const urlCount = out.store ? out.store.count() : out.urls.length;
       if (out.store) await keepStore(run.id, out.store, out.coverageReport);
+      if (out.imageRefsFile) keepImageRefs(run.id, out.imageRefsFile);
       if (out.cancelled) {
         // Partial crawl: keep the page results; never ingest findings (missing pages would wrongly resolve issues).
         await r.crawlUrls.upsert({ id: run.id, urls: await inlineRows() });
@@ -435,13 +453,15 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     const ctrl = new AbortController();
     plan.signal = ctrl.signal;
     const run: CrawlRun = {
-      id: await r.crawls.nextId('CRL'), type, status: 'queued', trigger, startedAt: iso(), urlsPlanned: options ? 1 : plan.urls?.length ?? plan.maxPages, urlsCrawled: 0, urlsFailed: 0,
+      id: await r.crawls.nextId('CRL'), type, status: 'queued', trigger, startedAt: iso(), urlsPlanned: options ? 1 : plan.urls?.length ?? (Number.isFinite(plan.maxPages) ? plan.maxPages : 0), urlsCrawled: 0, urlsFailed: 0,
       urlsDiscovered: options ? 1 : undefined, urlsSucceeded: 0,
       jsRenderedSample: 0, newIssues: 0, resolvedIssues: 0, recurringIssues: 0,
       scope: options
         ? [{ label: `Live crawl from ${options.startUrl} (${options.maxPages === null ? 'all pages' : `up to ${options.maxPages} pages`}, ${options.maxDepth === null ? 'any depth' : `depth ${options.maxDepth}`})`, count: options.maxPages ?? 0 }]
-        : plan.urls ? Object.entries(plan.urls.reduce<Record<string, number>>((a, u) => ({ ...a, [u.reason]: (a[u.reason] ?? 0) + 1 }), {})).map(([label, count]) => ({ label, count })) : [{ label: `Full discovery from ${new URL(plan.baseUrl).host} (cap ${plan.maxPages})`, count: plan.maxPages }],
+        : plan.urls ? Object.entries(plan.urls.reduce<Record<string, number>>((a, u) => ({ ...a, [u.reason]: (a[u.reason] ?? 0) + 1 }), {})).map(([label, count]) => ({ label, count })) : [{ label: `Full discovery from ${new URL(plan.baseUrl).host} (${Number.isFinite(plan.maxPages) ? `cap ${plan.maxPages}` : 'no page cap'})`, count: Number.isFinite(plan.maxPages) ? plan.maxPages : 0 }],
       options,
+      // Shown while it runs; the crawler's final accounting replaces it.
+      ...(type === 'smart' ? { smart: { budget: Math.min(ctx.env.CRAWLER_SMART_MAX_PAGES, SMART_CRAWL_PAGE_BUDGET), prioritized: plan.urls?.length ?? 0, notAudited: 0, basis: [] } } : {}),
       source: 'live',
     };
     for (const k of Object.keys(run) as (keyof CrawlRun)[]) if (run[k] === undefined) delete run[k];
@@ -476,6 +496,14 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
 
   return {
     start,
+    /** Image references of a crawl still on this server (Image Audit input). */
+    imageRefsOf(id: string) { const r = imageRefs.get(id); return r ? { file: r.file, checkedFile: r.checkedFile } : undefined; },
+    /** Finished crawls whose image references are still here, newest first. */
+    async runsWithImageRefs(): Promise<CrawlRun[]> {
+      const out: CrawlRun[] = [];
+      for (const id of imageRefs.keys()) { const run = await r.crawls.get(id); if (run && run.status !== 'running' && run.status !== 'queued') out.push(run); }
+      return out.sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
+    },
     /** Await in-flight crawls (tests / graceful shutdown). */
     async idle() { await Promise.all([...running.values()]); },
 
@@ -516,7 +544,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       const why = await blockedReason();
       const cfg = await r.config.get();
       return {
-        ready: !why, reason: why, siteUrl: await siteUrl(), maxPagesCap: ctx.env.CRAWLER_MAX_PAGES ?? null, temporaryStorage: r.storage.persistent === false,
+        ready: !why, reason: why, siteUrl: await siteUrl(), maxPagesCap: ctx.env.CRAWLER_MAX_PAGES ?? null, smartPageBudget: Math.min(ctx.env.CRAWLER_SMART_MAX_PAGES, SMART_CRAWL_PAGE_BUDGET), temporaryStorage: r.storage.persistent === false,
         schedulerEnabled: ctx.env.SCHEDULER_ENABLED, respectsRobots: cfg.crawl.respectRobots, requestDelayMs: ctx.env.CRAWLER_REQUEST_DELAY_MS, maxBodyBytes: ctx.env.CRAWLER_MAX_BODY_BYTES,
         ...(ctx.engineInfo ? { engine: ctx.engineInfo() } : {}),
       };

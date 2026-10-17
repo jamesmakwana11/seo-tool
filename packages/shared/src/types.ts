@@ -615,6 +615,7 @@ export interface CrawlRun {
   /** Page rows stored for this run (the Pages table pages through them on the server). */
   urlCount?: number;
   /** Smart crawl: what was prioritised and what was not audited. */
+  /** Smart Crawl: page budget of this run, URLs prioritised by evidence, and eligible URLs left pending (not fetched, not audited). */
   smart?: { budget: number; prioritized: number; notAudited: number; basis: string[] };
   /** Last diagnostics from the crawler (rate limiting, stalls, unavailable sitemap, text core problems). */
   warnings?: { code: string; message: string; at: ISODate }[];

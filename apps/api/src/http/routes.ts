@@ -43,7 +43,7 @@ function issueFilter(q: Request['query']): import('@sentinel/shared').IssueFilte
 /** Register one route per SentinelApi method. Order: auth → dashboard → modules → issues → tasks → crawls → opportunities → off-page → AI → reports → notifications → people → config → audit/system/search/diagnostics. */
 export function registerRoutes(routes: ApiRoute[], c: Container) {
   const { services } = c;
-  const { auth, tasks, issues, rules, crawls, changes, captures, reports, insights, admin, lighthouse, shopify } = services;
+  const { auth, tasks, issues, rules, crawls, changes, captures, imageAudits, reports, insights, admin, lighthouse, shopify } = services;
   const add = (r: ApiRoute) => routes.push(r);
 
   // -------------------------------------------------------------- auth
@@ -152,6 +152,32 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
     },
   });
   // ---- Visual comparison + HTML / asset differences (screenshots taken by a real browser; never made up)
+  // -------------------------------------------------------------- Image Audit (separate from crawling)
+  const imageQuery = (req: Request): import('@sentinel/shared').ImageAuditQuery => ({
+    state: optStr(req.query.state) as never, issue: optStr(req.query.issue) as never, q: optStr(req.query.q), sort: optStr(req.query.sort) as never, dir: optStr(req.query.dir) as never,
+    offset: req.query.offset ? num(req.query.offset, 0) : undefined, limit: req.query.limit ? num(req.query.limit, 50) : undefined,
+  });
+  add({ method: 'get', path: '/api/image-audits/status', permission: 'crawls.view', description: 'Crawls whose images can be audited, the latest audit of each, the running one', handle: (req) => imageAudits.status(actorOf(req)) });
+  add({ method: 'post', path: '/api/image-audits', permission: 'crawls.run', status: 202, description: 'Start an Image Audit of one finished crawl (body: runId): each unique image checked once', handle: (req) => imageAudits.start(actorOf(req), str(req.body?.runId, 'runId')) });
+  add({ method: 'get', path: '/api/image-audits/:id', permission: 'crawls.view', description: 'Progress and counts of an Image Audit', handle: (req) => imageAudits.get(actorOf(req), prm(req, 'id')) });
+  add({ method: 'post', path: '/api/image-audits/:id/cancel', permission: 'crawls.run', description: 'Cancel a running Image Audit (images not checked become deferred)', handle: (req) => imageAudits.cancel(actorOf(req), prm(req, 'id')) });
+  add({ method: 'get', path: '/api/image-audits/:id/images', permission: 'crawls.view', description: 'Images of an audit (query: state, issue, q, sort, dir, offset, limit ≤ 500) with facet counts', handle: (req) => imageAudits.list(actorOf(req), prm(req, 'id'), imageQuery(req)) });
+  add({
+    method: 'get', path: '/api/image-audits/:id/export', permission: 'crawls.view', description: 'Download an audit\'s images as CSV or JSON (same filters as the list), streamed', raw: true,
+    handle: async (req) => {
+      const f = await imageAudits.export(actorOf(req), prm(req, 'id'), String(req.query.format ?? 'csv'), imageQuery(req));
+      const res = req.res!;
+      res.setHeader('Content-Type', f.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${f.filename.replace(/[^\w.-]/g, '_')}"`);
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(200);
+      for await (const chunk of f.stream) {
+        if (res.destroyed) break;
+        if (!res.write(chunk)) await new Promise<void>((r) => { res.once('drain', () => r()); res.once('close', () => r()); });
+      }
+      res.end();
+    },
+  });
   add({ method: 'get', path: '/api/changes/captures/status', permission: 'crawls.view', description: 'Whether page captures can run here (browser, memory), watched pages, recent capture jobs', handle: (req) => captures.status(actorOf(req)) });
   add({ method: 'post', path: '/api/changes/captures', permission: 'crawls.run', status: 202, description: 'Capture screenshots + rendered HTML of pages of this website (body: urls ≤ 20, viewports: ["desktop","mobile"])', handle: (req) => captures.request(actorOf(req), req.body ?? {}) });
   add({ method: 'get', path: '/api/changes/captures/jobs/:id', permission: 'crawls.view', description: 'Progress of a capture job', handle: (req) => captures.job(actorOf(req), prm(req, 'id')) });

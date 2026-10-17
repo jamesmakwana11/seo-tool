@@ -7,6 +7,12 @@ import type { CrawlOptions, CrawledUrl } from './types';
 import { PAGE_AUDIT_TODO_LABELS } from './pageAudit';
 
 /**
+ * Pages one Smart Crawl may fetch (highest priority first: homepage, collections, top products, changed and
+ * re-verify URLs, then what they link to). A Full Crawl has no such cap.
+ */
+export const SMART_CRAWL_PAGE_BUDGET = 1000;
+
+/**
  * Bounds for the numeric settings. Pages and depth have NO upper bound: null means "crawl every page" / "follow links
  * at any depth". A server may still set an optional page cap with CRAWLER_MAX_PAGES (unset by default).
  */

@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, Pencil, Play, RefreshCcw, ShieldCheck, Zap } from 'lucide-react';
-import type { CrawlRun, CrawlSchedule, CrawlType } from '@sentinel/shared';
+import { CalendarClock, Images, Pencil, Play, RefreshCcw, ShieldCheck, Zap } from 'lucide-react';
+import { SMART_CRAWL_PAGE_BUDGET, type CrawlRun, type CrawlSchedule, type CrawlType } from '@sentinel/shared';
 import { api, API_MODE } from '@/api/client';
 import { useApiMutation, useApiQuery, useSiteKey } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
@@ -86,7 +86,7 @@ function LiveCrawlPanel({ running, latest }: { running?: CrawlRun; latest?: Craw
 }
 
 const START_OPTIONS: { type: CrawlType; icon: typeof Play; blurb: string }[] = [
-  { type: 'smart', icon: Zap, blurb: 'Homepage, all collections, top products, URLs changed in the last 48h and yesterday’s issue URLs (from earlier live crawls).' },
+  { type: 'smart', icon: Zap, blurb: `Up to ${SMART_CRAWL_PAGE_BUDGET.toLocaleString('en-US')} pages, most important first: homepage, all collections, top products, URLs changed in the last 48h and yesterday’s issue URLs, then the pages they link to. Eligible URLs left over are reported as pending.` },
   { type: 'reverify', icon: RefreshCcw, blurb: 'Re-checks only the URLs of issues marked Fixed. Closes issues that now show 0 failing pages.' },
 ];
 
@@ -126,6 +126,14 @@ function StartCrawlPanel({ running, loading }: { running?: CrawlRun; loading: bo
             </Button>
           </div>
         ))}
+        <div className="flex flex-col rounded-ctl border border-line p-3">
+          <div className="flex items-center gap-2">
+            <Images className="h-4 w-4 text-signal" aria-hidden />
+            <h3 className="text-sm font-semibold">Image Audit</h3>
+          </div>
+          <p className="mt-1 flex-1 text-xs text-muted">Crawls read ALT text, width / height and lazy-loading from the HTML but never request images. Start an Image Audit of a finished crawl to check each unique image once: broken images, HTTP status, redirects, format, file size and pixel size.</p>
+          <Link to="/images" className="mt-3 inline-flex h-8 items-center gap-1.5 self-start rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium hover:border-signal/40 hover:text-signal-dark"><Images className="h-3.5 w-3.5" /> Open Image Audit</Link>
+        </div>
       </div>
       {!allowed && <p className="mt-3 text-xs text-muted">Your role can view crawl history but not start crawls. Ask an SEO specialist or admin.</p>}
       <ConfirmDialog
@@ -170,6 +178,7 @@ function StrategyPanel() {
             <li>Every URL changed in the last {hours} hours — detected via sitemap <Mono>lastmod</Mono> and Shopify webhooks for product, collection and page updates</li>
             <li>Every URL that had an issue yesterday (re-verify)</li>
           </ul>
+          <p className="mt-1 text-ink-soft">At most <strong>{fmtNum(SMART_CRAWL_PAGE_BUDGET)} pages</strong> per run, in that order of importance. URLs beyond the budget are reported as pending — never as crawled or passed. A full crawl has no page budget.</p>
         </div>
         <div>
           <h3 className="font-semibold">Delta detection</h3>

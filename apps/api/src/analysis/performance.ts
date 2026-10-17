@@ -93,17 +93,21 @@ function imageFormat(src: string, contentType?: string): string {
   return m ? m[1].toLowerCase() : 'unknown';
 }
 
+/**
+ * Image markup on every page from the HTML already fetched (width / height, lazy loading). Weight and format need the
+ * image itself: they are judged only when image responses were measured (re-verification, the built-in crawler's
+ * tests); a normal crawl leaves them to the Image Audit and never reports an unmeasured image as heavy or as fine.
+ */
 export function analyzeImages(prep: Prepared): AnalyzerResult {
   const imgs = prep.ctx.images;
-  if (!imgs) return { evaluated: false, findings: [], reason: 'image weights were not measured' };
   const maxKb = prep.ctx.thresholds.imageMaxKb ?? 200;
   return perTemplate(prep, prep.content, 'PERF-IMAGES', 'image performance problems', (p) => {
     const out: { label: string; evidence?: Ev[] }[] = [];
     const main = p.html!.images.filter((i) => i.inMain);
     const heavy: string[] = [];
     const legacy: string[] = [];
-    for (const i of main) {
-      const a = imgs.get(i.src) ?? imgs.get(i.src.split('#')[0]); // checked once per file (the crawler drops #fragments); unchecked → skipped, never "heavy"
+    for (const i of imgs ? main : []) {
+      const a = imgs!.get(i.src) ?? imgs!.get(i.src.split('#')[0]); // checked once per file (the crawler drops #fragments); unchecked → skipped, never "heavy"
       if (!a) continue;
       if (a.bytes !== undefined && a.bytes / 1024 > maxKb) heavy.push(`${i.src} — ${Math.round(a.bytes / 1024)} KB`);
       const fmt = imageFormat(i.src, a.contentType);

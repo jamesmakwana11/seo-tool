@@ -269,6 +269,7 @@ type reqOpts struct {
 	MaxBody        int
 	AnyContentType bool
 	Gunzip         bool
+	Range          string // e.g. "bytes=0-65535" (Image Audit: read the start of an image, never the whole file)
 }
 
 type httpClient struct {
@@ -458,6 +459,9 @@ func (h *httpClient) once(ctx context.Context, target string, ro reqOpts) single
 		acc = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 	}
 	req.Header.Set("Accept", acc)
+	if ro.Range != "" {
+		req.Header.Set("Range", ro.Range)
+	}
 	t0 := time.Now()
 	res, err := h.c.Do(req)
 	if err != nil {

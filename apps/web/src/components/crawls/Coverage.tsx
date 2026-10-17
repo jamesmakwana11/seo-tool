@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import type { CrawlCoverageReport, CrawlRun } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { errorMessage, useApiQuery } from '@/api/hooks';
@@ -40,6 +41,17 @@ export function RunDiagnostics({ run }: { run: CrawlRun }) {
   const items: ({ k: string; v: ReactNode } | undefined)[] = [
     { k: 'Crawler', v: run.engine === 'go' ? 'Go crawler + Rust text core' : run.engine === 'node' ? 'Built-in Node.js crawler' : '—' },
     { k: 'Outcome', v: run.outcome ? <span className="inline-flex flex-wrap items-center gap-2"><OutcomeBadge run={run} />{run.outcomeReason && <span className="text-xs text-ink-soft">{run.outcomeReason}</span>}</span> : '—' },
+    ...(run.type === 'smart' && run.smart ? [{
+      k: 'Smart Crawl budget',
+      v: (
+        <span data-testid="smart-budget">
+          {fmtNum(run.smart.budget)} pages · {fmtNum(c?.processed ?? run.urlsCrawled)} processed
+          {run.smart.notAudited > 0
+            ? <> · <span className="font-medium text-med-ink">{fmtNum(run.smart.notAudited)} eligible URLs pending</span> (not crawled, not audited — a full crawl processes them)</>
+            : run.status === 'running' || run.status === 'queued' ? '' : ' · no eligible URL left pending'}
+        </span>
+      ),
+    }] : []),
     { k: 'Duplicate-content analysis', v: run.textCore ? (run.textCore.ok ? 'Ran (Rust text core)' : <span className="text-med-ink">Not run: {run.textCore.error ?? 'unavailable'}</span>) : '—' },
     ...(c ? [
       { k: 'Speed', v: `${fmtNum(c.pagesPerMin)} pages / min${c.politeness?.avgLatencyMs ? ` · average response ${fmtMs(c.politeness.avgLatencyMs)}` : ''}` },
@@ -55,7 +67,7 @@ export function RunDiagnostics({ run }: { run: CrawlRun }) {
         <span className="block">
           {fmtNum(c.checks.done)} of {fmtNum(c.checks.total)} checked{c.checks.deferred ? `, ${fmtNum(c.checks.deferred)} deferred — not checked within the cap or the time budget${t.checksBudgetMs ? ` (${fmtMs(t.checksBudgetMs)})` : ''}, never counted as broken` : ''}{t.checksMs !== undefined ? ` · took ${fmtMs(t.checksMs)}` : ''}
           <span className="mt-1 block space-y-0.5 text-xs text-ink-soft">{checkGroups(c.checks.groups).map(([k, g]) => <span key={k} className="block">{describeCheckGroup(k, g)}</span>)}</span>
-          <span className="mt-1 block text-xs text-muted">Image ALT text, dimensions and lazy loading are read from each page&apos;s HTML; only image weight and format need a request, made once per image file.</span>
+          <span className="mt-1 block text-xs text-muted">Images are not requested during a crawl: ALT text, width / height and lazy loading are read from each page&apos;s HTML. Availability, file size, format and pixel size are checked by an <Link className="text-signal hover:underline" to="/images">Image Audit</Link> you start separately.</span>
         </span>
       ),
     }] : []),

@@ -105,8 +105,13 @@ const schema = z.object({
    * are reported as deferred — not checked, never as broken. Unset = automatic: as long as the page crawl took, 5–20 minutes.
    */
   CRAWLER_CHECKS_BUDGET_MINUTES: z.coerce.number().min(0.5).max(240).optional(),
+  /** Image Audit (started by a user, never by a crawl): unique images checked per job, time budget, images at once. */
+  IMAGE_AUDIT_MAX_IMAGES: z.coerce.number().int().min(10).max(200_000).default(50_000),
+  IMAGE_AUDIT_BUDGET_MINUTES: z.coerce.number().min(0.1).max(240).default(30),
+  IMAGE_AUDIT_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(4),
   /** Pages a smart crawl may fetch (its priority budget). */
-  CRAWLER_SMART_MAX_PAGES: z.coerce.number().int().min(10).max(1_000_000).default(500),
+  /** Pages a Smart Crawl fetches (highest priority first). At most SMART_CRAWL_PAGE_BUDGET (1,000). */
+  CRAWLER_SMART_MAX_PAGES: z.coerce.number().int().min(10).max(1000).default(1000),
   /** Finished crawls whose page rows stay available for paging and export (older ones are deleted from disk). */
   CRAWLER_KEEP_RESULTS: z.coerce.number().int().min(1).max(50).default(3),
   /** Change Monitor: compare every crawl with the last valid crawl (snapshots on disk, no database). */

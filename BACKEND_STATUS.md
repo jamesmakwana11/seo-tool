@@ -59,6 +59,42 @@ node scripts/package-review.mjs <dir>
 
 ## 3. Verification
 
+### 17 Oct 2026 — Smart Crawl budget 1,000 pages; Image Audit separated from crawling
+
+**Smart Crawl page budget: 1,000** (`SMART_CRAWL_PAGE_BUDGET`; `CRAWLER_SMART_MAX_PAGES` default and maximum 1,000,
+previously 500 and could be exceeded by a long evidence list). Priority order unchanged. When eligible URLs remain, the
+run ends *partial* with "The Smart Crawl budget of 1000 pages was reached; N eligible URLs were not fetched"; the run
+diagnostics and the live panel show the budget, pages processed and the pending eligible URLs. Pending URLs have no
+status, no title and no audit score and are never listed by a page-content finding. A Full Crawl has no page budget.
+Test (`test/gocrawl/smart-budget.test.ts`, local synthetic store, ~2,400 eligible pages): Smart → exactly 1,000
+processed, outcome partial, 1,000+ pending reported; Full → completed, more than 1,500 pages, 0 page-limited.
+
+**Normal crawls request no image.** `CRAWL_NEEDS` (Go and built-in crawler) drops the image checks; ALT text, width /
+height and lazy-loading come from the HTML (ONP-IMAGES, PERF-IMAGES markup checks and the page audit unchanged). Image
+weight / format are no longer claimed by a crawl. Every crawl writes the image references of its HTML pages
+(`images.ndjson.gz`, with its results) for a later audit. Measured on the rate-limited synthetic store (150 products,
+3 req/s, burst 6, Retry-After 30; `docs/measurements/rate-limited-150-products-no-image-checks.json`):
+
+| | Before (image checks in the crawl) | Now |
+| --- | --- | --- |
+| Pages | 206 | 206 |
+| Whole run | 398 s | 114 s |
+| Post-crawl checks | 292 s | 8.7 s |
+| Requests to the store | 840 | 243 |
+| 429 answers | 5 | 3 |
+
+**Image Audit** (`docs/IMAGE_AUDIT.md`): started by a user for one finished crawl; deduplicated images, reuse of the
+crawl's 4xx link answers and of an earlier audit, the Go binary's new `images` mode (separate process) with a 64 KB
+`Range` read per image, format / pixel-size sniffing, robots.txt, Retry-After, per-host pacing and the SSRF guard;
+states ok / broken / failed / unverified / deferred / pending; progress, cancellation, filters, CSV / JSON export.
+Tests: Go `imageaudit_test.go` (each image once, Range read only, sizes from Content-Range / Content-Length, redirects,
+404 / 500 / HTML-as-image, robots, 429 + Retry-After, third-party host, cancel and time budget, format sniffing);
+API `test/gocrawl/image-audit.test.ts` (no image request and no audit during a crawl; ALT found from HTML; each
+image requested once; broken / heavy / legacy / duplicate / empty-ALT reported; filters; HTTP CSV / JSON export;
+re-run reuses all answers with no new request; cancellation on 3,000 images defers the rest, progress reported);
+web `test/imageAudit.test.tsx`. Checked in Chromium against a running server: Smart Crawl budget in the run diagnostics,
+Image Audit start → 596 images checked, drawer, re-run reused 596 answers, no horizontal overflow at 390 px.
+
 ### 16 Oct 2026 (fourth pass) — Phase 2: All pages and the page audit
 
 Done and tested (details, checks, score rules and limits: `docs/PAGE_AUDIT.md`):
