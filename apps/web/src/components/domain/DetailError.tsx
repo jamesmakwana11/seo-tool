@@ -27,7 +27,7 @@ export function DetailError({ error, what, id, back, onRetry, forbidden }: {
     title = `${what} ${id} not found`;
     detail = API_MODE === 'mock'
       ? `${what} ${id} doesn't exist. It may have been mistyped, or created in an earlier session — DEMO data lives in this browser and resets on reload.`
-      : `${what} ${id} doesn't exist. It may have been mistyped or removed. The API keeps data in temporary memory, so anything created before the server last restarted is gone.`;
+      : `${what} ${id} doesn't exist. It may have been mistyped or removed — or, on a server without a database, created before the server last restarted.`;
   } else if (status === 403) {
     title = forbidden?.title ?? `You don't have access to this ${what.toLowerCase()}`;
     detail = forbidden?.detail ?? (error as ApiError).message;

@@ -275,7 +275,7 @@ export function createHttpApi(baseUrl = '/api', websiteId: () => string | undefi
 
     // audit, system, search, diagnostics
     listAuditLog: (f) => get<Paged<AuditLogEntry>>(`/audit${qs({ ...f })}`),
-    getSystemHealth: () => get<{ components: SystemComponentHealth[]; errors: SystemErrorEntry[]; storage: { kind: 'in_memory' | 'browser_memory'; persistent: false; note: string } }>('/system/health'),
+    getSystemHealth: () => get<{ components: SystemComponentHealth[]; errors: SystemErrorEntry[]; storage: { kind: 'in_memory' | 'browser_memory' | 'postgres'; persistent: boolean; note: string; error?: string } }>('/system/health'),
     search: (q) => get<SearchResult[]>(`/search${qs({ q })}`),
     getDiagnostics: () => get<ApiDiagnostics>('/diagnostics'),
   };

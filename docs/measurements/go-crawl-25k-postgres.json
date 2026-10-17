@@ -1,0 +1,389 @@
+{
+  "products": 25000,
+  "site": {
+    "ready": true,
+    "url": "http://127.0.0.1:46199/",
+    "products": 25000,
+    "collections": 250,
+    "collectionPages": 1250,
+    "articles": 100
+  },
+  "concurrency": 16,
+  "budgetMB": null,
+  "heapLimitMB": 304,
+  "status": "completed",
+  "outcome": "completed",
+  "wallMs": 109672,
+  "phasesAtMs": {
+    "crawling": 253,
+    "text_analysis": 31591,
+    "analysing": 40863,
+    "saving": 94881
+  },
+  "timings": {
+    "checksBudgetMs": 300000,
+    "checksMs": 83,
+    "crawlMs": 31403,
+    "robotsMs": 0,
+    "sitemapMs": 1300,
+    "textMs": 8771,
+    "crawlProcessMs": 40526,
+    "indexMs": 13481,
+    "heapAfterIndexMB": 91,
+    "textCoreReadMs": 218,
+    "heapAfterTextCoreMB": 102,
+    "wholeCrawlMs": 1349,
+    "heapAfterWholeCrawlMB": 132,
+    "heapAfterReleaseMB": 134,
+    "batchAnalysisMs": 37337,
+    "heapAfterBatchesMB": 115,
+    "coverageRowsMs": 1621,
+    "analysisTotalMs": 54142
+  },
+  "coverage": {
+    "discovered": 53491,
+    "queued": 0,
+    "waiting": 0,
+    "active": 0,
+    "processed": 26633,
+    "succeeded": 26508,
+    "failed": 125,
+    "robots": 0,
+    "depthLimited": 0,
+    "pageLimited": 0,
+    "excluded": 26735,
+    "excludedBy": {
+      "cart_account_or_app_path": 2,
+      "collection_scoped_product_path": 24992,
+      "sort_filter_search_parameter": 1741
+    },
+    "notProcessed": 0,
+    "sitemapUrls": 25235,
+    "pagesPerMin": 6066,
+    "politeness": {
+      "avgLatencyMs": 13,
+      "crawlDelayMs": 0,
+      "delayMs": 0,
+      "floorMs": 0,
+      "limitedAnswers": 0,
+      "rateLimited": 0,
+      "retries": 0,
+      "retryAfterPauses": 0,
+      "slowDowns": 0,
+      "unavailable503": 0,
+      "waitedMs": 0
+    },
+    "requests": 26790,
+    "requestsPerMin": 39991,
+    "lastRequestAt": "2026-10-17T06:20:14.061Z",
+    "checks": {
+      "deferred": 0,
+      "done": 48,
+      "groups": {
+        "botProbes": {
+          "deferred": 0,
+          "done": 5,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 5
+        },
+        "external": {
+          "deferred": 0,
+          "done": 0,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 0
+        },
+        "links": {
+          "deferred": 0,
+          "done": 25,
+          "excluded": 26710,
+          "failed": 0,
+          "reused": 25428,
+          "total": 25
+        },
+        "samples": {
+          "deferred": 0,
+          "done": 18,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 18
+        },
+        "scripts": {
+          "deferred": 0,
+          "done": 0,
+          "excluded": 0,
+          "failed": 0,
+          "reused": 0,
+          "total": 0
+        }
+      },
+      "total": 48
+    }
+  },
+  "rows": 53491,
+  "textCore": {
+    "ok": true
+  },
+  "peaksMB": {
+    "nodeRss": 327,
+    "nodeHeap": 170,
+    "go": 58,
+    "textCore": 19,
+    "total": 327
+  },
+  "runMemory": {
+    "nodeRssMB": 289.7,
+    "nodeHeapMB": 104.9,
+    "totalMB": 289.7,
+    "peakTotalMB": 289.7
+  },
+  "issues": {
+    "total": 47,
+    "byCheck": {
+      "TECH-SITEMAP": 1,
+      "TECH-4XX": 153,
+      "TECH-DISCONTINUED": 125,
+      "TECH-DUPLICATE": 1897,
+      "ONP-TPL-HOME": 1,
+      "AEO-ENTITY": 1,
+      "GEO-EEAT": 101,
+      "AIC-01": 14883,
+      "TECH-BROKEN-INTERNAL": 630,
+      "TECH-THIN": 14977,
+      "TECH-SCHEMA-PRESENCE": 251,
+      "ONP-TITLE": 25238,
+      "ONP-META": 2305,
+      "ONP-H1": 2076,
+      "ONP-BREADCRUMBS": 250,
+      "ONP-IMAGES": 1081,
+      "ONP-TPL-COLLECTION": 250,
+      "ONP-TPL-PRODUCT": 24875,
+      "AEO-ANSWER-BLOCK": 1,
+      "AEO-FAQ": 25125,
+      "AEO-EXTRACTABILITY": 1,
+      "GEO-STRUCTURE": 3,
+      "AIC-02": 610,
+      "AIC-09": 14713,
+      "GEO-FRESHNESS": 100,
+      "AIC-05": 100
+    }
+  },
+  "newIssues": 47,
+  "dupTitleSample": [
+    [
+      "http://127.0.0.1:46199/collections/vegetable-choppers-0",
+      "Vegetable Choppers | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:46199/collections/storage-boxs-1",
+      "Storage Boxs | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:46199/collections/wall-hooks-3",
+      "Wall Hooks | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:46199/collections/hair-dryers-12",
+      "Hair Dryers | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:46199/collections/shoe-racks-11",
+      "Shoe Racks | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ],
+    [
+      "http://127.0.0.1:46199/collections/lunch-boxs-4",
+      "Lunch Boxs | DeoShop",
+      200,
+      [
+        "issues",
+        "dup-title",
+        "dup-meta"
+      ]
+    ]
+  ],
+  "pagesApiMs": {
+    "first": 29,
+    "last": 33,
+    "filterDupTitle": 20,
+    "search": 33,
+    "total": 53491,
+    "dupTitleRows": 2407,
+    "searchRows": 4028
+  },
+  "pageAuditMs": {
+    "todoFilter": 30,
+    "todoRows": 1082,
+    "sortByScore": 24,
+    "reports": [
+      53,
+      37,
+      57
+    ],
+    "scoreSummary": {
+      "average": 97,
+      "scored": 26631,
+      "byTemplate": {
+        "home": {
+          "average": 100,
+          "pages": 1
+        },
+        "collection": {
+          "average": 89,
+          "pages": 1509
+        },
+        "product": {
+          "average": 98,
+          "pages": 25008
+        },
+        "page": {
+          "average": 85,
+          "pages": 10
+        },
+        "blog_index": {
+          "average": 90,
+          "pages": 1
+        },
+        "other": {
+          "average": 80,
+          "pages": 2
+        },
+        "blog_article": {
+          "average": 90,
+          "pages": 100
+        }
+      }
+    },
+    "todo": {
+      "title-short": 228,
+      "title-duplicate": 2407,
+      "meta-duplicate": 3099,
+      "meta-short": 200,
+      "thin": 178,
+      "broken-links": 655,
+      "h2-missing": 77,
+      "alt-missing": 1082,
+      "meta-missing": 607,
+      "h1-multiple": 222,
+      "title-long": 232,
+      "error-status": 125,
+      "redirect": 125,
+      "orphan": 750
+    }
+  },
+  "coverageMs": 1,
+  "coverageSummary": {
+    "sitemapNotCrawled": 0,
+    "failed": 125,
+    "redirects": 125,
+    "nearGroups": 1,
+    "titleGroups": 807,
+    "orphanCandidates": 0
+  },
+  "exportCsv": {
+    "ms": 927,
+    "bytes": 39516247,
+    "rows": 53492
+  },
+  "warnings": [],
+  "database": {
+    "finalFlushMs": 0,
+    "tables": [
+      {
+        "t": "sentinel_crawl_rows",
+        "rows": "53491",
+        "mb": "66.3"
+      },
+      {
+        "t": "sentinel_documents",
+        "rows": "1",
+        "mb": "0.0"
+      },
+      {
+        "t": "sentinel_files",
+        "rows": "1",
+        "mb": "10.3"
+      },
+      {
+        "t": "sentinel_records",
+        "rows": "27810",
+        "mb": "23.2"
+      },
+      {
+        "t": "sentinel_schema_migrations",
+        "rows": "1",
+        "mb": "0.0"
+      },
+      {
+        "t": "sentinel_websites",
+        "rows": "0",
+        "mb": "0.0"
+      }
+    ],
+    "loadContainerMs": 505,
+    "restorePageRowsMs": 3083,
+    "restoredRows": 53491,
+    "rssBeforeLoadMB": 332,
+    "rssAfterRestoreMB": 383,
+    "status": {
+      "kind": "postgres",
+      "connected": true,
+      "database": "127.0.0.1:5432/sentinel_stress",
+      "pending": 0,
+      "lastFlushAt": "2026-10-17T06:21:32.111Z"
+    }
+  },
+  "changeMonitorFirst": {
+    "afterCompletedMs": 5916,
+    "summary": {
+      "runId": "CRL-0001",
+      "snapshotId": "20261017T061942Z-CRL-0001",
+      "crawlType": "full",
+      "outcome": "completed",
+      "observedAt": "2026-10-17T06:19:42.522Z",
+      "finishedAt": "2026-10-17T06:21:26.248Z",
+      "urls": 53491,
+      "baseline": null,
+      "baselineEffect": "created",
+      "baselineNote": "This full crawl is now the baseline: changes are reported from the next crawl.",
+      "notes": [
+        "No baseline to compare with yet."
+      ],
+      "compareMs": 5553
+    },
+    "diskBytes": 20447780
+  }
+}

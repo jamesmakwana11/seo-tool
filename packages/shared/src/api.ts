@@ -441,7 +441,7 @@ export interface SentinelApi {
 
   // audit, system, search, diagnostics
   listAuditLog(f: { q?: string; entityType?: string; actorId?: string; page?: number; pageSize?: number }): Promise<Paged<AuditLogEntry>>;
-  getSystemHealth(): Promise<{ components: SystemComponentHealth[]; errors: SystemErrorEntry[]; storage: { kind: 'in_memory' | 'browser_memory'; persistent: false; note: string } }>;
+  getSystemHealth(): Promise<{ components: SystemComponentHealth[]; errors: SystemErrorEntry[]; storage: { kind: 'in_memory' | 'browser_memory' | 'postgres'; persistent: boolean; note: string; error?: string } }>;
   search(q: string): Promise<SearchResult[]>;
   getDiagnostics(): Promise<ApiDiagnostics>;
 }

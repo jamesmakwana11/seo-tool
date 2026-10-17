@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { ApiError } from '@sentinel/shared';
 import { useToast } from '@/components/ui/Toast';
@@ -15,6 +15,27 @@ export const WEBSITES_KEY = ['websites'] as const;
 export function useSiteKey(): (k: QueryKey) => QueryKey {
   const site = useWebsiteId();
   return (k) => ['site', site, ...k];
+}
+
+/**
+ * When crawls of the selected website finish (running / queued → completed, cancelled or failed), every screen's data
+ * of that website (Health Score, Dashboard, Issues Board, audit modules, reports) and the website list are fetched
+ * again — no browser reload needed.
+ */
+export function useRefreshWhenCrawlsFinish(activeIds: string[] | undefined) {
+  const qc = useQueryClient();
+  const site = useWebsiteId();
+  const prev = useRef<{ site: string; ids: Set<string> }>();
+  useEffect(() => {
+    if (!activeIds) return;
+    const now = new Set(activeIds);
+    const before = prev.current?.site === site ? prev.current.ids : undefined;
+    prev.current = { site, ids: now };
+    if (before && [...before].some((id) => !now.has(id))) {
+      void qc.invalidateQueries({ queryKey: ['site', site] });
+      void qc.invalidateQueries({ queryKey: WEBSITES_KEY });
+    }
+  }, [activeIds?.join(','), site, qc]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** Thin query wrapper so every screen gets loading / error / retry states the same way. */

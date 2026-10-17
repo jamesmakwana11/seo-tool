@@ -1,11 +1,12 @@
 import { createHmac } from 'node:crypto';
 import path from 'node:path';
-import { defaultConfig, setPriorityConfig } from '@sentinel/shared';
+import { DEMO_WEBSITE_ID, defaultConfig, setPriorityConfig } from '@sentinel/shared';
 import type { Env } from './config/env';
 import { createLogger, type Logger } from './lib/logger';
 import { hashPassword, passwordPolicyError, randomToken } from './lib/passwords';
 import { createInMemoryRepositories } from './repositories/memory/inMemory';
 import { seedDemoData } from './repositories/seedDemo';
+import type { Persistence } from './repositories/postgres/persistence';
 import type { Repositories } from './repositories/types';
 import { createCrawlEngine, type CrawlEngineOptions } from './crawler/engine';
 import { cleanStaleWork, createGoCrawlEngine, defaultWorkDir } from './gocrawl/engine';
@@ -46,6 +47,10 @@ export interface ContainerOptions {
   engine?: CrawlEngine;
   reverifier?: Reverifier;
   diagnostics?: DiagnosticsSource;
+  /** PostgreSQL storage (DATABASE_URL): repositories are loaded from it and written through to it. */
+  persistence?: Persistence;
+  /** Website the container serves (database scope); the primary website when absent. */
+  scope?: string;
 }
 
 /** Composition root: wires repositories (in-memory, Phase 2) → adapters → services. No storage implementation leaks into services. */
@@ -53,10 +58,18 @@ export async function createContainer(o: ContainerOptions) {
   const env = o.env;
   const log = o.log ?? createLogger(env.LOG_LEVEL);
   const clock = o.clock ?? (() => new Date());
-  const repos = o.repos ?? createInMemoryRepositories(clock());
+  const scope = o.scope ?? DEMO_WEBSITE_ID;
+  // With a database: a website that already has data is loaded as it is — never re-seeded or reset at start-up.
+  const fresh = o.repos ? false : o.persistence ? !(await o.persistence.hasData(scope)) : true;
+  const repos = o.repos ?? (o.persistence ? await o.persistence.repositories(scope, clock()) : createInMemoryRepositories(clock()));
   let seeded: Awaited<ReturnType<typeof seedDemoData>> | undefined;
-  if (!o.repos && env.SEED_DEMO_DATA) seeded = await seedDemoData(repos, clock());
-  if (!o.repos && !env.SEED_DEMO_DATA) {
+  if (fresh && env.SEED_DEMO_DATA) seeded = await seedDemoData(repos, clock());
+  if (!o.repos && !fresh && env.CRAWLER_BASE_URL) {
+    // The primary website's address comes from the server configuration (CRAWLER_BASE_URL).
+    const cfg = await repos.config.get();
+    if (cfg.site.baseUrl !== env.CRAWLER_BASE_URL) await repos.config.set({ ...cfg, site: { ...cfg.site, baseUrl: env.CRAWLER_BASE_URL } });
+  }
+  if (fresh && !env.SEED_DEMO_DATA) {
     // Clean live start: real configuration with the crawler pointed at CRAWLER_BASE_URL; no DEMO records.
     const cfg = defaultConfig(clock());
     if (env.CRAWLER_BASE_URL) cfg.site.baseUrl = env.CRAWLER_BASE_URL;
@@ -136,7 +149,7 @@ export async function createContainer(o: ContainerOptions) {
     previous: () => latestState,
   });
 
-  const ctx: Ctx = { env, repos, log, clock, integrations, delivery, taskOps, llm, engine, engineInfo, reverifier, sessionSecret: env.SESSION_SECRET ?? randomToken(32) };
+  const ctx: Ctx = { env, repos, log, clock, integrations, delivery, taskOps, llm, engine, engineInfo, reverifier, sessionSecret: env.SESSION_SECRET ?? randomToken(32), persistence: o.persistence, scope };
   const recent: ReturnType<DiagnosticsSource['recent']> = [];
   const diagnostics: DiagnosticsSource = o.diagnostics ?? { endpoints: [], recent: () => recent };
 
@@ -170,6 +183,10 @@ export async function createContainer(o: ContainerOptions) {
   });
   changes.setOnRecorded((s) => { void captures.afterCrawl(s.runId, s.snapshotId, !!s.counts).catch((e) => log.warn({ err: (e as Error).message }, 'after-crawl captures failed')); });
   const crawls = createCrawlService(ctx, issues, rules, changes);
+  if (o.persistence) {
+    const interrupted = await crawls.recoverInterrupted();
+    if (interrupted) log.warn({ scope, interrupted }, 'crawls interrupted by the last restart were marked failed');
+  }
   // Image Audit: started by a user for one finished crawl; a separate Go process, never part of a crawl.
   const imageAudits = createImageAuditService(ctx, {
     refsOf: (id) => crawls.imageRefsOf(id), runsWithRefs: () => crawls.runsWithImageRefs(),
@@ -203,7 +220,7 @@ export async function createContainer(o: ContainerOptions) {
   // Say at start-up (in the server log) why live crawling will be refused, so a missing setting is not found only in the UI.
   if (!o.repos && !crawlerReady.ready) log.warn({ reason: crawlerReady.reason }, 'live crawling is not available for the primary website');
   return {
-    env, log, clock, repos, ctx, diagnostics, recent,
+    env, log, clock, repos, ctx, diagnostics, recent, persistence: o.persistence, scope,
     /** Injected outbound fetch (tests); undefined in production → adapters use global fetch. */
     fetchImpl,
     services: { auth, tasks, issues, rules, crawls, changes, captures, imageAudits, reports, insights, admin, lighthouse, shopify },

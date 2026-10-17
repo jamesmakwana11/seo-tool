@@ -17,6 +17,10 @@ import type { EngineRunResult } from '../services/ports';
 import { compareWithBaseline, firstBaseline, mergeIntoBaseline, replaceBaseline } from './diff';
 import type { SnapRec } from './snapshot';
 import { createChangeStore, type BaselineMeta, type ChangeStore } from './store';
+import { restoreFolderFromDb, syncFolderToDb } from '../repositories/postgres/files';
+
+/** Change Monitor files kept in the database: the index, the baseline and each crawl's change lists (not raw snapshots). */
+const KEEP_IN_DB = (rel: string) => rel === 'index.json' || /^baseline-[^/]+\.ndjson\.gz$/.test(rel) || /^runs\/[^/]+\.(notable|quiet)\.ndjson\.gz$/.test(rel);
 
 const NOTABLE = new Set<ChangeKind>(['new', 'removed', 'failed', 'changed']);
 const QUIET = new Set<ChangeKind>(['unchanged', 'unchecked']);
@@ -77,11 +81,26 @@ export function createChangeService(ctx: Ctx, deps: ChangeServiceDeps) {
   let onRecorded: ((s: ChangeRunSummary) => void) | undefined;
   /** Crawls being compared right now (the crawl already shows "completed"; its change list follows shortly). */
   const comparing = new Set<string>();
+  const restored = new Set<string>();
   async function store(): Promise<ChangeStore> {
     let site: string;
     try { site = new URL(await deps.siteUrl()).host; } catch { site = 'site'; }
     if (!storeRef || storeRef.site !== site) storeRef = { site, store: createChangeStore(root, site) };
-    return storeRef.store;
+    const st = storeRef.store;
+    // With a database: the history of this website is restored onto an empty disk (after a restart / redeploy).
+    if (ctx.persistence && ctx.scope && !restored.has(st.dir)) {
+      restored.add(st.dir);
+      if (!fs.existsSync(path.join(st.dir, 'index.json'))) {
+        const n = await restoreFolderFromDb(ctx.persistence, ctx.scope, 'changes/', st.dir).catch((e: Error) => { restored.delete(st.dir); throw e; });
+        if (n) ctx.log.info({ files: n, site }, 'change monitor history restored from the database');
+      }
+    }
+    return st;
+  }
+  /** Saves the Change Monitor files of this website in the database (new files, the index, and removals). */
+  async function persistHistory(st: ChangeStore) {
+    if (!ctx.persistence || !ctx.scope) return;
+    await syncFolderToDb(ctx.persistence, ctx.scope, 'changes/', st.dir, KEEP_IN_DB, (rel) => rel === 'index.json');
   }
 
   const persistentHint = () => {
@@ -181,6 +200,7 @@ export function createChangeService(ctx: Ctx, deps: ChangeServiceDeps) {
       ix.runs = [summary, ...ix.runs.filter((r) => r.snapshotId !== snapshotId)];
       await st.prune(ix, env.CHANGE_SNAPSHOT_KEEP ?? 5, env.CHANGE_SNAPSHOT_MAX_AGE_DAYS ?? 90, ctx.clock());
       await st.writeIndex(ix);
+      await persistHistory(st).catch((e: Error) => ctx.log.error({ err: e.message, runId: run.id }, 'change monitor history could not be saved in the database'));
       ctx.log.info({ runId: run.id, snapshotId, urls, counts: summary.counts, baseline: summary.baselineEffect, ms: summary.compareMs }, 'change monitor recorded crawl');
       return summary;
     }).finally(() => comparing.delete(run.id)).then((summary) => {

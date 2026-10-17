@@ -31,6 +31,8 @@ export interface FixtureOptions {
   brokenImages: string[];
   /** Every page shows the same decorative banner (alt="", no width / height); the homepage also a second URL of it. */
   sharedBanner: boolean;
+  /** Host name in the site's own links (the server always listens on 127.0.0.1); 'localhost' gives a second distinct website. */
+  host: string;
   /** Product handles whose Product JSON-LD has no offers. */
   noOffers: string[];
   /** Template-level bug: EVERY product's JSON-LD loses `offers`. */
@@ -67,7 +69,7 @@ export interface FixtureOptions {
 
 export const defaultFixtureOptions = (): FixtureOptions => ({
   noindex: [], xRobotsNoindex: [], deletedProducts: [], missingCanonical: [], duplicateTitle: [], thinCollections: [], longTitle: [], missingMeta: [],
-  multipleH1: [], missingAlt: [], largeImage: [], brokenImages: [], sharedBanner: false, noOffers: [], productTemplateNoOffers: false, priceMismatch: {}, reviewMarkupWithoutReviews: [],
+  multipleH1: [], missingAlt: [], largeImage: [], brokenImages: [], sharedBanner: false, host: '127.0.0.1', noOffers: [], productTemplateNoOffers: false, priceMismatch: {}, reviewMarkupWithoutReviews: [],
   robotsDisallowCollections: false, robotsBlockGptBot: false, aiBoilerplate: [], ymylClaim: [], newHeadScriptOnProducts: false, linkErrorRoutes: false,
   slowMs: 1500, ssrfRedirect: false, malformedPage: false, orphanInSitemap: false, scopedSelfCanonical: false, unavailable: [], themeVersion: 1,
 });
@@ -467,7 +469,7 @@ ${a.sections.map(([h, t]) => `<h2>${esc(h)}</h2><p>${esc(t)}</p>`).join('\n')}
 
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const port = (server.address() as AddressInfo).port;
-  origin = `http://127.0.0.1:${port}`;
+  origin = `http://${opts.host}:${port}`;
   return {
     url: `${origin}/`, origin, opts, requests,
     async close() {

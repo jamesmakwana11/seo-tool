@@ -7,7 +7,7 @@ Specification: `docs/seotooldocs.pdf` · Build brief: `docs/MASTER_BUILD_PROMPT.
 |---|---|
 | `packages/shared` | Domain types, PDF check library, severity/SLA/escalation/scoring/task-workflow rules, Fix Card engine + playbook, read models, API contract, DEMO seed |
 | `apps/web` | React frontend — talks to the API (`VITE_API_MODE=http`) or to an in-browser DEMO adapter (`VITE_API_MODE=mock`, default) |
-| `apps/api` | Express backend (Phase 2): auth, permissions, issues/tasks workflow, crawl orchestration + 54 analyzers (streamed in batches), Lighthouse runner, Shopify OAuth + SEO editor, connectors + GA4/GSC/CrUX syncs, delivery, scheduler. **Temporary in-memory storage** |
+| `apps/api` | Express backend (Phase 2): auth, permissions, issues/tasks workflow, crawl orchestration + 54 analyzers (streamed in batches), Lighthouse runner, Shopify OAuth + SEO editor, connectors + GA4/GSC/CrUX syncs, delivery, scheduler. **PostgreSQL storage** with `DATABASE_URL` (`docs/DATABASE.md`); temporary in-memory storage without it |
 | `services/crawler-go` | Go production crawler (`bin/sentinel-crawler`): sitemaps (index, gzip), URL normalisation, bounded queues, retries, adaptive throttling, robots, SSRF guard; NDJSON protocol v1 with the API |
 | `services/textcore-rs` | Rust text core (`bin/sentinel-textcore`): fingerprints, duplicate titles / meta / content, near-duplicate candidates (MinHash/LSH) |
 

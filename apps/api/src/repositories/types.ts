@@ -68,7 +68,7 @@ export interface MetricsDoc {
 
 export interface Repositories {
   /** Human-readable description of the storage backend, surfaced on System health. */
-  readonly storage: { kind: 'in_memory'; persistent: false; note: string };
+  readonly storage: { kind: 'in_memory' | 'postgres'; persistent: boolean; note: string };
   employees: Repository<Employee>;
   credentials: Repository<Credential>;
   resetTokens: Repository<ResetToken>;

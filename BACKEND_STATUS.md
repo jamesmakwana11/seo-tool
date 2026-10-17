@@ -59,6 +59,43 @@ node scripts/package-review.mjs <dir>
 
 ## 3. Verification
 
+### 17 Oct 2026 (second pass) — PostgreSQL persistence: websites, crawls, results, Health Score
+
+**Root cause of "websites disappear" and "no audit data yet".**
+1. All data lived in the API process's memory (`createInMemoryRepositories`), and the website list was an in-memory
+   array in `websites.ts`. Every Render restart — redeploys, the free plan's spin-down after inactivity, crashes —
+   started with only the primary website and no crawls, issues or scores. A browser refresh after such a restart
+   showed the loss; the web app then switched the selection back to the primary website because the remembered one
+   no longer existed.
+2. After a crawl finished, the web app did not fetch the website list again (it is fetched on page load; the crawl's
+   start invalidated it, its completion did not). The audit gate reads `hasAuditData` from that list, so Health Score and
+   the other scored screens kept saying "no audit data yet" until a reload — or, after a restart, for good.
+3. The selected website was remembered in `sessionStorage` (per tab), not across tabs / new windows.
+
+**Fix.** PostgreSQL storage behind the existing repository interfaces (`apps/api/src/repositories/postgres/`,
+`docs/DATABASE.md`); websites are rows of `sentinel_websites` and all their data is keyed by the website id; page rows
+of recent crawls, coverage reports and the Change Monitor history are stored too and restored after a restart;
+changes are answered only once stored, a crawl stores everything before it ends, SIGTERM flushes; database failures
+answer 503 and show on System health (no silent fallback); crawls interrupted by a restart are marked failed; the
+latest page report never uses a cancelled crawl. Web: website list refetched when a crawl finishes and every minute,
+site screens refreshed on crawl completion, selection kept in `localStorage`; storage notices follow the server.
+
+**Tests** (`apps/api/test/persistence/persistence.test.ts`, real PostgreSQL 16 via `TEST_DATABASE_URL`, local
+fixture stores only): websites, crawls (counts, outcome, timestamps), page rows / page report / coverage / CSV export,
+issues with evidence, per-website Health Score and Change Monitor history identical after an API restart with an empty
+disk; two websites never share findings or rows; a cancelled crawl leaves issues, Health Score and the latest audit
+unchanged, before and after a restart; a crawl interrupted by a restart is marked failed and does not block the next;
+unreadable / unwritable database → 503 + System health "down", stored once it is back; unreachable database at
+start-up → clear error, no start; production without `DATABASE_URL` refuses to start unless explicitly allowed; a real
+process restart with SIGTERM keeps added websites and the sign-in. Web: selection survives a reload; crawl completion
+refreshes the website's screens and the website list. Browser check against the built server with PostgreSQL: two
+websites crawled, server restarted, page reloaded → "grab" still selected with its own Health Score (43.4 vs 49.2).
+
+**Measured** (25,000-product synthetic store, 53,491 URLs, 256 MB heap, local PostgreSQL;
+`docs/measurements/go-crawl-25k-postgres.json`): crawl 110 s (105–111 s without a database); peak API memory 327 MB
+RSS / 170 MB heap (304–308 / 158–161 MB without); stored 53,491 page rows (66 MB) + 27,810 records (23 MB); a new API
+process loads the website in 0.5 s and rebuilds the crawl's 53,491 page rows from the database in 3.1 s.
+
 ### 17 Oct 2026 — Smart Crawl budget 1,000 pages; Image Audit separated from crawling
 
 **Smart Crawl page budget: 1,000** (`SMART_CRAWL_PAGE_BUDGET`; `CRAWLER_SMART_MAX_PAGES` default and maximum 1,000,

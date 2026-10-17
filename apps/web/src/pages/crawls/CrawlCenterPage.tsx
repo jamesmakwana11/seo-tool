@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, Images, Pencil, Play, RefreshCcw, ShieldCheck, Zap } from 'lucide-react';
 import { SMART_CRAWL_PAGE_BUDGET, type CrawlRun, type CrawlSchedule, type CrawlType } from '@sentinel/shared';
 import { api, API_MODE } from '@/api/client';
-import { useApiMutation, useApiQuery, useSiteKey } from '@/api/hooks';
+import { useApiMutation, useApiQuery, useRefreshWhenCrawlsFinish, useSiteKey } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
 import { Async, Badge, Button, DemoBadge, EmptyState, Field, Input, Mono, Notice, PageHeader, Panel, Stat, Toggle } from '@/components/ui/primitives';
 import { ConfirmDialog, Dialog } from '@/components/ui/overlay';
@@ -29,6 +29,7 @@ export default function CrawlCenterPage() {
   const polling = !!cached?.some(isActive);
   const q = useApiQuery(['crawls'], () => api.listCrawls(), { refetchInterval: polling ? 2000 : undefined });
   const running = q.data?.find(isActive);
+  useRefreshWhenCrawlsFinish(q.data?.filter(isActive).map((r) => r.id));
   const latestLive = q.data?.find((r) => !!r.options);
 
   return (

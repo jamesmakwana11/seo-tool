@@ -8,8 +8,9 @@ import { DataTable } from '@/components/ui/DataTable';
 import { SiteMark } from '@/components/websites/WebsiteSelector';
 import { WebsiteFormDialog } from '@/components/websites/WebsiteFormDialog';
 import { platformLabel, useWebsites } from '@/websites/WebsiteContext';
+import { useApiQuery } from '@/api/hooks';
 import { fmtRelative } from '@/lib/format';
-import { API_MODE } from '@/api/client';
+import { API_MODE, api } from '@/api/client';
 
 export function SiteStatus({ w }: { w: WebsiteSummary }) {
   if (!w.hasAuditData) return <Badge tone="neutral" title="No completed crawl and no findings — nothing is scored for this website.">Not crawled yet</Badge>;
@@ -28,6 +29,8 @@ export default function WebsitesPage() {
     if (params.get('add') === '1') { if (canManage) setAdding(true); params.delete('add'); setParams(params, { replace: true }); }
   }, [params, setParams, canManage]);
 
+  // Whether this server keeps data in a database (from the crawler status of the selected website).
+  const storage = useApiQuery(['crawls', 'status'], () => api.getCrawlerStatus(), { enabled: API_MODE !== 'mock' });
   return (
     <div>
       <PageHeader
@@ -36,11 +39,13 @@ export default function WebsitesPage() {
         actions={canManage ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setAdding(true)}>Add website</Button> : undefined}
       />
       <div className="space-y-5">
-        <Notice tone="demo">
-          {API_MODE === 'mock'
-            ? 'Websites you add are kept in browser memory for this session only — they are lost on reload. No database.'
-            : 'Websites are kept in the API server’s temporary in-memory storage and are lost when it restarts. No database.'}
-        </Notice>
+        {(API_MODE === 'mock' || storage.data?.temporaryStorage) && (
+          <Notice tone="demo">
+            {API_MODE === 'mock'
+              ? 'Websites you add are kept in browser memory for this session only — they are lost on reload. No database.'
+              : 'This server has no database (DATABASE_URL is not set): websites and their crawl results are kept in temporary memory and are lost when it restarts.'}
+          </Notice>
+        )}
         <Panel bodyClassName="p-3">
           {loading ? <LoadingBlock rows={4} /> : error ? <ErrorState error={error} onRetry={refetch} /> : (
             <DataTable

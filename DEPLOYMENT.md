@@ -3,10 +3,10 @@
 One container runs everything: the Express API serves the built React app from the same origin, runs the crawler and
 (optionally) the in-process scheduler. HTTPS is terminated by the hosting platform.
 
-> **Storage is still TEMPORARY in-memory.** There is no PostgreSQL integration yet. Every restart, redeploy or platform
-> maintenance event erases all websites, crawls, issues, users (except the env-bootstrapped admin) and settings.
-> In production the server refuses to start unless `ALLOW_EPHEMERAL_STORAGE=true` is set, so this is an explicit choice.
-> Use such a deployment only as a staging/pilot environment until PostgreSQL is authorized and implemented.
+> **Storage: PostgreSQL.** With `DATABASE_URL` set, websites, crawls, page results, issues, findings, Health Score inputs,
+> settings, users and sessions are stored in PostgreSQL and survive restarts and redeploys (see
+> [PostgreSQL on Render](#postgresql-on-render) and `docs/DATABASE.md`). Without it, everything is kept in memory and
+> lost on every restart; in production the server then refuses to start unless `ALLOW_EPHEMERAL_STORAGE=true` is set.
 
 ## What runs where
 
@@ -83,7 +83,10 @@ Required in production:
 | --- | --- |
 | `NODE_ENV` | `production` (set by the image) |
 | `SESSION_SECRET` | random, ≥ 32 chars — `openssl rand -hex 32` |
-| `ALLOW_EPHEMERAL_STORAGE` | `true` — acknowledges that all data is lost on restart (no database yet) |
+| `DATABASE_URL` | the PostgreSQL connection string (Render: the database's **Internal Database URL**) — see below |
+| `DATABASE_SSL` | optional: `auto` (default — no TLS for a Render-internal or local host, verified TLS otherwise), `require`, `no-verify`, `disable` |
+| `DATABASE_WAIT_SECONDS` | optional: how long start-up waits for the database (default 60) |
+| `ALLOW_EPHEMERAL_STORAGE` | only without a database: `true` acknowledges that all data is lost on restart (staging only) |
 | `ADMIN_EMAIL`, `ADMIN_INITIAL_PASSWORD` | first admin (password ≥ 10 chars, letters + numbers); optional `ADMIN_NAME` |
 | `APP_BASE_URL` | the public HTTPS URL, used in alert/digest links |
 
@@ -132,7 +135,7 @@ Render → your web service → **Environment** → add (then **Save, rebuild an
 | `CRAWLER_BASE_URL` | `https://deodap.in` |
 | `CRAWLER_ALLOW_LIVE` | `true` |
 | `SESSION_SECRET` | a random value of at least 32 characters (keep it secret) |
-| `ALLOW_EPHEMERAL_STORAGE` | `true` |
+| `DATABASE_URL` | the Internal Database URL of your Render PostgreSQL (see [PostgreSQL on Render](#postgresql-on-render)); then remove `ALLOW_EPHEMERAL_STORAGE` |
 | `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD` | your admin sign-in (password: at least 10 characters, letters and numbers) |
 | `APP_BASE_URL` | `https://<service>.onrender.com` (or your custom domain) |
 | optional: `CRAWLER_REQUEST_DELAY_MS`, `CRAWLER_MAX_PAGES`, `CRAWLER_MAX_CONCURRENT_JOBS` | see the table above; leave `CRAWLER_MAX_PAGES` unset for no page limit |
@@ -150,9 +153,9 @@ To crawl another website, add it under **Manage websites** (its crawler is restr
 **Sign-in sessions** last until the user selects *Sign out* — they do not expire on their own and survive restarts,
 redeploys and Render spin-downs, as long as `SESSION_SECRET` stays the same (changing it signs everyone out). A session
 ends when the user signs out, their password is changed or reset, or their account is deactivated. Do not set
-`SESSION_TTL_HOURS` (or set it to `0`); a positive number of hours would cap every session again. Limit: sessions and
-sign-outs are kept in memory (no database), so a token signed out *before* a restart is no longer on the server's
-revoked list after it — the browser deletes its token at sign-out, and changing the password ends every session for sure.
+`SESSION_TTL_HOURS` (or set it to `0`); a positive number of hours would cap every session again. With `DATABASE_URL`, sessions and
+sign-outs are stored in the database. Without a database they are kept in memory, so a token signed out *before* a
+restart is no longer on the server's revoked list after it — changing the password ends every session for sure.
 
 Set by the image, override only if needed: `PORT=8080`, `WEB_DIST_DIR=/app/apps/web/dist`. Optional: `LOG_LEVEL`,
 `SESSION_TTL_HOURS` (default `0` = until sign-out), `TRUST_PROXY` (default 1 in production), `AUTH_RATE_LIMIT` (default 20 per IP per 15 min),
@@ -166,18 +169,30 @@ Google Business Profile, OpenAI/Gemini/Perplexity, SMTP email, WhatsApp Cloud AP
 Forced off in production regardless of env: DEMO seed (its preview accounts have published passwords), DEV role
 preview, exposing reset tokens in API responses.
 
-## PostgreSQL (not implemented — needs authorization)
+## PostgreSQL on Render
 
-The data layer is already behind storage-agnostic async interfaces (`apps/api/src/repositories/types.ts`:
-`Repository<T>` with get/list/where/insert/update/upsert/delete/count/nextId, and `DocumentStore<T>`), so services do
-not change. Minimum work once authorized:
+1. **Create the database.** Render dashboard → **New → PostgreSQL**. Name e.g. `sentinel-db`, database `sentinel`,
+   **the same region as the web service**, PostgreSQL 15 or newer. Use a paid instance type for real data: Render's free
+   databases are removed after a limited time and have no backups (check Render's current plan terms and backup options).
+2. **Connect the API.** Open the database → **Connections** → copy the **Internal Database URL**
+   (`postgresql://…@dpg-…-a/sentinel`). Web service → **Environment** → add `DATABASE_URL` = that value (the value is a
+   secret; Render stores it encrypted and the API never logs it — logs show only host and database name). Remove
+   `ALLOW_EPHEMERAL_STORAGE`. Save → Render redeploys.
+   - The internal URL stays inside Render's private network: no TLS is needed (`DATABASE_SSL=auto` detects it). If you
+     use the **External** URL instead (e.g. another provider), TLS is used and verified automatically.
+3. **First start.** The API connects (waiting up to `DATABASE_WAIT_SECONDS` for the database), creates its tables
+   (`sentinel_websites`, `sentinel_records`, `sentinel_documents`, `sentinel_crawl_rows`, `sentinel_files`,
+   `sentinel_schema_migrations`) and logs `PostgreSQL storage ready`. Migrations only ever add tables / columns; they
+   never delete data, and two instances starting together are safe (advisory lock). System health → Storage shows
+   *PostgreSQL … kept across restarts*.
+4. **Check it.** Add a website, run a crawl, then **Manual Deploy → Restart service**: the websites, the crawl, its
+   Pages list, issues and Health Score are still there.
 
-1. Add the `pg` driver and a `DATABASE_URL` env var (TLS required).
-2. One migration creating a document table keyed by `(website_id, collection, id)` with a `jsonb` payload plus a
-   singleton-document table, and a `websites` table (website list is currently an in-memory array in `websites.ts`).
-3. A PostgreSQL implementation of `Repositories`, selected when `DATABASE_URL` is set; run migrations on start.
-4. Persist the website list; keep people/credentials/sessions shared across websites as today.
-5. Then drop `ALLOW_EPHEMERAL_STORAGE`, and the scheduler/crawler could later move to a separate worker service.
+If the database cannot be reached at start-up, the API does not start (the log says why) — it never silently runs on
+temporary memory with `DATABASE_URL` set. If it becomes unreachable while running, changes answer **503 — not saved
+yet**, System health shows *Storage: down* with the error, and queued changes are written as soon as it is back.
 
-Needed from you: approval, a PostgreSQL 15+ instance (e.g. Render PostgreSQL in the same region, Neon, Supabase or
-RDS) and its connection string for a role that can create tables in one database, plus a backup policy.
+Data that is still not kept across restarts (by design, see `docs/DATABASE.md`): Image Audit results and the image
+references of crawls, Change Monitor screenshots / captured HTML / theme snapshots (only the crawl comparison history
+is stored), Lighthouse runs, and the Shopify OAuth token.
+

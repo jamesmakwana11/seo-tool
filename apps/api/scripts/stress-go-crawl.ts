@@ -32,6 +32,8 @@ const CONCURRENCY = Number(arg('concurrency', '16'));
 const BUDGET = arg('budget');
 const OUT = arg('out');
 const TWICE = process.argv.includes('--twice');
+/** --db: store everything in PostgreSQL (DATABASE_URL) like a production server, and measure the writes. */
+const DB = process.argv.includes('--db');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = process.env.SENTINEL_ROOT ?? path.resolve(here, '../../..');
 
@@ -49,7 +51,8 @@ async function main() {
     CHANGE_SNAPSHOT_DIR: fs.mkdtempSync(path.join((await import('node:os')).tmpdir(), 'stress-changes-')), CHANGE_CAPTURE_AFTER_CRAWL: 'false',
     ...(process.env.CHANGE_MONITOR_ENABLED ? { CHANGE_MONITOR_ENABLED: process.env.CHANGE_MONITOR_ENABLED } : {}),
   });
-  const c = await createContainer({ env });
+  const persistence = DB ? await (await import('../src/repositories/postgres/persistence')).openPersistence({ url: process.env.DATABASE_URL!, log: (await import('../src/lib/logger')).createLogger('warn') }) : undefined;
+  const c = await createContainer({ env, persistence });
   const crawls = c.services.crawls;
   const status = await crawls.status(SYSTEM_ACTOR);
   console.log(`engine: ${JSON.stringify(status.engine)}`);
@@ -142,6 +145,23 @@ async function main() {
     exportCsv: { ms: exp.ms, ...exp.v },
     warnings: done.warnings,
   };
+  if (persistence) {
+    // Everything stored? Then a fresh API (empty memory, same database) loads it and rebuilds the page rows.
+    const flush = await timed(() => persistence.flush());
+    const sizes = (await persistence.pool.query<{ t: string; rows: string; mb: string }>(
+      `SELECT relname AS t, n_live_tup::text AS rows, round(pg_total_relation_size(relid) / 1048576.0, 1)::text AS mb FROM pg_stat_user_tables WHERE relname LIKE 'sentinel_%' ORDER BY relname`)).rows;
+    const rssBeforeLoad = Math.round(process.memoryUsage().rss / 1048576);
+    const p2 = await (await import('../src/repositories/postgres/persistence')).openPersistence({ url: process.env.DATABASE_URL!, log: (await import('../src/lib/logger')).createLogger('warn') });
+    const load = await timed(() => createContainer({ env, persistence: p2 }));
+    const restore = await timed(() => load.v.services.crawls.pages(SYSTEM_ACTOR, run.id, { limit: 50 }));
+    Object.assign(result, {
+      database: {
+        finalFlushMs: flush.ms, tables: sizes, loadContainerMs: load.ms, restorePageRowsMs: restore.ms, restoredRows: restore.v.total,
+        rssBeforeLoadMB: rssBeforeLoad, rssAfterRestoreMB: Math.round(process.memoryUsage().rss / 1048576), status: persistence.status(),
+      },
+    });
+    await p2.close();
+  }
   const changeStatus = await c.services.changes.status(SYSTEM_ACTOR);
   Object.assign(result, { changeMonitorFirst: { afterCompletedMs: first.afterCompletedMs, summary: changeStatus.runs[0], diskBytes: changeStatus.diskBytes } });
   if (TWICE) {

@@ -23,6 +23,9 @@ export interface Ctx {
   engineInfo?: () => NonNullable<import('@sentinel/shared').CrawlerStatus['engine']>;
   reverifier: Reverifier;
   sessionSecret: string;
+  /** PostgreSQL storage (absent = temporary in-memory storage) and the website this context serves. */
+  persistence?: import('../repositories/postgres/persistence').Persistence;
+  scope?: string;
 }
 
 /** The authenticated caller (or the system for scheduled jobs). */

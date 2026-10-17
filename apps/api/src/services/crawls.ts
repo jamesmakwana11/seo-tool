@@ -4,9 +4,10 @@ import {
   type CrawledUrl, type CrawledUrlIssue, type PageTemplate, type SitePage,
 } from '@sentinel/shared';
 import fsp from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { readNdjsonGz } from '../gocrawl/files';
-import { MemoryResultStore, type CrawlResultStore } from '../results/store';
+import { FileResultStore, MemoryResultStore, type CrawlResultStore } from '../results/store';
 import type { PageTextDoc } from '../repositories/types';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { ApiError } from '../lib/errors';
@@ -100,9 +101,61 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       if (ref?.owned) void fsp.rm(ref.file, { force: true }).catch(() => undefined);
     }
   }
+  // ------------------------------------------------------------------ database (DATABASE_URL)
+  const db = ctx.persistence;
+  const scope = ctx.scope ?? 'site';
+  /**
+   * Saves a finished crawl's page rows and coverage report, so the Pages screen, page reports and exports work after a
+   * restart. Only the page rows of the CRAWLER_KEEP_RESULTS most recent crawls are kept (every crawl keeps its run
+   * record, issues and findings).
+   */
+  async function persistRun(id: string, store: CrawlResultStore | undefined, coverage?: CrawlCoverageReport) {
+    if (!db) return;
+    try {
+      if (store && store.kind === 'file') await db.saveCrawlRows(scope, id, store.iterate());
+      if (coverage) await db.saveFile(scope, `coverage/${id}.json`, Buffer.from(JSON.stringify(coverage)));
+      const keep = ctx.env.CRAWLER_KEEP_RESULTS ?? 3;
+      const withRows = (await r.crawls.list()).filter((c) => c.engine === 'go' && c.status !== 'running' && c.status !== 'queued')
+        .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? '')).slice(0, keep).map((c) => c.id);
+      if (!withRows.includes(id)) withRows.push(id);
+      await db.pruneCrawlRows(scope, withRows);
+      const covs = await db.listFiles(scope, 'coverage/');
+      await db.deleteFiles(scope, covs.filter((f) => !withRows.includes(f.slice('coverage/'.length, -'.json'.length))));
+    } catch (e) {
+      ctx.log.error({ runId: id, err: (e as Error).message }, 'crawl results could not be saved in the database');
+      throw e;
+    }
+  }
+  const restoring = new Map<string, Promise<CrawlResultStore | undefined>>();
+  /** A run's file-backed page rows: in memory, or rebuilt from the database after a restart. */
+  async function savedStore(id: string): Promise<CrawlResultStore | undefined> {
+    const st = stores.get(id);
+    if (st || !db) return st;
+    let p = restoring.get(id);
+    if (!p) {
+      p = (async () => {
+        const run = await r.crawls.get(id);
+        if (!run || !(await db.hasCrawlRows(scope, id))) return undefined;
+        const dir = path.join(ctx.env.CRAWLER_WORK_DIR ?? path.join(os.tmpdir(), 'sentinel-crawls'), 'restored', `${scope}-${id}`.replace(/[^\w.-]/g, '_'));
+        await fsp.rm(dir, { recursive: true, force: true });
+        const fresh = new FileResultStore(dir, auditLimitsFrom((await r.config.get()).thresholds as unknown as Record<string, number>));
+        for await (const row of db.crawlRows<CrawledUrl>(scope, id)) fresh.add(row);
+        fresh.seal();
+        fresh.setIssues(await issuesByUrl(run.startedAt ?? ''), sameUrlKey);
+        let coverage: CrawlCoverageReport | undefined;
+        const raw = await db.readFile(scope, `coverage/${id}.json`);
+        if (raw) { try { coverage = JSON.parse(raw.toString('utf8')) as CrawlCoverageReport; } catch { /* unreadable: no coverage report */ } }
+        await keepStore(id, fresh, coverage);
+        ctx.log.info({ runId: id, rows: fresh.count() }, 'crawl page rows restored from the database');
+        return fresh;
+      })().finally(() => restoring.delete(id));
+      restoring.set(id, p);
+    }
+    return p;
+  }
   /** Rows of a run: its store, else the rows saved with the run (built-in crawler / small runs). */
   async function storeOf(id: string): Promise<CrawlResultStore> {
-    const st = stores.get(id);
+    const st = await savedStore(id);
     if (st) return st;
     return new MemoryResultStore((await r.crawlUrls.get(id))?.urls ?? [], auditLimitsFrom((await r.config.get()).thresholds as unknown as Record<string, number>));
   }
@@ -347,9 +400,11 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
           ...cur, ...out.stats, status: 'cancelled', outcome: 'cancelled', urlCount, finishedAt: iso(), durationMs: Date.now() - started,
           error: `Cancelled${cur.cancelledBy ? ` by ${cur.cancelledBy}` : ''} after ${out.stats.urlsCrawled ?? 0} pages. Results show what was fetched before cancelling; no issues were created or resolved from this partial crawl.`,
         });
+        await persistRun(run.id, out.store, out.coverageReport).catch(() => undefined);
         await recordChanges(run.id, out);
         await out.cleanup?.();
         await audit(ctx, SYSTEM_ACTOR, 'crawl.cancelled', 'crawl', run.id, `${run.type} crawl cancelled after ${out.stats.urlsCrawled ?? 0} pages`);
+        await db?.flush().catch(() => undefined);
         return;
       }
       if (out.failed) {
@@ -357,10 +412,12 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
         await r.crawlUrls.upsert({ id: run.id, urls: await inlineRows() });
         const cur = (await r.crawls.get(run.id))!;
         await r.crawls.update({ ...cur, ...out.stats, status: 'failed', outcome: 'failed', urlCount, finishedAt: iso(), durationMs: Date.now() - started, error: `${out.failed} ${out.stats.urlsCrawled ? `${out.stats.urlsCrawled} pages fetched before the failure are shown; no issues were created or resolved.` : ''}`.trim() });
+        await persistRun(run.id, out.store, out.coverageReport).catch(() => undefined);
         await recordChanges(run.id, out);
         await out.cleanup?.();
         await ctx.integrations.recordSync?.('crawler', { ok: false, error: out.failed });
         await audit(ctx, SYSTEM_ACTOR, 'crawl.failed', 'crawl', run.id, `${run.type} crawl failed: ${out.failed}`);
+        await db?.flush().catch(() => undefined);
         return;
       }
       await r.crawlUrls.upsert({ id: run.id, urls: await inlineRows() });
@@ -383,6 +440,9 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
         for (const u of texts) pageDocs.push(await r.pageTexts.get(u));
         if (anyRule) ruleStats = await rules.applyToPages(pageDocs.filter((x): x is NonNullable<typeof x> => !!x));
       }
+      // Page rows and coverage report in the database (DATABASE_URL) before the run is reported as finished.
+      let saveError: string | undefined;
+      await persistRun(run.id, out.store, out.coverageReport).catch((e: Error) => { saveError = e.message; });
       await out.cleanup?.();
       const cur = (await r.crawls.get(run.id))!;
       const outcome = out.stats.outcome ?? (out.memoryStopped ? 'resource_stopped' : 'completed');
@@ -396,6 +456,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
         newIssues: stats.newIssues, resolvedIssues: stats.resolvedIssues, recurringIssues: stats.recurringIssues,
         scope: [...(out.stats.scope ?? cur.scope), ...(stats.excludedUrls ? [{ label: 'URLs skipped by exclusions', count: stats.excludedUrls }] : []), { label: `Custom rules applied (${ruleStats.rules})`, count: ruleStats.flagged }],
       };
+      if (saveError) final.warnings = [...(final.warnings ?? []), { code: 'database', message: `The page-level results could not be saved in the database (${saveError}); they are available until the server restarts. Issues, findings and the run itself are saved separately.`, at: iso() }];
       await r.crawls.update(final);
       await recordChanges(run.id, out);
       await ctx.integrations.recordSync?.('crawler', { ok: true });
@@ -405,6 +466,8 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
         await r.metrics.set(m);
       }
       await audit(ctx, SYSTEM_ACTOR, 'crawl.complete', 'crawl', run.id, `${run.type} crawl completed: ${final.urlsCrawled} URLs, ${stats.newIssues} new / ${stats.resolvedIssues} resolved / ${stats.recurringIssues} recurring issues`);
+      // Everything this crawl changed (run, issues, findings, page inventory, Health Score inputs) is stored before it ends.
+      await db?.flush().catch((e: Error) => ctx.log.error({ runId: run.id, err: e.message }, 'crawl results are not saved in the database yet (retrying)'));
     } catch (e) {
       const msg = (e as Error).message;
       ctx.log.error({ runId: run.id, err: msg }, 'crawl failed');
@@ -484,7 +547,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     const end = run.finishedAt ? new Date(new Date(run.finishedAt).getTime() + 86400_000).toISOString() : undefined;
     const verification = (await r.verifications.list()).filter((v) => v.method === 'automated_recrawl' && run.startedAt && v.at >= run.startedAt && (!end || v.at <= end));
     const diff = await r.sitemapDiffs.get(id);
-    const store = stores.get(id);
+    const store = await savedStore(id);
     // Large runs: the rows are paged on the server (getCrawlPages); the detail carries only the count.
     // Rows kept in the repository (built-in crawler, DEMO) are all returned, with their audit score and to-do checks.
     const rows = store ? await store.allIfSmall(CRAWL_DETAIL_ROW_LIMIT) : await (await storeOf(id)).allIfSmall(Number.MAX_SAFE_INTEGER);
@@ -496,6 +559,22 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
 
   return {
     start,
+    /**
+     * Start-up with a database: a crawl stored as running / queued was interrupted by a restart (its process is gone).
+     * It is marked failed — nothing from it became findings — so it neither blocks new crawls nor shows "Running" forever.
+     */
+    async recoverInterrupted(): Promise<number> {
+      let n = 0;
+      for (const c of await r.crawls.list()) {
+        if ((c.status !== 'running' && c.status !== 'queued') || running.has(c.id)) continue;
+        await r.crawls.update({
+          ...c, status: 'failed', outcome: 'failed', finishedAt: iso(), phase: undefined,
+          error: 'The server restarted while this crawl was running, so it could not finish. No issues were created or resolved from it; the last completed audit is unchanged. Start the crawl again.',
+        });
+        n++;
+      }
+      return n;
+    },
     /** Image references of a crawl still on this server (Image Audit input). */
     imageRefsOf(id: string) { const r = imageRefs.get(id); return r ? { file: r.file, checkedFile: r.checkedFile } : undefined; },
     /** Finished crawls whose image references are still here, newest first. */
@@ -557,7 +636,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       await need(ctx, actor, 'crawls.view');
       if (format !== 'csv' && format !== 'json') throw badRequest('Export format must be csv or json.');
       const d = await detail(id);
-      const store = stores.get(id);
+      const store = await savedStore(id);
       if (!store || !d.urlsPaged) {
         return format === 'csv'
           ? { filename: crawlExportFilename(d, 'csv'), mimeType: 'text/csv; charset=utf-8', content: crawlResultsCsv(d) }
@@ -605,7 +684,8 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       if (!url) throw badRequest('url is required.');
       let run = id === 'latest' ? undefined : await r.crawls.get(id);
       if (id === 'latest') {
-        const runs = (await r.crawls.list()).filter((c) => (c.status === 'completed' || c.status === 'cancelled') && c.source !== 'simulated' && c.type !== 'reverify')
+        // A cancelled or failed crawl never stands in for the latest valid audit.
+        const runs = (await r.crawls.list()).filter((c) => c.status === 'completed' && c.source !== 'simulated' && c.type !== 'reverify')
           .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
         run = runs[0];
       }
@@ -643,6 +723,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       await need(ctx, actor, 'crawls.view');
       const run = await r.crawls.get(id);
       if (!run) throw notFound(`Crawl ${id}`);
+      if (!coverageReports.has(id)) await savedStore(id);
       const c = coverageReports.get(id);
       if (c) return { ...c, counts: { ...(run.coverage ?? {}) as unknown as Record<string, number>, ...c.counts }, excludedBy: run.coverage?.excludedBy ?? c.excludedBy };
       return {

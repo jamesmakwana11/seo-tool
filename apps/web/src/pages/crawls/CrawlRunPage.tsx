@@ -5,7 +5,7 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { type CrawlDetail, type CrawledUrl, type SitemapDiff } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { DetailError } from '@/components/domain/DetailError';
-import { useApiQuery, useSiteKey } from '@/api/hooks';
+import { useApiQuery, useRefreshWhenCrawlsFinish, useSiteKey } from '@/api/hooks';
 import { Badge, DemoBadge, EmptyState, KV, LoadingBlock, Mono, Notice, PageHeader, Panel, Tabs } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/DataTable';
 import { ChipGroup } from '@/components/ui/filters';
@@ -28,6 +28,8 @@ export default function CrawlRunPage() {
   const cached = qc.getQueryData<CrawlDetail>(siteKey(['crawl', id]));
   const active = cached?.run.status === 'running' || cached?.run.status === 'queued';
   const q = useApiQuery(['crawl', id], () => api.getCrawl(id), { refetchInterval: active ? 2000 : undefined });
+  const st = q.data?.run.status;
+  useRefreshWhenCrawlsFinish(st ? (st === 'running' || st === 'queued' ? [id] : []) : undefined);
 
   if (q.isLoading) return <LoadingBlock rows={10} />;
   if (q.error) return <DetailError error={q.error} what="Crawl run" id={id} back={{ to: '/crawls', label: 'Back to the Crawl Center' }} onRetry={() => q.refetch()} />;

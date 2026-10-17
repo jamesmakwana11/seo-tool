@@ -13,6 +13,15 @@ const schema = z.object({
   /** HMAC secret for session tokens. Required in production; a random per-process secret is generated otherwise. */
   SESSION_SECRET: z.string().min(32).optional(),
   /** 0 (default) = a session lasts until the user signs out; a positive number of hours caps it. */
+  /**
+   * PostgreSQL connection (Render: the database's Internal Database URL). Set = websites, crawls, page results, issues and
+   * settings are kept across restarts; the API refuses to start if the database cannot be reached.
+   */
+  DATABASE_URL: z.string().optional(),
+  /** TLS: auto (none for local / Render-internal hosts, verified otherwise), require, no-verify, disable. */
+  DATABASE_SSL: z.enum(['auto', 'require', 'no-verify', 'disable']).default('auto'),
+  /** How long start-up waits for the database (a sleeping / restarting database). */
+  DATABASE_WAIT_SECONDS: z.coerce.number().int().min(0).max(600).default(60),
   SESSION_TTL_HOURS: z.coerce.number().min(0).default(0),
   /** Load the deterministic DEMO seed into the in-memory repositories on start (development default). */
   SEED_DEMO_DATA: bool(true),
@@ -229,8 +238,8 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
       throw new Error('SEED_DEMO_DATA=true is not allowed in production (the DEMO accounts have publicly known passwords). Remove it or set it to false.');
     }
     env.SEED_DEMO_DATA = false;
-    if (!env.ALLOW_EPHEMERAL_STORAGE) {
-      throw new Error('No persistent database is configured: all data would be lost on every restart. Set ALLOW_EPHEMERAL_STORAGE=true to run anyway (staging/pilot only), or wait for the PostgreSQL integration.');
+    if (!env.DATABASE_URL && !env.ALLOW_EPHEMERAL_STORAGE) {
+      throw new Error('No database is configured: all data would be lost on every restart. Set DATABASE_URL to a PostgreSQL database (see DEPLOYMENT.md), or ALLOW_EPHEMERAL_STORAGE=true to run with temporary storage anyway (staging only).');
     }
     env.ALLOW_DEV_ROLE_PREVIEW = false;
     env.DEV_EXPOSE_RESET_TOKEN = false;

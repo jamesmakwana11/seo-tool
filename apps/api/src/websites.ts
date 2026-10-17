@@ -1,11 +1,14 @@
 /**
- * Multi-website workspaces. Each website gets its own composition root (its own temporary in-memory repositories for issues,
- * Fix Cards, crawls, reports, settings and integration configuration, plus its own crawler pointed at that website).
- * People, credentials, sessions and the permission matrix are shared, so one sign-in works across websites.
+ * Multi-website workspaces. Each website gets its own composition root (its own repositories for issues, Fix Cards,
+ * crawls, reports, settings and integration configuration, plus its own crawler pointed at that website). People,
+ * credentials, sessions and the permission matrix are shared, so one sign-in works across websites.
  *
  * Every request is bound to exactly one website (X-Website-Id header; absent = the primary website) through
- * AsyncLocalStorage, so a handler can never read or write another website's data. Storage is TEMPORARY: websites added
- * here, and all their data, are lost when the API restarts. No database.
+ * AsyncLocalStorage, so a handler can never read or write another website's data.
+ *
+ * Storage: with DATABASE_URL every website (stable id, domain, settings) is a row in sentinel_websites and all its data
+ * is stored under its id; on start-up every saved website is opened again with its data. Without a database, websites
+ * added here are kept in memory only and are lost when the API restarts.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {
@@ -23,36 +26,59 @@ export function createWorkspaces(primary: Container) {
   const containers = new Map<string, Container>([[DEMO_WEBSITE_ID, primary]]);
   const websites: Website[] = [];
   let ready: Promise<void> | undefined;
+  const db = primary.persistence;
 
-  /** The primary website mirrors the server's configured site (DEMO deodap.in, or CRAWLER_BASE_URL on a clean start). */
+  /**
+   * The primary website mirrors the server's configured site (DEMO deodap.in, or CRAWLER_BASE_URL on a clean start).
+   * With a database, every other saved website is opened again with its own stored data.
+   */
   function init() {
     ready ??= (async () => {
+      const saved = db ? await db.listWebsites<Website>() : [];
       const cfg = await primary.repos.config.get();
       const demo = (await primary.repos.issues.list()).some((i) => i.source === 'demo');
       const url = cfg.site.baseUrl.replace(/\/$/, '');
       const at = primary.clock().toISOString();
-      websites.push({
-        id: DEMO_WEBSITE_ID, name: cfg.site.brand, url: `${url}/`, domain: normalizeDomain(url), platform: 'shopify',
-        sitemapUrl: `${url}/sitemap.xml`, createdAt: at, updatedAt: at, createdByName: demo ? 'Sentinel (DEMO seed)' : 'Server configuration', source: demo ? 'demo' : 'live',
-      });
+      const before = saved.find((w) => w.id === DEMO_WEBSITE_ID);
+      const main: Website = {
+        id: DEMO_WEBSITE_ID, name: cfg.site.brand, url: `${url}/`, domain: normalizeDomain(url), platform: before?.platform ?? 'shopify',
+        sitemapUrl: before?.sitemapUrl ?? `${url}/sitemap.xml`, createdAt: before?.createdAt ?? at, updatedAt: before?.updatedAt ?? at,
+        createdByName: demo ? 'Sentinel (DEMO seed)' : before?.createdByName ?? 'Server configuration', source: demo ? 'demo' : 'live',
+      };
+      websites.push(main);
+      if (db) await db.saveWebsite(main);
+      for (const w of saved) {
+        if (w.id === DEMO_WEBSITE_ID || containers.has(w.id)) continue;
+        const c = await openSite(w, false);
+        containers.set(w.id, c);
+        websites.push(w);
+        if (primary.env.SCHEDULER_ENABLED) c.scheduler.start();
+      }
+      if (saved.length) primary.log.info({ websites: websites.length }, 'websites loaded from the database');
     })();
     return ready;
   }
 
-  /** Repositories for a new website: empty site data, shared people/auth/permissions. */
-  function siteRepos(w: Website): Repositories {
+  /** A website's container: its own (stored) data, shared people / sign-in / permissions, its own crawler. */
+  async function openSite(w: Website, isNew: boolean): Promise<Container> {
     const now = primary.clock();
-    const repos = createInMemoryRepositories(now);
+    const repos: Repositories = db ? await db.repositories(w.id, now, { shared: false }) : createInMemoryRepositories(now);
     const p = primary.repos;
     Object.assign(repos, { employees: p.employees, credentials: p.credentials, resetTokens: p.resetTokens, sessions: p.sessions, permissions: p.permissions });
-    const cfg = defaultConfig(now);
-    cfg.site = { ...cfg.site, baseUrl: w.url.replace(/\/$/, ''), canonicalHost: w.domain, brand: w.name };
-    cfg.competitors = [];
-    void repos.config.set(cfg);
-    // Schedules exist but start disabled: nothing is crawled until someone turns a schedule on or starts a crawl.
-    void repos.schedules.insert({ id: 'SCH-smart', type: 'smart', cron: '0 2 * * *', description: 'Daily smart crawl', enabled: false, timezone: 'Asia/Kolkata' });
-    void repos.schedules.insert({ id: 'SCH-full', type: 'full', cron: '0 3 * * 0', description: 'Weekly full crawl', enabled: false, timezone: 'Asia/Kolkata' });
-    return repos;
+    if (isNew) {
+      const cfg = defaultConfig(now);
+      cfg.site = { ...cfg.site, baseUrl: w.url.replace(/\/$/, ''), canonicalHost: w.domain, brand: w.name };
+      cfg.competitors = [];
+      await repos.config.set(cfg);
+      // Schedules exist but start disabled: nothing is crawled until someone turns a schedule on or starts a crawl.
+      await repos.schedules.insert({ id: 'SCH-smart', type: 'smart', cron: '0 2 * * *', description: 'Daily smart crawl', enabled: false, timezone: 'Asia/Kolkata' });
+      await repos.schedules.insert({ id: 'SCH-full', type: 'full', cron: '0 3 * * 0', description: 'Weekly full crawl', enabled: false, timezone: 'Asia/Kolkata' });
+    }
+    return createContainer({
+      env: { ...primary.env, CRAWLER_BASE_URL: w.url.replace(/\/$/, ''), SEED_DEMO_DATA: false },
+      repos, log: primary.log, clock: primary.clock, fetchImpl: primary.fetchImpl, diagnostics: primary.diagnostics,
+      persistence: db, scope: w.id,
+    });
   }
 
   const stopPrimary = primary.scheduler.stop.bind(primary.scheduler);
@@ -61,6 +87,8 @@ export function createWorkspaces(primary: Container) {
   return {
     als,
     primary,
+    /** Resolves when every saved website is loaded (requests wait for it). */
+    ready: init,
     /** The container a request runs against; undefined for an unknown website id. */
     resolve(id: string | undefined): Container | undefined { return id ? containers.get(id) : primary; },
     /** Container for the current request (falls back to the primary website outside a request). */
@@ -92,10 +120,9 @@ export function createWorkspaces(primary: Container) {
       const v = validateWebsiteInput(input, websites);
       const at = primary.clock().toISOString();
       const w: Website = { id: `site-${v.domain.replace(/[^a-z0-9]+/g, '-')}`, ...v, createdAt: at, updatedAt: at, createdByName: actor.name, source: 'manual' };
-      const c = await createContainer({
-        env: { ...primary.env, CRAWLER_BASE_URL: w.url.replace(/\/$/, ''), SEED_DEMO_DATA: false },
-        repos: siteRepos(w), log: primary.log, clock: primary.clock, fetchImpl: primary.fetchImpl, diagnostics: primary.diagnostics,
-      });
+      const c = await openSite(w, true);
+      // Stored before it is listed: its settings first, then the website row — one that could not be stored is not added.
+      if (db) { await db.flush(); await db.saveWebsite(w); }
       containers.set(w.id, c);
       websites.push(w);
       if (primary.env.SCHEDULER_ENABLED) c.scheduler.start();
@@ -113,6 +140,7 @@ export function createWorkspaces(primary: Container) {
       const c = containers.get(id)!;
       if (v.domain !== w.domain) throw badRequest('Changing a website’s domain is not supported — add a new website instead.');
       Object.assign(w, v, { updatedAt: primary.clock().toISOString() });
+      if (db) await db.saveWebsite(w);
       const cfg = await c.repos.config.get();
       await c.repos.config.set({ ...cfg, site: { ...cfg.site, baseUrl: w.url.replace(/\/$/, ''), canonicalHost: w.domain, brand: w.name } });
       await audit(c.ctx, actor, 'website.update', 'config', w.id, `Updated website ${w.name}`);

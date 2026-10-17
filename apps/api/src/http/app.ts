@@ -133,7 +133,11 @@ export function createApp(container: Container) {
     });
   }
 
-  app.get('/api/health', (_req, res) => res.json({ ok: true, storage: container.repos.storage, crawler: container.ctx.engine.readiness() }));
+  app.get('/api/health', (_req, res) => {
+    const db = container.persistence?.status();
+    // No database name, host or error text here (public endpoint): System health shows the details to admins.
+    res.json({ ok: !db || db.connected, storage: { kind: container.repos.storage.kind, persistent: container.repos.storage.persistent, ...(db ? { connected: db.connected, pendingWrites: db.pending } : {}) }, crawler: container.ctx.engine.readiness() });
+  });
 
   const bearer = (req: Request) => {
     const h = req.header('Authorization');
@@ -157,13 +161,18 @@ export function createApp(container: Container) {
     });
   }
 
+  // Every saved website is loaded (from the database) before any API request is served.
+  app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+    ws.ready().then(() => next(), (e: Error) => sendError(res, req, new ApiError(503, 'STARTING', `The websites could not be loaded: ${e.message}`)));
+  });
+
   // Bind the request to one website. Unknown website ids are refused rather than silently served another site's data.
   app.use((req: Request, res: Response, next: NextFunction) => {
     const id = req.header(WEBSITE_HEADER) || undefined;
     const c = ws.resolve(id);
     if (!c) {
       if (/^\/api\/(websites|auth)(\/|$)/.test(req.path)) return ws.als.run(container, () => next());
-      return sendError(res, req, new ApiError(404, 'WEBSITE_NOT_FOUND', 'The selected website does not exist on this server (websites are kept in temporary memory and are lost on restart). Choose another website.'));
+      return sendError(res, req, new ApiError(404, 'WEBSITE_NOT_FOUND', container.persistence ? 'The selected website does not exist on this server. Choose another website.' : 'The selected website does not exist on this server (without a database, websites are kept in temporary memory and are lost on restart). Choose another website.'));
     }
     ws.als.run(c, () => {
       void c.repos.config.get().then((cfg) => { setPriorityConfig(cfg); next(); }, next);
@@ -177,6 +186,7 @@ export function createApp(container: Container) {
     { method: 'post', path: '/api/websites', permission: 'websites.manage', description: 'Add a website (starts empty)', status: 201, handle: (req) => ws.create(req.actor!, (req.body ?? {}) as WebsiteInput) },
     { method: 'patch', path: '/api/websites/:id', permission: 'websites.manage', description: 'Edit a website', handle: (req) => ws.update(req.actor!, String(req.params.id), (req.body ?? {}) as WebsiteInput) },
   );
+  app.locals.ready = ws.ready;
   container.diagnostics.endpoints.push(...routes.map((r) => ({ method: r.method.toUpperCase(), path: r.path, permission: r.permission, description: r.description })));
 
   for (const route of routes) {
@@ -190,6 +200,8 @@ export function createApp(container: Container) {
         }
         const result = await route.handle(req);
         if (route.raw) return; // handler already responded
+        // A change is answered only once it is stored (DATABASE_URL); a database that cannot be written answers 503.
+        if (route.method !== 'get' && container.persistence) await container.persistence.flush();
         res.status(route.status ?? 200).json(result ?? { ok: true });
       } catch (e) {
         sendError(res, req, e);

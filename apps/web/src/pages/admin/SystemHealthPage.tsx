@@ -39,9 +39,17 @@ export default function SystemHealthPage() {
           const comps = [...d.components].sort((a, b) => order.indexOf(a.subsystem) - order.indexOf(b.subsystem));
           return (
             <div className="space-y-5">
-              <Notice tone="demo" icon={<Database className="h-4 w-4" />} title="Storage is not persistent">
-                {d.storage.note} Kind: <Mono>{d.storage.kind.replace('_', ' ')}</Mono>. No database exists yet — it is awaiting explicit authorization (database phase).
-              </Notice>
+              {!d.storage.persistent ? (
+                <Notice tone="demo" icon={<Database className="h-4 w-4" />} title="Storage is not persistent">
+                  {d.storage.note} Kind: <Mono>{d.storage.kind.replace('_', ' ')}</Mono>.
+                </Notice>
+              ) : d.storage.error ? (
+                <Notice tone="crit" icon={<Database className="h-4 w-4" />} title="The database cannot be written">
+                  {d.storage.error}. Changes are kept in memory and retried; they are lost if the server restarts before the database is back.
+                </Notice>
+              ) : (
+                <Notice tone="neutral" icon={<Database className="h-4 w-4" />} title="Stored in PostgreSQL">{d.storage.note}</Notice>
+              )}
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 <Stat label="Operational" value={count('operational')} tone="ok" />
                 <Stat label="Degraded" value={count('degraded')} tone={count('degraded') ? 'med' : undefined} />

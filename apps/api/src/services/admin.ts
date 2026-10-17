@@ -37,6 +37,13 @@ export function validateConfig(next: SentinelConfig) {
 export interface DiagnosticsSource { endpoints: ApiDiagnostics['endpoints']; recent: () => ApiDiagnostics['recent'] }
 
 export function createAdminService(ctx: Ctx, auth: AuthService, diag: DiagnosticsSource, extra: { schedulerRunning: () => boolean }) {
+  /** Storage row of System health: the database's real state, or the warning that storage is temporary. */
+  const storageComponent = (at: string): SystemComponentHealth => {
+    const db = ctx.persistence?.status();
+    if (!db) return { id: 'storage', name: 'Storage', subsystem: 'platform', status: 'degraded', detail: 'TEMPORARY in-memory storage — websites, crawls and issues are lost when the API restarts. Set DATABASE_URL to keep them in PostgreSQL.', lastCheckedAt: at };
+    if (!db.connected) return { id: 'storage', name: 'Storage', subsystem: 'platform', status: 'down', detail: `PostgreSQL (${db.database}) cannot be written: ${db.lastError ?? 'unknown error'} (since ${db.lastErrorAt ?? '?'}). ${db.pending} change(s) are waiting and retried; they are lost if the server restarts before the database is back.`, lastCheckedAt: at };
+    return { id: 'storage', name: 'Storage', subsystem: 'platform', status: 'operational', detail: `PostgreSQL (${db.database}): websites, crawls, page results, issues and settings are kept across restarts.${db.pending ? ` ${db.pending} change(s) being written.` : ''}${db.lastFlushAt ? ` Last write ${db.lastFlushAt}.` : ''}`, lastCheckedAt: at };
+  };
   const r = ctx.repos;
   const iso = () => ctx.clock().toISOString();
 
@@ -185,9 +192,10 @@ export function createAdminService(ctx: Ctx, auth: AuthService, diag: Diagnostic
         { id: 'classifier', name: 'Severity classifier', subsystem: 'D', status: 'operational', detail: 'Shared rules engine (check × page tier), SLA, escalation and template grouping.', lastCheckedAt: at },
         { id: 'recommendations', name: 'Recommendation engine', subsystem: 'E', status: 'operational', detail: `${Object.keys(CHECKS_BY_ID).length} checks with Fix Card playbook. LLM rewrite drafts: ${ctx.llm.isConfigured() ? 'provider configured' : 'no LLM provider configured'}.`, lastCheckedAt: at },
         { id: 'workflow', name: 'Reporting & workflow', subsystem: 'F', status: channels.some((c) => c.configured) ? 'operational' : 'degraded', detail: `Delivery channels configured: ${channels.filter((c) => c.configured).map((c) => c.channel).join(', ') || 'none'}. Scheduler: ${extra.schedulerRunning() ? 'running' : 'off (SCHEDULER_ENABLED=false)'}.`, lastCheckedAt: at },
-        { id: 'storage', name: 'Storage', subsystem: 'platform', status: 'degraded', detail: 'TEMPORARY in-memory repositories — all data is lost when the API restarts. No database (Phase 3 awaits authorization).', lastCheckedAt: at },
+        storageComponent(at),
       ];
-      return { components, errors: [...m.errors].reverse().slice(0, 100), storage: { kind: 'in_memory' as const, persistent: false as const, note: r.storage.note } };
+      const db = ctx.persistence?.status();
+      return { components, errors: [...m.errors].reverse().slice(0, 100), storage: { kind: r.storage.kind, persistent: r.storage.persistent, note: r.storage.note, ...(db?.lastError ? { error: db.lastError } : {}) } };
     },
     async search(actor: Actor, q: string) {
       const [issues, employees, briefs, pages] = await Promise.all([r.issues.list(), r.employees.list(), r.briefs.list(), r.sitePages.list()]);

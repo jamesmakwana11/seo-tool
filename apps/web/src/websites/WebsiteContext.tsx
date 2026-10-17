@@ -27,7 +27,9 @@ export function WebsiteProvider({ children }: { children: ReactNode }) {
   const websiteId = useWebsiteId();
   const nav = useNavigate();
   const { pathname } = useLocation();
-  const q = useQuery({ queryKey: WEBSITES_KEY, queryFn: () => api.listWebsites(), staleTime: 15000 });
+  // Loaded from the server on every page load, again after a website is added (mutations invalidate it), when a crawl
+  // finishes (useRefreshWhenCrawlsFinish), and every minute (scheduled crawls).
+  const q = useQuery({ queryKey: WEBSITES_KEY, queryFn: () => api.listWebsites(), staleTime: 15000, refetchInterval: 60_000 });
   const websites = q.data;
 
   // The remembered selection may point at a website that no longer exists (e.g. in-memory data reset on restart).

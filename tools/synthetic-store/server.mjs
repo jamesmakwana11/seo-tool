@@ -253,7 +253,7 @@ const server = http.createServer((req, res) => {
 });
 server.keepAliveTimeout = 30_000;
 server.listen(PORT, '127.0.0.1', () => {
-  ORIGIN = `http://127.0.0.1:${server.address().port}`;
+  ORIGIN = `http://${arg('host', '127.0.0.1')}:${server.address().port}`; // --host localhost: a second, distinct website on this machine
   const collectionPages = Array.from({ length: COLLECTIONS }, (_, c) => Math.max(1, Math.ceil(Math.ceil((N - c) / COLLECTIONS) / PER_PAGE))).reduce((a, b) => a + b, 0);
   process.stdout.write(`${JSON.stringify({ ready: true, url: `${ORIGIN}/`, products: N, collections: COLLECTIONS, collectionPages, articles: ARTICLES })}\n`);
 });

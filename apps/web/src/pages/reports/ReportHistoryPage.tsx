@@ -27,7 +27,7 @@ export default function ReportHistoryPage() {
       />
       <div className="space-y-5">
         <Notice tone="demo" title="Past snapshots are not stored in DEMO mode">
-          There is no database yet, so earlier reports are not kept as frozen files. Every export below is regenerated from the current data at the moment you click — the filename carries today's date, not the historical period.
+          Earlier reports are not kept as frozen files. Every export below is regenerated from the current data at the moment you click — the filename carries today's date, not the historical period.
         </Notice>
 
         <ExportPanel />
