@@ -18,7 +18,7 @@ const GROUP_LABELS: Record<string, string> = {
 };
 const PERM_HELP: Partial<Record<Permission, string>> = {
   'fixcards.approve_proposal': 'Record approval of a proposed live-site change (never applied by Sentinel)',
-  'issues.allocate': 'One-tap “Fix with …” allocation',
+  'issues.allocate': 'Allocate issues (API and automatic rules) and reopen closed ones',
   'issues.update_status': 'Start work / mark fixed (developers: own team only)',
   'issues.verify': 'Trigger system re-verification of fixed issues',
   'websites.manage': 'Add and edit websites',

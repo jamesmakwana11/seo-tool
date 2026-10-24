@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Download, ExternalLink, Images, Play, Search, Square } from 'lucide-react';
+import { Download, ExternalLink, Images, Play, RotateCw, Search, Square } from 'lucide-react';
 import {
-  IMAGE_ISSUE_LABELS, IMAGE_STATE_LABELS, IMAGE_STATES,
+  IMAGE_ISSUE_LABELS, IMAGE_STATE_LABELS, IMAGE_STATES, imageIssueFix, localizeLocation,
   type ImageAuditItem, type ImageAuditJob, type ImageAuditQuery, type ImageCheckState, type ImageIssueId,
 } from '@sentinel/shared';
 import { api } from '@/api/client';
@@ -15,6 +15,7 @@ import { ClearFilters, FilterSelect } from '@/components/ui/filters';
 import { useToast } from '@/components/ui/Toast';
 import { saveFile } from '@/components/crawls/LiveCrawl';
 import { fmtDateTime, fmtNum, shortUrl } from '@/lib/format';
+import { useSitePlatform } from '@/websites/WebsiteContext';
 
 const PAGE_SIZE = 50;
 const STATE_TONE: Record<ImageCheckState, 'ok' | 'crit' | 'med' | 'neutral'> = { ok: 'ok', broken: 'crit', failed: 'crit', unverified: 'med', deferred: 'med', pending: 'neutral' };
@@ -23,7 +24,7 @@ const STATE_HELP: Record<ImageCheckState, string> = {
   broken: '4xx, or the answer was not an image',
   failed: '5xx, timeout or network error — may be temporary',
   unverified: 'Not requested: robots.txt, rate limited, or a third-party host',
-  deferred: 'Not checked in this job: time budget or cancelled',
+  deferred: 'Not checked yet: the audit was cancelled or stopped — Resume checks these',
   pending: 'Waiting to be checked',
 };
 const ISSUE_ORDER: ImageIssueId[] = ['broken', 'failed', 'alt-missing', 'alt-empty', 'heavy', 'legacy-format', 'oversized', 'no-dimensions', 'not-lazy', 'redirect', 'duplicate', 'repeated', 'unverified'];
@@ -61,10 +62,17 @@ export default function ImageAuditPage() {
       />
       <div className="space-y-5">
         {status.isLoading ? <LoadingBlock rows={3} /> : status.error ? <Notice tone="crit">{errorMessage(status.error)}</Notice> : st && (
-          <Panel title="Start an audit" subtitle={`Up to ${fmtNum(st.limits.maxImages)} unique images per audit, ${st.limits.concurrency} at a time, at most ${st.limits.budgetMinutes} minutes; the first ${st.limits.probeKb} KB of each image are read — never the whole file. robots.txt, rate limits and Retry-After are respected.`}>
+          <Panel title="Start an audit" subtitle={`Up to ${fmtNum(st.limits.maxImages)} unique images per audit, ${st.limits.concurrency} at a time, in rounds of ${st.limits.budgetMinutes < 1 ? `${fmtNum(Math.round(st.limits.budgetMinutes * 60))} seconds` : `${fmtNum(st.limits.budgetMinutes)} minutes`} that continue until every image is answered (at most ${fmtNum(st.limits.maxHours)} hours). The first ${st.limits.probeKb} KB of each image are read — never the whole file. robots.txt, rate limits and Retry-After are respected. It runs on the server: closing this page does not stop it.`}>
             {!st.available && <Notice tone="med">{st.reason}</Notice>}
             {st.available && !st.runs.length && (
               <EmptyState icon={<Images className="h-8 w-8" />} title="No crawl to audit yet" description="Run a Smart or Full crawl first. Its image references are kept with its results (temporary storage)." action={<Link className="text-sm font-medium text-signal hover:underline" to="/crawls">Open the Crawl Center</Link>} />
+            )}
+            {st.available && (
+              <p className="mb-3 text-xs text-muted" data-testid="image-audit-storage">
+                {st.storage === 'database'
+                  ? 'Progress is stored in the database every few seconds: an audit running during a server restart continues afterwards, without requesting the images already answered.'
+                  : 'Progress is kept in server memory only (no database): Resume works until the server restarts; a restart loses the audit.'}
+              </p>
             )}
             {st.available && !!st.runs.length && (
               <div className="flex flex-wrap items-end gap-3">
@@ -99,21 +107,43 @@ function JobView({ id }: { id: string }) {
   const job = useApiQuery(['imageAudits', 'job', id], () => api.getImageAudit(id), { refetchInterval: 1000 });
   const j = job.data;
   const runningNow = j?.status === 'running';
-  const cancel = useApiMutation(() => api.cancelImageAudit(id), { success: 'Image Audit cancelled — images not checked are listed as deferred', invalidate: [['imageAudits']] });
+  const cancel = useApiMutation(() => api.cancelImageAudit(id), { success: 'Image Audit cancelled — images not checked are listed as deferred; Resume continues with them', invalidate: [['imageAudits']] });
+  const resume = useApiMutation(() => api.resumeImageAudit(id), { success: (r) => `Image Audit ${r.id} resumed: only the images not answered yet are checked`, invalidate: [['imageAudits']] });
   if (job.isLoading) return <LoadingBlock rows={4} />;
   if (job.error) return <Notice tone="crit">{errorMessage(job.error)}</Notice>;
   if (!j) return null;
   const c = j.counts;
-  const pct = c.total ? Math.round(((c.total - c.pending) / c.total) * 100) : 100;
+  // Progress = images with a final answer. 100 % only when nothing is pending or deferred (deferred = not checked yet).
+  const finished = c.finished ?? c.total - c.pending - c.deferred;
+  const left = c.pending + c.deferred;
+  const pct = !c.total ? 100 : left ? Math.min(99, Math.floor((finished / c.total) * 100)) : 100;
   return (
     <>
       <Panel
         title={`${j.id} · crawl ${j.runId}`}
         subtitle={`Started ${fmtDateTime(j.startedAt)} by ${j.startedBy}${j.finishedAt ? ` · finished ${fmtDateTime(j.finishedAt)}` : ''}`}
-        actions={runningNow && can('crawls.run') ? <Button size="sm" variant="secondary" icon={<Square className="h-3.5 w-3.5" />} loading={cancel.isPending} onClick={() => cancel.mutate()}>Cancel audit</Button> : <JobStatus job={j} />}
+        actions={runningNow && can('crawls.run')
+          ? <Button size="sm" variant="secondary" icon={<Square className="h-3.5 w-3.5" />} loading={cancel.isPending} onClick={() => cancel.mutate()}>Cancel audit</Button>
+          : (
+            <span className="flex items-center gap-2">
+              <JobStatus job={j} />
+              {j.resumable && can('crawls.run') && <Button size="sm" variant="primary" icon={<RotateCw className="h-3.5 w-3.5" />} loading={resume.isPending} onClick={() => resume.mutate()}>Resume ({fmtNum(left)} left)</Button>}
+            </span>
+          )}
       >
         <div className="space-y-3">
-          <ProgressBar value={pct} tone={j.status === 'failed' ? 'crit' : j.status === 'cancelled' || j.status === 'partial' ? 'med' : 'signal'} label="Images processed" />
+          <ProgressBar value={pct} tone={j.status === 'failed' ? 'crit' : j.status === 'cancelled' || j.status === 'partial' ? 'med' : 'signal'} label="Images with a final answer" />
+          <p className="text-sm font-medium text-ink" data-testid="image-audit-progress">
+            {fmtNum(finished)} of {fmtNum(c.total)} images answered ({pct}%){left ? ` · ${fmtNum(c.pending)} pending · ${fmtNum(c.deferred)} deferred` : ' · every image is answered'}
+            {j.rounds ? ` · ${fmtNum(j.rounds)} checking round${j.rounds === 1 ? '' : 's'}` : ''}{j.resumes ? ` · resumed ${fmtNum(j.resumes)}×` : ''}
+          </p>
+          {j.waiting && <p className="text-sm text-med-ink">{j.waiting}</p>}
+          {j.checkpoint && (
+            <p className="text-xs text-muted">
+              Progress stored {fmtDateTime(j.checkpoint.at)} ({fmtNum(j.checkpoint.finished)} answers){j.checkpoint.storage === 'database' ? ' in the database — kept across server restarts' : ' in server memory — lost on a server restart'}.
+              {runningNow ? ' The audit runs on the server: closing this page does not stop it.' : ''}
+            </p>
+          )}
           <p className="text-sm text-ink-soft">
             {fmtNum(j.images)} unique images from {fmtNum(j.references)} references on {fmtNum(j.pages)} pages
             {j.inlineImages ? ` · ${fmtNum(j.inlineImages)} inline (data:) images not counted` : ''}
@@ -132,7 +162,7 @@ function JobView({ id }: { id: string }) {
 
 function JobStatus({ job }: { job: ImageAuditJob }) {
   const tone = job.status === 'completed' ? 'ok' : job.status === 'failed' ? 'crit' : job.status === 'running' ? 'signal' : 'med';
-  return <Badge tone={tone}>{job.status === 'partial' ? 'Partly done (time budget)' : job.status[0].toUpperCase() + job.status.slice(1)}</Badge>;
+  return <Badge tone={tone}>{job.status === 'partial' ? 'Partly done — resume to finish' : job.status[0].toUpperCase() + job.status.slice(1)}</Badge>;
 }
 
 function ImageList({ id, job }: { id: string; job: ImageAuditJob }) {
@@ -220,6 +250,28 @@ function ImageList({ id, job }: { id: string; job: ImageAuditJob }) {
   );
 }
 
+/** Where each problem is fixed, how long it takes and how to verify it (for the selected website's platform). */
+function ImageFixes({ issues }: { issues: ImageIssueId[] }) {
+  const platform = useSitePlatform();
+  const rows = issues.map((id) => ({ id, f: imageIssueFix(id) })).filter((x) => x.f);
+  if (!rows.length) return null;
+  return (
+    <section data-testid="image-fixes">
+      <h3 className="mb-1 text-sm font-semibold">Where to fix it and how long it takes</h3>
+      <ul className="space-y-2">
+        {rows.map(({ id, f }) => (
+          <li key={id} className="rounded-ctl border border-line px-3 py-2 text-xs">
+            <p className="text-sm font-medium text-ink">{IMAGE_ISSUE_LABELS[id]} <span className="ml-1 font-normal tabular-nums text-muted">· {f!.time.label}</span></p>
+            <p className="text-muted">{f!.time.basis}</p>
+            <p className="mt-0.5"><span className="text-muted">Where: </span>{f!.where.map((w) => localizeLocation(w, platform)).map((w, k) => <span key={k}>{k ? ' · ' : ''}<span className="font-medium text-ink">{w.label}</span>{w.path ? <span className="text-ink-soft"> — {w.path}</span> : null}</span>)}</p>
+            <p className="mt-0.5"><span className="text-muted">Verify: </span><span className="text-ink-soft">{f!.verify}</span></p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function Row({ k, children }: { k: string; children: React.ReactNode }) {
   return <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-3 border-b border-line py-1.5 text-sm last:border-0"><dt className="text-muted">{k}</dt><dd className="min-w-0 break-words">{children}</dd></div>;
 }
@@ -259,6 +311,7 @@ function ImageDrawer({ item: i, runId, onClose }: { item: ImageAuditItem | null;
               <ul className="list-disc space-y-1 pl-5 text-sm text-ink-soft">{i.recommendations.map((r) => <li key={r}>{r}</li>)}</ul>
             </section>
           )}
+          <ImageFixes issues={i.issues} />
           <section>
             <h3 className="mb-1 text-sm font-semibold">Pages showing it{i.pageCount > i.pages.length ? ` (first ${i.pages.length} of ${fmtNum(i.pageCount)})` : ''}</h3>
             <ul className="space-y-0.5">{i.pages.map((p) => <li key={p}><Link className="break-all font-mono text-xs text-signal hover:underline" to={`/pages/report?run=${encodeURIComponent(runId)}&url=${encodeURIComponent(p)}`}>{shortUrl(p)}</Link></li>)}</ul>

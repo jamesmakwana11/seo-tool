@@ -42,6 +42,7 @@ const P = {
   Exclusions: L(() => import('@/pages/issues/ExclusionsPage')),
   Websites: L(() => import('@/pages/websites/WebsitesPage')),
   WebsitesOverview: L(() => import('@/pages/websites/WebsitesOverviewPage')),
+  BatchCrawl: L(() => import('@/pages/websites/BatchCrawlPage')),
   Allocations: L(() => import('@/pages/team/AllocationHistoryPage')),
   Employees: L(() => import('@/pages/team/EmployeesPage')),
   Roles: L(() => import('@/pages/team/RolesPage')),
@@ -147,6 +148,7 @@ export function AppRoutes() {
 
         <Route path="websites" element={g(P.Websites, 'dashboard.view')} />
         <Route path="websites/overview" element={g(P.WebsitesOverview, 'dashboard.view')} />
+        <Route path="websites/batch" element={g(P.BatchCrawl, 'crawls.view')} />
 
         <Route path="team/employees" element={g(P.Employees, 'employees.view')} />
         <Route path="team/roles" element={g(P.Roles, 'roles.manage')} />
@@ -189,7 +191,7 @@ export const SMOKE_PATHS = [
   '/', '/health', '/search?q=schema', '/notifications', '/profile', '/modules/technical', '/modules/technical/crawlability', '/modules/technical/responses',
   '/modules/technical/canonicals', '/modules/technical/security', '/modules/technical/structured-data', '/modules/performance', '/modules/content', '/modules/onpage',
   '/modules/offpage', '/modules/offpage/backlinks', '/modules/aeo', '/modules/geo', '/modules/ai-compliance', '/modules/ai-visibility', '/crawls', '/crawls/compare', '/verification', '/pages', '/images',
-  '/issues', '/issues/groups', '/issues/exclusions', '/websites', '/websites/overview', '/team/employees', '/team/roles',
+  '/issues', '/issues/groups', '/issues/exclusions', '/websites', '/websites/overview', '/websites/batch', '/team/employees', '/team/roles',
   '/team/allocations', '/opportunities', '/opportunities/keywords', '/opportunities/gaps', '/opportunities/briefs', '/opportunities/clusters', '/opportunities/seasonal',
   '/opportunities/link-building', '/opportunities/mentions', '/competitors', '/reports/daily', '/reports/weekly', '/reports/monthly', '/reports/history',
   '/ai-compliance/rules', '/settings/notifications', '/settings/integrations', '/settings/shopify', '/seo-editor', '/settings/thresholds', '/settings/crawl', '/audit', '/system', '/diagnostics',

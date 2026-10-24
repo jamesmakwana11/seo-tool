@@ -110,7 +110,7 @@ export function createInMemoryRepositories(now = new Date(), f: RepositoryFactor
     storage: f.storage,
     employees: r('employees'), credentials: r('credentials'), resetTokens: r('resetTokens'), sessions: r('sessions'),
     issues: r('issues'), groups: r('groups'), exclusions: r('exclusions'), tasks: r('tasks'), verifications: r('verifications'),
-    crawls: r('crawls'), crawlUrls: r('crawlUrls'), sitemapDiffs: r('sitemapDiffs'), schedules: r('schedules'), snapshots: r('snapshots'), crawlStates: r('crawlStates'),
+    crawls: r('crawls'), crawlUrls: r('crawlUrls'), crawlBatches: r('crawlBatches'), sitemapDiffs: r('sitemapDiffs'), schedules: r('schedules'), snapshots: r('snapshots'), crawlStates: r('crawlStates'),
     sitePages: r('sitePages'), pageTexts: r('pageTexts'), notifications: r('notifications'), deliveries: r('deliveries'), audit: r('audit'),
     rules: r('rules'), aiFlags: r('aiFlags'), briefs: r('briefs'), keywordGaps: r('keywordGaps'), opportunities: r('opportunities'),
     mentions: r('mentions'), prospects: r('prospects'), disavow: r('disavow'), integrationSettings: r('integrationSettings'),

@@ -28,6 +28,7 @@ export const NAV: NavSection[] = [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, perm: 'dashboard.view', end: true },
       { to: '/websites/overview', label: 'All websites', icon: Globe, perm: 'dashboard.view' },
       { to: '/websites', label: 'Manage websites', icon: FolderCog, perm: 'dashboard.view', end: true },
+      { to: '/websites/batch', label: 'Crawl several websites', icon: Layers, perm: 'crawls.view' },
     ],
   },
   {

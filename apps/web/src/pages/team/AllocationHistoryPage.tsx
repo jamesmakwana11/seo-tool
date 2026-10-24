@@ -82,7 +82,7 @@ export default function AllocationHistoryPage() {
                 rowKey={(r) => r.id}
                 columns={columns}
                 initialSort={{ key: 'at', dir: 'desc' }}
-                empty={<EmptyState title={rows.length ? 'No allocations match these filters' : 'No allocations yet'} description={rows.length ? 'Clear the filters to see everything.' : 'Allocate an issue from the Issues board with “Fix with …”.'} />}
+                empty={<EmptyState title={rows.length ? 'No allocations match these filters' : 'No allocations yet'} description={rows.length ? 'Clear the filters to see everything.' : 'Allocations appear here when issues are allocated (automatically for unallocated Criticals, or through the API).'} />}
               />
             </div>
           );

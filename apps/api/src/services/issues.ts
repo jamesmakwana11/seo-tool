@@ -1,8 +1,5 @@
 import {
-  CHECKS_BY_ID, TEAMS, canTransition, classifySeverity, compareSeverity, filterIssues, generateFixCard, isIssueOpen,
-  proposeTemplateGroups, slaDueAt,
-  type AlertType, type Evidence, type Exclusion, type Issue, type IssueDetail, type IssueFilter, type PageTemplate, type PageTier,
-  type SentinelConfig, type Severity, type TeamId,
+  CHECKS_BY_ID, TEAMS, canTransition, classifySeverity, compareSeverity, filterIssues, generateFixCard, isIssueOpen, proposeTemplateGroups, slaDueAt, type AlertType, type Evidence, type Exclusion, type Issue, type IssueDetail, type IssueFilter, type PageTemplate, type PageTier, type SentinelConfig, type Severity, type TeamId, issueFixSummary,
 } from '@sentinel/shared';
 import { ApiError, badRequest, conflict, notFound } from '../lib/errors';
 import { audit, need, notify, seoLead, teamLead, SYSTEM_ACTOR, type Actor, type Ctx } from './context';
@@ -138,7 +135,7 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
     await audit(ctx, actor, prev ? 'issue.reallocate' : 'issue.allocate', 'issue', i.id, `${prev ? `Reallocated ${TEAMS[prev].name} → ` : 'Allocated → '}${TEAMS[team].name}${automatic ? ' (automatic)' : ''}${reason ? `: ${reason}` : ''}`);
   }
 
-  /** "Fix with [Team]" (PDF §11.1a): allocation + task creation/reassignment in one step. */
+  /** Allocation + task creation / reassignment in one step (API and the automatic rule for unallocated Criticals). */
   async function allocateWithTask(actor: Actor, i: Issue, team: TeamId, reason?: string, bulkGroupId?: string, automatic = false) {
     if (!TEAMS[team]) throw badRequest('Choose a team.');
     if (CLOSED_FOR_ALLOCATION.includes(i.status)) throw conflict(`Issue ${i.id} is ${i.status} and cannot be allocated.`);
@@ -206,8 +203,8 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
     const delivered = ext.length
       ? await ctx.delivery.deliver('realtime_alert', ext, {
         subject: `[Critical] ${rule.label}: ${issue.title}`,
-        text: `${issue.summary}\nAffected: ${issue.affectedCount} URL(s), highest Tier ${issue.highestTier}. SLA: ${issue.slaDueAt}.\nAllocate in one tap from the Fix Card.`,
-        links: (['seo', 'content', 'development'] as TeamId[]).map((t) => ({ label: `Fix with ${TEAMS[t].name}`, url: `/issues/${issue.id}?allocate=${t}` })),
+        text: `${issue.summary}\nAffected: ${issue.affectedCount} URL(s), highest Tier ${issue.highestTier}. SLA: ${issue.slaDueAt}.\nThe Fix Card has the steps, where to fix it and the time it takes.`,
+        links: [{ label: 'Open the Fix Card', url: `/issues/${issue.id}` }],
       }, { issueId: issue.id })
       : [];
     const m = await r.metrics.get();
@@ -450,7 +447,10 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
 
     async list(actor: Actor, f: IssueFilter) {
       await need(ctx, actor, 'issues.view');
-      return filterIssues(await r.issues.list(), f, ctx.clock());
+      const page = filterIssues(await r.issues.list(), f, ctx.clock());
+      // Each listed issue says how long the fix takes, where it is made and the first step (from its Fix Card).
+      const cfg = await r.config.get();
+      return { ...page, items: page.items.map((i) => ({ ...i, fix: issueFixSummary(i, cfg) })) };
     },
     async get(actor: Actor, id: string) {
       await need(ctx, actor, 'issues.view');

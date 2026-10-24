@@ -25,6 +25,13 @@ const schema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().min(0).default(0),
   /** Load the deterministic DEMO seed into the in-memory repositories on start (development default). */
   SEED_DEMO_DATA: bool(true),
+  /**
+   * Websites that must always be in the website list: created at start-up when missing (never changed or removed once
+   * they exist; with DATABASE_URL they are stored like any added website). Comma- or newline-separated entries
+   * "Name|https://url/|platform" (name and platform optional; platform shopify, woocommerce, magento, bigcommerce,
+   * wordpress or custom). "none" = no seeding. In production the default is DEFAULT_SEED_WEBSITES.
+   */
+  SEED_WEBSITES: z.string().optional(),
   /** DEVELOPMENT ONLY: allow /auth/preview role switching with mock users. Refused when NODE_ENV=production. */
   ALLOW_DEV_ROLE_PREVIEW: bool(true),
   /** DEVELOPMENT ONLY: return the password-reset token in the API response when no email adapter is configured. */
@@ -87,7 +94,17 @@ const schema = z.object({
   /** Largest sitemap file read, after decompression (MB). The sitemaps.org limit is 50 MB. */
   CRAWLER_MAX_SITEMAP_MB: z.coerce.number().int().min(1).max(200).default(50),
   /** Crawls that may run at the same time across all websites on this server. */
-  CRAWLER_MAX_CONCURRENT_JOBS: z.coerce.number().int().min(1).max(10).default(2),
+  /**
+   * Crawls that RUN at the same time across all websites. More can be started (up to MAX_BATCH_WEBSITES in one batch,
+   * one per website): the rest wait in a queue and start in order as slots and memory free up.
+   */
+  CRAWLER_MAX_CONCURRENT_JOBS: z.coerce.number().int().min(1).max(11).default(3),
+  /**
+   * Memory one more crawl needs before it may start next to running ones (MB, measured: see docs/BATCH_CRAWLS.md). A queued
+   * crawl waits while API + running crawlers + this would exceed the memory budget (CRAWLER_MEMORY_BUDGET_MB, else 85 %
+   * of the container limit).
+   */
+  CRAWLER_JOB_RESERVE_MB: z.coerce.number().int().min(16).max(4096).default(90),
   /**
    * With a database: a crawl that a server restart / redeploy interrupted is started again automatically, with the same
    * settings, when the server is back (from the beginning — page-level checkpoints are not kept). false = mark it failed.
@@ -132,7 +149,23 @@ const schema = z.object({
   CRAWLER_CHECKS_BUDGET_MINUTES: z.coerce.number().min(0.5).max(240).optional(),
   /** Image Audit (started by a user, never by a crawl): unique images checked per job, time budget, images at once. */
   IMAGE_AUDIT_MAX_IMAGES: z.coerce.number().int().min(10).max(200_000).default(50_000),
-  IMAGE_AUDIT_BUDGET_MINUTES: z.coerce.number().min(0.1).max(240).default(30),
+  /**
+   * Length of one checking round of an Image Audit (minutes). When a round ends, the images not answered yet are checked
+   * in the next round automatically — the audit continues until every image is answered (or IMAGE_AUDIT_MAX_HOURS).
+   */
+  IMAGE_AUDIT_BUDGET_MINUTES: z.coerce.number().min(0.05).max(240).default(10),
+  /** Longest an Image Audit keeps going in total; then it stops as "partly done" and can be resumed. */
+  IMAGE_AUDIT_MAX_HOURS: z.coerce.number().min(0.01).max(168).default(12),
+  /** Rounds an image answered "rate limited" (429 / 503 after the retries) is tried again before it stays unverified. */
+  IMAGE_AUDIT_RATE_LIMIT_ROUNDS: z.coerce.number().int().min(1).max(10).default(3),
+  /** Pause before trying rate-limited images again (seconds); a longer Retry-After is honoured up to 15 minutes. */
+  IMAGE_AUDIT_RATE_LIMIT_PAUSE_SECONDS: z.coerce.number().min(0).max(900).default(60),
+  /** How often a running Image Audit stores its progress (checkpoint), in seconds. */
+  IMAGE_AUDIT_CHECKPOINT_SECONDS: z.coerce.number().min(1).max(600).default(10),
+  /** A new audit takes over available / broken answers of audits of this website from the last N hours (0 = only the same crawl). */
+  IMAGE_AUDIT_REUSE_HOURS: z.coerce.number().min(0).max(720).default(24),
+  /** Image Audits running at the same time on this server (all websites); further ones wait. */
+  IMAGE_AUDIT_MAX_CONCURRENT: z.coerce.number().int().min(1).max(11).default(2),
   IMAGE_AUDIT_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(4),
   /** Pages a smart crawl may fetch (its priority budget). */
   /** Pages a Smart Crawl fetches (highest priority first). At most SMART_CRAWL_PAGE_BUDGET (1,000). */
@@ -238,6 +271,9 @@ export const CRAWLER_BASE_URL_MISSING =
   '(for example CRAWLER_BASE_URL=https://deodap.in) in the API server environment — apps/api/.env when running locally, ' +
   'or the service\'s Environment settings on Render — and restart the API. Start URLs must be on that website.';
 
+/** The DeoDap group's websites, always available in the website selector in production (see SEED_WEBSITES). */
+export const DEFAULT_SEED_WEBSITES = 'DeoDap|https://deodap.in/|shopify,Grabnix|https://grabnix.in/|shopify,Oblivion|https://oblivion.co.in/|shopify,Natation|https://natation.in/|shopify';
+
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
   const clean = Object.fromEntries(Object.entries(source).filter(([, v]) => v !== undefined && v !== ''));
   const parsed = schema.safeParse(clean);
@@ -254,6 +290,7 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
       throw new Error('SEED_DEMO_DATA=true is not allowed in production (the DEMO accounts have publicly known passwords). Remove it or set it to false.');
     }
     env.SEED_DEMO_DATA = false;
+    env.SEED_WEBSITES ??= DEFAULT_SEED_WEBSITES;
     if (!env.DATABASE_URL && !env.ALLOW_EPHEMERAL_STORAGE) {
       throw new Error('No database is configured: all data would be lost on every restart. Set DATABASE_URL to a PostgreSQL database (see DEPLOYMENT.md), or ALLOW_EPHEMERAL_STORAGE=true to run with temporary storage anyway (staging only).');
     }

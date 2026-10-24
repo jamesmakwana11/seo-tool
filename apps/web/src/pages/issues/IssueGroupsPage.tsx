@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Layers } from 'lucide-react';
 import { CHECKS_BY_ID, MODULE_LABELS, type Issue, type IssueGroup, type PageTemplate } from '@sentinel/shared';
 import { api } from '@/api/client';
-import { useApiQuery, useSiteKey } from '@/api/hooks';
+import { useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
 import { Async, Badge, DemoBadge, EmptyState, LoadingBlock, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
-import { AllocationButtons } from '@/components/domain/allocation';
 import { IssueStatusBadge, SeverityBadge, SlaCountdown, SourceBadge, TeamBadge, TierBadge } from '@/components/domain/badges';
 import { fmtDateTime, fmtNum } from '@/lib/format';
 
@@ -32,7 +30,6 @@ export default function IssueGroupsPage() {
           <ul className="list-disc space-y-0.5 pl-5">
             <li>Three or more related <strong>Medium</strong> issues on one template (for example every product page missing offers schema) are grouped into <strong>one Critical template-level issue</strong>, because template bugs multiply across every page that uses them.</li>
             <li>One template fix supersedes the page-level cards, so the team works one issue instead of hundreds. Child issues are marked Superseded and close when the parent is verified.</li>
-            <li>Allocating the parent allocates every child page in one tap — the allocation trail records it as a bulk allocation.</li>
           </ul>
         </Notice>
         <Async q={q} rows={6} empty={(d) => d.length === 0 && <Panel><EmptyState icon={<Layers className="h-7 w-7" />} title="No template-level issues" description="Groups appear automatically when three or more related Medium issues land on the same template." /></Panel>}>
@@ -54,7 +51,7 @@ function Body({ groups }: { groups: GroupRow[] }) {
         <Stat label="Template-level issues" value={groups.length} hint={`${open.length} open`} />
         <Stat label="Page-level issues superseded" value={children} hint="Replaced by one fix each" />
         <Stat label="Pages covered" value={fmtNum(pages)} />
-        <Stat label="Open and unallocated" value={unallocated} tone={unallocated ? 'crit' : 'ok'} hint="One tap allocates every child" />
+        <Stat label="Open and unallocated" value={unallocated} tone={unallocated ? 'crit' : 'ok'} />
       </div>
       {groups.map((g) => <GroupCard key={g.id} g={g} />)}
     </div>
@@ -64,8 +61,6 @@ function Body({ groups }: { groups: GroupRow[] }) {
 function GroupCard({ g }: { g: GroupRow }) {
   const { parent } = g;
   const [expanded, setExpanded] = useState(false);
-  const qc = useQueryClient();
-  const siteKey = useSiteKey();
   const check = CHECKS_BY_ID[g.checkId];
   const done = ['VERIFIED', 'CLOSED', 'NOT_AN_ISSUE', 'SUPERSEDED', 'FIXED'].includes(parent.status);
   return (
@@ -91,10 +86,6 @@ function GroupCard({ g }: { g: GroupRow }) {
           <div><dt className="text-xs text-muted">Allocated</dt><dd><TeamBadge team={parent.allocatedTeam} /></dd></div>
           <div className="sm:col-span-3"><dt className="text-xs text-muted">Why grouped</dt><dd className="text-ink-soft">{g.reason}</dd></div>
         </dl>
-        <div className="rounded-ctl border border-line bg-canvas/60 p-3">
-          <p className="mb-1.5 text-xs text-muted">Allocate the template fix — includes all {g.issueIds.length} child pages in one tap</p>
-          <AllocationButtons issue={parent} onDone={() => void qc.invalidateQueries({ queryKey: siteKey(['groups']) })} />
-        </div>
       </div>
       <div className="border-t border-line">
         <button type="button" className="flex w-full items-center gap-1.5 px-4 py-2.5 text-left text-sm font-medium text-ink hover:bg-raised" aria-expanded={expanded} onClick={() => setExpanded((e) => !e)}>

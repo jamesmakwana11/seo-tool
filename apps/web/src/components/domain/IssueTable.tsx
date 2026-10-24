@@ -28,6 +28,15 @@ export function issueColumns(opts: { showModule?: boolean; showAllocator?: boole
     { key: 'tier', header: 'Tier', width: '56px', cell: (i) => <TierBadge tier={i.highestTier} />, sort: (a, b) => b.highestTier - a.highestTier },
     { key: 'urls', header: 'URLs', width: '64px', className: 'tabular-nums', cell: (i) => fmtNum(i.affectedCount), sort: (a, b) => a.affectedCount - b.affectedCount },
     { key: 'delta', header: 'Change', hideOnMobile: true, cell: (i) => <DeltaBadge delta={i.delta} /> },
+    {
+      key: 'fix', header: 'Fix time & where', cell: (i) => i.fix ? (
+        <div className="min-w-[150px]" title={`First step: ${i.fix.firstStep}\nEstimate: ${i.fix.time.basis}`}>
+          <span className="whitespace-nowrap text-sm font-medium tabular-nums text-ink" data-testid="issue-fix-time">{i.fix.time.label}</span>
+          <div className="mt-0.5 text-xs text-muted">{[...new Set(i.fix.where.filter((w) => w.kind !== 'seo-tool').map((w) => w.label))].slice(0, 2).join(' · ') || 'SEO Sentinel'}</div>
+        </div>
+      ) : <span className="text-xs text-faint">—</span>,
+      sort: (a, b) => (a.fix?.time.maxMinutes ?? 0) - (b.fix?.time.maxMinutes ?? 0),
+    },
     { key: 'status', header: 'Status', cell: (i) => <IssueStatusBadge status={i.status} /> },
     {
       key: 'team', header: 'Allocated', hideOnMobile: true, cell: (i) => (

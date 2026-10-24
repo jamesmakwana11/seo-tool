@@ -84,8 +84,8 @@ function Report({ row: u, audit, limits, runId, crawledAt, duplicates }: { row: 
             </div>
             {audit.notAudited && <p className="mt-3 text-sm text-muted">{audit.notAudited}</p>}
           </Panel>
-          <Panel title="Audit" subtitle="Each element of the page, what the crawler found and what to change.">
-            <AuditChecks audit={audit} />
+          <Panel title="Audit" subtitle="Each element of the page, what the crawler found, what to change, where, how long it takes and how to verify it.">
+            <AuditChecks audit={audit} template={u.template} />
           </Panel>
           <Panel title={`Issues on this page (${u.issues?.length ?? 0})`} subtitle="Tracked issues of this crawl that reference this URL.">
             {u.issues?.length ? <ul className="space-y-2">{u.issues.map((i) => <IssueItem key={i.id} i={i} />)}</ul> : <p className="text-sm text-muted">No tracked issue references this URL.</p>}

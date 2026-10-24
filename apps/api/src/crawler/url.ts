@@ -53,7 +53,8 @@ export function isSameSite(url: string, siteHost: string): boolean {
 export function isLocalHost(url: string): boolean {
   try {
     const h = new URL(url).hostname.toLowerCase();
-    return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]' || h.endsWith('.localhost');
+    // 127.0.0.0/8 is all loopback (local test sites on 127.0.0.2, 127.0.0.3 …).
+    return h === 'localhost' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h) || h === '::1' || h === '[::1]' || h.endsWith('.localhost');
   } catch {
     return false;
   }

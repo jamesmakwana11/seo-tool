@@ -1,4 +1,5 @@
 import type { FixStep, TeamId } from '../types';
+import { loc, type FixLocation } from '../fixGuide';
 
 /**
  * DeoDap-specific remediation playbook (PDF §11 step 3). Steps reference the actual
@@ -26,6 +27,11 @@ export interface Playbook {
   ownerReason?: string;
   requiresHumanApproval: boolean;
   processRecommendationAfter?: { occurrences: number; text: string };
+  /** Where the change is made (otherwise derived from the steps' admin paths, file names and the issue's template). */
+  where?: FixLocation[];
+  /** Work repeated per affected page / link / image: minutes each (the time estimate scales with the count). */
+  perUrlMinutes?: [number, number];
+  perUrlItem?: string;
 }
 
 const s = (order: number, text: string, extra: Partial<FixStep> = {}): FixStep => ({ order, text, ...extra });
@@ -237,7 +243,7 @@ export const PLAYBOOKS: Playbook[] = [
     whyItMatters: 'Collection pages with no description give Google nothing to rank; <150 words of unique content is the PDF threshold.',
     steps: [
       s(1, 'Write a unique 200–400 word collection description: short intro above the grid + expandable copy below (see outline in Drafts).', { adminPath: 'Products → Collections → {collection} → Description' }),
-      s(2, 'Include the collection keyword, buyer-relevant attributes, No-MOQ/wholesale USP, and 2–3 FAQs.'),
+      s(2, 'Include the collection keyword, buyer-relevant attributes, {{usps}}, and 2–3 FAQs.'),
     ],
     effortHours: 1.5, impact: 'medium', impactScore: 3,
     verifyBy: 'Re-crawl: ≥150 words of unique content on each listed URL.', acceptance: ['≥150 unique words', 'Collection keyword in first 100 words'],
@@ -345,7 +351,7 @@ export const PLAYBOOKS: Playbook[] = [
     id: 'PB-SCHEMA-PRESENCE', checkId: 'TECH-SCHEMA-PRESENCE', title: 'Missing structured data on a template',
     whyItMatters: 'Product (offers/price/availability/rating), BreadcrumbList and ItemList schema drive rich results and AI-surface understanding.',
     steps: [
-      s(1, 'Add/complete JSON-LD in the template\'s schema snippet (e.g. snippets/product-schema.liquid — verify the file name in your theme).', { code: { language: 'liquid', snippet: '<script type="application/ld+json">\n{\n  "@context": "https://schema.org",\n  "@type": "Product",\n  "name": {{ product.title | json }},\n  "image": {{ product.featured_image | image_url: width: 1200 | prepend: "https:" | json }},\n  "sku": {{ product.selected_or_first_available_variant.sku | json }},\n  "brand": { "@type": "Brand", "name": "DeoDap" },\n  "offers": {\n    "@type": "Offer",\n    "priceCurrency": {{ cart.currency.iso_code | json }},\n    "price": {{ product.selected_or_first_available_variant.price | divided_by: 100.0 | json }},\n    "availability": "https://schema.org/{% if product.available %}InStock{% else %}OutOfStock{% endif %}",\n    "url": {{ request.origin | append: product.url | json }}\n  }\n}\n</script>' } }),
+      s(1, 'Add/complete JSON-LD in the template\'s schema snippet (e.g. snippets/product-schema.liquid — verify the file name in your theme).', { code: { language: 'liquid', snippet: '<script type="application/ld+json">\n{\n  "@context": "https://schema.org",\n  "@type": "Product",\n  "name": {{ product.title | json }},\n  "image": {{ product.featured_image | image_url: width: 1200 | prepend: "https:" | json }},\n  "sku": {{ product.selected_or_first_available_variant.sku | json }},\n  "brand": { "@type": "Brand", "name": "{{brand}}" },\n  "offers": {\n    "@type": "Offer",\n    "priceCurrency": {{ cart.currency.iso_code | json }},\n    "price": {{ product.selected_or_first_available_variant.price | divided_by: 100.0 | json }},\n    "availability": "https://schema.org/{% if product.available %}InStock{% else %}OutOfStock{% endif %}",\n    "url": {{ request.origin | append: product.url | json }}\n  }\n}\n</script>' } }),
       s(2, 'Validate with Google Rich Results Test on 3 sample URLs.'),
     ],
     effortHours: 2, impact: 'medium', impactScore: 4,
@@ -384,7 +390,7 @@ export const PLAYBOOKS: Playbook[] = [
   {
     id: 'PB-CONT-QUALITY', checkId: 'CONT-QUALITY', title: 'Low content-quality score',
     whyItMatters: 'Tier 1–2 pages scoring <50 underperform top-10 competitors on depth, uniqueness and media.',
-    steps: [s(1, 'Use the score breakdown to target the weakest components (depth vs. SERP average, uniqueness, media).'), s(2, 'Expand with buyer-relevant specifics: use cases, specifications, wholesale pack sizes, real photos/video.', { adminPath: 'Products → {product} → Description' })],
+    steps: [s(1, 'Use the score breakdown to target the weakest components (depth vs. SERP average, uniqueness, media).'), s(2, 'Expand with buyer-relevant specifics: use cases, specifications, pack sizes, real photos/video.', { adminPath: 'Products → {product} → Description' })],
     effortHours: 2, impact: 'medium', impactScore: 3,
     verifyBy: 'Next content audit scores the page ≥50.', acceptance: ['Content quality score ≥50'],
     owner: 'content', requiresHumanApproval: false,
@@ -431,8 +437,8 @@ export const PLAYBOOKS: Playbook[] = [
   },
   {
     id: 'PB-PLAGIARISM', checkId: 'CONT-PLAGIARISM', title: 'Supplier copy duplicated on competitor sites',
-    whyItMatters: 'When the same supplier description appears on competitors, DeoDap is not the canonical source and may be filtered.',
-    steps: [s(1, 'Rewrite the description in DeoDap\'s own words with wholesale-specific details (pack size, MOQ, use cases).')],
+    whyItMatters: 'When the same supplier description appears on competitors, {{brand}} is not the canonical source and may be filtered.',
+    steps: [s(1, 'Rewrite the description in {{brand}}\'s own words with specific details (pack size, materials, use cases, what is in the box).')],
     effortHours: 1, impact: 'medium', impactScore: 3,
     verifyBy: 'Duplicate scan finds no verbatim matches >50 words.', acceptance: ['No verbatim external duplicate passages'],
     owner: 'content', requiresHumanApproval: false,
@@ -450,10 +456,10 @@ export const PLAYBOOKS: Playbook[] = [
   },
   {
     id: 'PB-META', checkId: 'ONP-META', title: 'Meta description defects',
-    whyItMatters: "Meta descriptions are DeoDap's CTR lever: No MOQ, wholesale price, COD and fast shipping should appear.",
+    whyItMatters: "Meta descriptions are the click-through lever in search results: {{usps}} should appear.",
     steps: [s(1, 'Choose a drafted meta description (70–160 chars, with CTA/USP).', { adminPath: 'Products → {product} → Search engine listing → Description' })],
     effortHours: 0.25, impact: 'medium', impactScore: 3,
-    verifyBy: 'Re-crawl: description present, unique, 70–160 chars, contains a USP.', acceptance: ['70–160 characters', 'Unique', 'Contains a DeoDap USP/CTA'],
+    verifyBy: 'Re-crawl: description present, unique, 70–160 chars, contains a USP.', acceptance: ['70–160 characters', 'Unique', 'Contains a {{brand}} selling point / call to action'],
     owner: 'content', requiresHumanApproval: true,
   },
   {
@@ -481,10 +487,10 @@ export const PLAYBOOKS: Playbook[] = [
   },
   {
     id: 'PB-IMG-SEO', checkId: 'ONP-IMAGES', title: 'Image ALT / filename problems',
-    whyItMatters: 'ALT text drives image search and accessibility; DeoDap pattern is "{product} – {key attribute} – DeoDap".',
-    steps: [s(1, 'Set ALT text using the pattern {product} – {key attribute} – DeoDap.', { adminPath: 'Products → {product} → Media → Add alt text' }), s(2, 'Rename IMG_1234.jpg-style files before upload on Tier 1 products.')],
+    whyItMatters: 'ALT text drives image search and accessibility; use the pattern "{product} – {key attribute} – {{brand}}".',
+    steps: [s(1, 'Set ALT text using the pattern {product} – {key attribute} – {{brand}}.', { adminPath: 'Products → {product} → Media → Add alt text' }), s(2, 'Rename IMG_1234.jpg-style files before upload on Tier 1 products.')],
     effortHours: 1, impact: 'low', impactScore: 2,
-    verifyBy: 'Re-crawl: ALT present, non-empty, not stuffed, matching the pattern.', acceptance: ['ALT text present on all product images', 'Follows DeoDap ALT pattern'],
+    verifyBy: 'Re-crawl: ALT present, non-empty, not stuffed, matching the pattern.', acceptance: ['ALT text present on all product images', 'Follows the {{brand}} ALT pattern'],
     owner: 'content', requiresHumanApproval: false,
   },
   {
@@ -503,7 +509,7 @@ export const PLAYBOOKS: Playbook[] = [
   },
   {
     id: 'PB-TPL-COLLECTION', checkId: 'ONP-TPL-COLLECTION', title: 'Collection template audit failure',
-    whyItMatters: 'Collections are DeoDap\'s main ranking surface; description, canonical handling, FAQ and ItemList all matter.',
+    whyItMatters: 'Collections are {{brand}}\'s main ranking surface; description, canonical handling, FAQ and ItemList all matter.',
     steps: [s(1, 'Fix failed items listed in Evidence. Description: 200–400 words, top intro + expandable bottom copy.', { adminPath: 'Products → Collections → {collection}' }), s(2, 'Add a FAQ block section and ItemList schema in the collection template.')],
     effortHours: 2, impact: 'medium', impactScore: 3, verifyBy: 'Re-crawl: collection checklist items pass.', acceptance: ['All collection checklist items pass'],
     owner: 'content', requiresHumanApproval: false,
@@ -580,14 +586,14 @@ export const PLAYBOOKS: Playbook[] = [
   },
   {
     id: 'PB-ENTITY', checkId: 'AEO-ENTITY', title: 'Organization entity incomplete',
-    whyItMatters: 'Complete Organization schema (sameAs, logo, founder, address) and consistent descriptions help knowledge graphs and AI engines identify DeoDap.',
+    whyItMatters: 'Complete Organization schema (sameAs, logo, founder, address) and consistent descriptions help knowledge graphs and AI engines identify {{brand}}.',
     steps: [s(1, 'Complete Organization JSON-LD in theme.liquid with sameAs links to verified social profiles, logo, address (use only verified facts).')],
     effortHours: 1, impact: 'medium', impactScore: 3, verifyBy: 'Re-crawl: Organization schema includes sameAs, logo, address.', acceptance: ['sameAs, logo, address present'],
     owner: 'seo', requiresHumanApproval: true,
   },
   {
     id: 'PB-AI-CRAWLERS', checkId: 'AEO-AI-CRAWLERS', title: 'AI crawler blocked',
-    whyItMatters: 'If GPTBot/PerplexityBot/Google-Extended are blocked unintentionally, DeoDap cannot be cited in AI answers.',
+    whyItMatters: 'If GPTBot/PerplexityBot/Google-Extended are blocked unintentionally, {{brand}} cannot be cited in AI answers.',
     steps: [s(1, 'Confirm the policy decision in Settings → AI crawler policy. If unintentional, remove the Disallow in robots.txt.liquid or the firewall/bot-app rule.')],
     effortHours: 0.5, impact: 'high', impactScore: 4, verifyBy: 'Next crawl: robots.txt allows each AI crawler per configured policy.', acceptance: ['AI crawler access matches the documented policy'],
     owner: 'development', requiresHumanApproval: true,
@@ -595,7 +601,7 @@ export const PLAYBOOKS: Playbook[] = [
   {
     id: 'PB-AI-VIS', checkId: 'AEO-AI-VISIBILITY', title: 'Lost AI-engine mentions',
     whyItMatters: 'Losing mentions on buyer-intent prompts means competitors are being recommended instead.',
-    steps: [s(1, 'Review prompts where DeoDap dropped out and which competitor replaced it.'), s(2, 'Create citation-worthy content for those topics (briefs attached).')],
+    steps: [s(1, 'Review prompts where {{brand}} dropped out and which competitor replaced it.'), s(2, 'Create citation-worthy content for those topics (briefs attached).')],
     effortHours: 4, impact: 'medium', impactScore: 3, verifyBy: 'Next weekly AI-visibility panel shows mention regained.', acceptance: ['Mention rate on the prompt set restored'],
     owner: 'seo', requiresHumanApproval: false,
   },
@@ -666,7 +672,7 @@ export const PLAYBOOKS: Playbook[] = [
   {
     id: 'PB-AIC-04', checkId: 'AIC-04', title: 'Fails people-first value test',
     whyItMatters: 'Content that only summarizes other pages fails Google\'s helpful-content self-assessment.',
-    steps: [s(1, 'Add original information: DeoDap pricing data, pack-size guidance, buyer FAQs from support tickets.')],
+    steps: [s(1, 'Add original information: {{brand}} pricing data, pack-size guidance, buyer FAQs from support tickets.')],
     effortHours: 3, impact: 'medium', impactScore: 3, verifyBy: 'LLM re-evaluation passes (requires configured LLM provider).', acceptance: ['Page passes people-first evaluation'],
     owner: 'content', requiresHumanApproval: false,
   },
@@ -707,8 +713,8 @@ export const PLAYBOOKS: Playbook[] = [
   },
   {
     id: 'PB-AIC-10', checkId: 'AIC-10', title: 'Cross-site duplication',
-    whyItMatters: 'Content identical to supplier feeds or marketplaces means DeoDap is not the original source.',
-    steps: [s(1, 'Rewrite with DeoDap-specific details; do not copy supplier/marketplace text.')],
+    whyItMatters: 'Content identical to supplier feeds or marketplaces means {{brand}} is not the original source.',
+    steps: [s(1, 'Rewrite with {{brand}}-specific details; do not copy supplier/marketplace text.')],
     effortHours: 1, impact: 'medium', impactScore: 3, verifyBy: 'Duplicate scan finds no verbatim match.', acceptance: ['No verbatim cross-site duplicate'],
     owner: 'content', requiresHumanApproval: false,
   },
@@ -726,6 +732,172 @@ export const PLAYBOOKS: Playbook[] = [
     effortHours: 0.25, impact: 'low', impactScore: 1, verifyBy: 'Re-scan: no artifacts.', acceptance: ['No AI artifacts in published copy'],
     owner: 'content', requiresHumanApproval: false,
   },
+  // ---- checks that had no playbook of their own (they used to get generic steps)
+  {
+    id: 'PB-STRIKING', checkId: 'ONP-STRIKING', title: 'Striking-distance queries (positions 5–20)',
+    whyItMatters: 'Queries already ranking 5–20 with impressions are the cheapest traffic to win: a better title, an extra section or two internal links often moves them onto page one.',
+    steps: [
+      s(1, 'Open the query list in Evidence (or Google Search Console → Performance → Search results, filter Position 5–20, sort by Impressions) and note the ranking URL for each query.'),
+      s(2, 'Put the exact query near the start of that page\'s SEO title and in the meta description.', { adminPath: 'Products / Collections / Pages → {item} → Search engine listing → Edit' }),
+      s(3, 'Answer the query on the page: add a short section or FAQ that uses the query wording (product/collection description editor).', { adminPath: 'Products / Collections → {item} → Description' }),
+      s(4, 'Add 2–3 internal links to the page with the query as anchor text from related collections or blog posts.'),
+      s(5, 'Request indexing for the page in Search Console → URL Inspection.'),
+    ],
+    effortHours: 0.75, impact: 'medium', impactScore: 3, perUrlMinutes: [20, 40], perUrlItem: 'page',
+    where: [loc('search-console', 'Performance → Search results → filter Position 5–20'), loc('shopify-admin', 'Products / Collections / Pages → {item} → Search engine listing'), loc('content', 'The page description / body')],
+    verifyBy: 'Two to four weeks after the change, Search Console shows the query\'s average position for that page improved (Sentinel compares the next GSC sync).',
+    acceptance: ['Query appears in the SEO title or H1', 'Page answers the query in its body', 'At least 2 internal links point to the page'],
+    owner: 'seo', ownerReason: 'Keyword targeting is SEO work; Content writes the added section.', requiresHumanApproval: false,
+  },
+  {
+    id: 'PB-EXTRACT', checkId: 'AEO-EXTRACTABILITY', title: 'Low extractability (hard for AI engines to quote)',
+    whyItMatters: 'AI answers and featured snippets quote pages with a one-sentence definition, numbered steps, comparison or spec tables. Pages without them are rarely cited.',
+    steps: [
+      s(1, 'Open the page from Affected URLs and check which formats it lacks (Evidence lists definition sentence, steps, tables).'),
+      s(2, 'Add a 40–60 word definition/answer paragraph directly under the H1 that answers "What is {product/collection}?".', { adminPath: 'Products / Collections → {item} → Description' }),
+      s(3, 'Add a specification table (size, material, pack quantity, use) using the rich-text editor\'s table, or a metafield shown by the theme.', { adminPath: 'Settings → Custom data → Products → add metafields; Online Store → Themes → Customize → product template' }),
+      s(4, 'For how-to content add numbered steps (an ordered list), not a paragraph.'),
+    ],
+    effortHours: 0.5, impact: 'medium', impactScore: 3, perUrlMinutes: [15, 30], perUrlItem: 'page',
+    where: [loc('shopify-admin', 'Products / Collections → {item} → Description'), loc('theme-code', 'Online Store → Themes → Customize → product / collection template (spec table block)')],
+    verifyBy: 'Re-crawl: the page has a definition paragraph and at least one list or table; extractability score rises above the threshold.',
+    acceptance: ['Definition sentence under the H1', 'At least one table or numbered list', 'Extractability score at or above threshold'],
+    owner: 'content', requiresHumanApproval: false,
+  },
+  {
+    id: 'PB-PAA', checkId: 'AEO-PAA', title: '"People Also Ask" questions not answered',
+    whyItMatters: 'Each unanswered PAA question is a query buyers ask and a chance to appear in the PAA box and AI answers.',
+    steps: [
+      s(1, 'Take the questions listed in Evidence and group them by the collection or product they belong to.'),
+      s(2, 'Add each question as an FAQ (question as H3, 40–80 word answer) on the best-matching collection/product page or in a buying guide.', { adminPath: 'Products / Collections → {item} → Description, or Online Store → Blog posts → Add blog post' }),
+      s(3, 'Mark the FAQs up with FAQPage JSON-LD in the theme FAQ section (only questions visible on the page).', { adminPath: 'Online Store → Themes → Edit code → sections/ (FAQ section)' }),
+    ],
+    effortHours: 1, impact: 'medium', impactScore: 3, perUrlMinutes: [10, 20], perUrlItem: 'question',
+    where: [loc('content', 'Collection / product description or a blog post'), loc('theme-code', 'FAQ section with FAQPage JSON-LD')],
+    verifyBy: 'Re-crawl finds each question and its answer on the target page; the next PAA scan no longer lists them as gaps.',
+    acceptance: ['Every listed question answered on one page', 'FAQ markup matches visible text'],
+    owner: 'content', requiresHumanApproval: false,
+  },
+  {
+    id: 'PB-SNIPPET', checkId: 'AEO-SNIPPET', title: 'Featured-snippet opportunity',
+    whyItMatters: 'When the site ranks 2–10 and Google shows a snippet, matching the snippet\'s format (paragraph, list or table) is the quickest way to take position zero.',
+    steps: [
+      s(1, 'For each query in Evidence, note the snippet type Google shows (paragraph / list / table) and the ranking page.'),
+      s(2, 'Add a block in that format right after the first heading: a 40–50 word answer, a 5–8 item list, or a table.', { adminPath: 'Products / Collections / Blog posts → {item} → content editor' }),
+      s(3, 'Use the query wording in the heading above the block.'),
+    ],
+    effortHours: 0.5, impact: 'medium', impactScore: 3, perUrlMinutes: [15, 30], perUrlItem: 'query',
+    where: [loc('content', 'The ranking page\'s content (first section)'), loc('search-console', 'Performance → the query → Pages')],
+    verifyBy: 'Re-crawl confirms the formatted block; Search Console shows position improvement for the query within 2–4 weeks.',
+    acceptance: ['Block in the snippet\'s format under a heading with the query wording'],
+    owner: 'content', requiresHumanApproval: false,
+  },
+  {
+    id: 'PB-QA-GATE', checkId: 'CONT-QA-GATE', title: 'New page failed the publishing checklist',
+    whyItMatters: 'A new product, collection or post that goes live with a missing title, description, ALT text or schema starts its history with errors that take weeks to wash out.',
+    steps: [
+      s(1, 'Open the failed checklist items in Evidence for the new page.'),
+      s(2, 'Fix each item on the page itself: SEO title and meta description, H1, image ALT text, description length.', { adminPath: 'Products / Collections / Blog posts → {item} → Search engine listing / Media / Description' }),
+      s(3, 'Run the page report again in Sentinel (All pages → the URL → Re-check) or wait for the next crawl.'),
+      s(4, 'Add the missed item to the publishing SOP so the next new page passes first time.'),
+    ],
+    effortHours: 0.5, impact: 'medium', impactScore: 3, perUrlMinutes: [10, 20], perUrlItem: 'page',
+    where: [loc('shopify-admin', 'Products / Collections / Blog posts → {item}'), loc('seo-tool', 'All pages → page report')],
+    verifyBy: 'The next crawl\'s page report shows every checklist item passing for the new page.',
+    acceptance: ['All on-page checklist items pass on the new page'],
+    owner: 'content', requiresHumanApproval: false,
+  },
+  {
+    id: 'PB-CITATION', checkId: 'GEO-CITATION', title: 'Nothing citation-worthy on the topic',
+    whyItMatters: 'AI engines cite original data — price benchmarks, measured comparisons, buying guides with unique numbers. Without it, competitors are cited instead.',
+    steps: [
+      s(1, 'Pick one topic from Evidence and collect data only this business has: order volumes by category, price ranges, pack sizes, return reasons (anonymised).'),
+      s(2, 'Publish a buying guide or report with that data in tables, a dated "last updated" line and the method used.', { adminPath: 'Online Store → Blog posts → Add blog post' }),
+      s(3, 'Link to it from the related collections and submit it in Search Console → URL Inspection.'),
+    ],
+    effortHours: 6, impact: 'medium', impactScore: 3,
+    where: [loc('content', 'New blog post / buying guide'), loc('shopify-admin', 'Online Store → Blog posts')],
+    verifyBy: 'Re-crawl finds the guide with original data tables and internal links from the related collections.',
+    acceptance: ['Published page with original data', 'Linked from at least 2 collections', 'Dated and states its method'],
+    owner: 'content', requiresHumanApproval: true,
+  },
+  {
+    id: 'PB-BRAND-MENTION', checkId: 'OFF-BRAND-MENTION', title: 'Unlinked brand mention',
+    whyItMatters: 'A site that already mentions the brand is the easiest link to earn: asking for the link turns an existing mention into authority.',
+    steps: [
+      s(1, 'Open the mentioning page (Evidence) and confirm the mention is about this brand and the page is indexable.'),
+      s(2, 'Find the editor or site contact and send a short note asking to link the brand name to the most relevant page (homepage or the product mentioned).'),
+      s(3, 'Log the outreach in the Fix Card comments with the date; follow up once after 7 days.'),
+    ],
+    effortHours: 0.25, impact: 'low', impactScore: 2, perUrlMinutes: [10, 20], perUrlItem: 'mention',
+    where: [loc('outreach', 'Email to the publishing site'), loc('seo-tool', 'Opportunities → Mentions')],
+    verifyBy: 'The next backlink sync shows a link from the mentioning page.', acceptance: ['Outreach sent and logged', 'Link present or outcome recorded'],
+    owner: 'seo', requiresHumanApproval: false,
+  },
+  {
+    id: 'PB-DIGITAL-PR', checkId: 'OFF-DIGITAL-PR', title: 'Digital PR opportunity',
+    whyItMatters: 'Seasonal and trending topics (festivals, gifting, kitchen trends) earn news and blog links when backed by data published ahead of time.',
+    steps: [
+      s(1, 'Pick the topic and date window from Evidence (festivals are flagged 60 days ahead).'),
+      s(2, 'Publish a data-led page (top sellers, price trends, gift guide with real order data) at least 4 weeks before the date.', { adminPath: 'Online Store → Blog posts → Add blog post' }),
+      s(3, 'Pitch it to 10–20 relevant journalists / bloggers with one headline number and the link.'),
+    ],
+    effortHours: 8, impact: 'medium', impactScore: 3,
+    where: [loc('content', 'New data-led blog post'), loc('outreach', 'Journalists and bloggers in the niche')],
+    verifyBy: 'Backlink sync shows new referring domains to the PR page within 6 weeks.', acceptance: ['Page published ≥4 weeks before the date', 'Pitches sent and logged'],
+    owner: 'seo', requiresHumanApproval: true,
+  },
+  {
+    id: 'PB-DISAVOW', checkId: 'OFF-DISAVOW', title: 'Disavow candidates need a decision',
+    whyItMatters: 'Google ignores most spam links on its own; disavowing good links by mistake hurts. Only clear manipulative patterns tied to a manual action or a ranking drop belong in the file.',
+    steps: [
+      s(1, 'Review each candidate domain in Evidence: open it, check whether it is a spam network, hacked site or paid-link page.'),
+      s(2, 'Approve only clear cases in Sentinel (Off-page → Disavow list); reject the rest with a reason.'),
+      s(3, 'Export the approved list as a disavow file (domain:example.com lines) and upload it in the Disavow links tool for the verified property.'),
+    ],
+    effortHours: 1, impact: 'low', impactScore: 2, perUrlMinutes: [3, 6], perUrlItem: 'domain',
+    where: [loc('seo-tool', 'Off-page → Disavow list'), loc('search-console', 'Disavow links tool (search.google.com/search-console/disavow-links)')],
+    verifyBy: 'Disavow file uploaded with only approved domains; decision recorded per domain in the audit log.', acceptance: ['Every candidate approved or rejected with a reason', 'Uploaded file matches approved list'],
+    owner: 'seo', requiresHumanApproval: true,
+  },
+  {
+    id: 'PB-LINK-GAP', checkId: 'OFF-GAP', title: 'Competitor backlink gap',
+    whyItMatters: 'Sites that link to two or more competitors already cover the niche — they are the most likely to link here too.',
+    steps: [
+      s(1, 'Sort the gap domains in Evidence by authority × relevance and take the top 10.'),
+      s(2, 'For each, find the page linking to competitors and the angle (resource list, review, supplier directory).'),
+      s(3, 'Send a tailored pitch offering the most relevant page (collection, buying guide or bulk-order page); log it in comments.'),
+    ],
+    effortHours: 2, impact: 'medium', impactScore: 3, perUrlMinutes: [15, 30], perUrlItem: 'domain',
+    where: [loc('seo-tool', 'Opportunities → Link building'), loc('outreach', 'Email to the linking sites')],
+    verifyBy: 'Backlink sync shows new referring domains from the gap list.', acceptance: ['Top 10 domains contacted and logged'],
+    owner: 'seo', requiresHumanApproval: false,
+  },
+  {
+    id: 'PB-REFDOMAINS', checkId: 'OFF-REFDOMAINS', title: 'Referring domains falling behind competitors',
+    whyItMatters: 'A falling or flat referring-domain trend while competitors grow usually shows up as slipping rankings a few weeks later.',
+    steps: [
+      s(1, 'Check lost links in the backlink report (Evidence lists lost domains) and recover any caused by removed pages with 301s.', { adminPath: 'Online Store → Navigation → URL Redirects' }),
+      s(2, 'Work the competitor gap and brand-mention lists for this month (see those issues).'),
+      s(3, 'Plan one linkable asset per month (guide, data page) to lift the trend.'),
+    ],
+    effortHours: 2, impact: 'medium', impactScore: 3,
+    where: [loc('seo-tool', 'Off-page → Backlinks'), loc('shopify-admin', 'Online Store → Navigation → URL Redirects')],
+    verifyBy: 'The 30-day referring-domain trend is flat or rising relative to competitors on the next weekly sync.', acceptance: ['Lost links from removed pages redirected', 'Outreach plan for the month logged'],
+    owner: 'seo', requiresHumanApproval: false,
+  },
 ];
+
+/** Playbooks whose work is repeated for each affected page / link / image (minutes each). */
+const PER_ITEM: Record<string, [number, number, string]> = {
+  'PB-TITLE': [5, 10, 'page'], 'PB-META': [5, 10, 'page'], 'PB-H1': [5, 10, 'page'], 'PB-HEADINGS': [5, 15, 'page'], 'PB-IMG-SEO': [2, 5, 'image'],
+  'PB-DUPLICATE': [5, 15, 'page'], 'PB-THIN': [20, 45, 'page'], 'PB-PLAGIARISM': [20, 40, 'page'], 'PB-CONT-QUALITY': [20, 45, 'page'], 'PB-FRESHNESS': [15, 30, 'page'],
+  'PB-4XX': [2, 5, 'URL'], 'PB-DISCONTINUED': [2, 5, 'URL'], 'PB-REDIRECTS': [2, 5, 'redirect'], 'PB-BROKEN-INTERNAL': [3, 8, 'link'], 'PB-BROKEN-OUTBOUND': [3, 8, 'link'],
+  'PB-ANSWER-BLOCK': [10, 20, 'page'], 'PB-FAQ': [15, 30, 'page'], 'PB-LOW-CTR': [10, 20, 'page'], 'PB-AIC-12': [5, 10, 'page'], 'PB-AIC-09': [10, 20, 'page'], 'PB-AIC-02': [15, 30, 'page'],
+};
+for (const p of PLAYBOOKS) {
+  const e = PER_ITEM[p.id];
+  if (e && !p.perUrlMinutes) { p.perUrlMinutes = [e[0], e[1]]; p.perUrlItem = e[2]; }
+}
 
 export const PLAYBOOK_BY_CHECK: Record<string, Playbook> = Object.fromEntries(PLAYBOOKS.map((p) => [p.checkId, p]));

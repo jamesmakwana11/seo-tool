@@ -17,6 +17,7 @@ import type { CrawlPlan, EngineRunResult } from './ports';
 import type { RuleService } from './rules';
 import { heapLimitMb } from '../crawler/memory';
 import type { ChangeService } from '../changes/service';
+import { acquireSlot, dropWaiters, queueInfo, releaseSlot, slotStats } from '../jobs/crawlSlots';
 
 export function templateOfPath(path: string): PageTemplate {
   if (path === '/' || path === '') return 'home';
@@ -49,18 +50,16 @@ export function validCron(expr: string): boolean {
  * stores URL results + sitemap diff + the observation snapshot, and feeds findings to the issue service.
  * The engine refuses to run unless CRAWLER_BASE_URL is set and CRAWLER_ALLOW_LIVE=true (loopback hosts excepted).
  */
-/** Live crawls running on this server across ALL websites (each website has its own crawl service). */
-let activeJobs = 0;
-/** Crawls restarted after a server restart that wait for a free slot (CRAWLER_MAX_CONCURRENT_JOBS). */
-let waitingJobs = 0;
+// Crawls of ALL websites share one server: how many run at once (and in which order the others wait) is decided by
+// jobs/crawlSlots.ts — the configured limit plus the memory actually in use.
 /**
  * The server is shutting down (SIGTERM: redeploy, restart, idle stop). A crawl cut off by the shutdown is NOT finalised
  * as failed: it stays "running" in the database and is started again when the server is back (resumeInterrupted).
  */
 let shuttingDown = false;
-export function suspendCrawlsForShutdown() { shuttingDown = true; }
+export function suspendCrawlsForShutdown() { shuttingDown = true; dropWaiters(); }
 /** Crawls running or waiting to run on this server (all websites). */
-export const busyCrawlJobs = () => activeJobs + waitingJobs;
+export const busyCrawlJobs = () => { const st = slotStats(); return st.running + st.waiting; };
 const isActive = (c: Pick<CrawlRun, 'status'>) => c.status === 'running' || c.status === 'queued';
 /** 409 for a second start while a crawl of this website runs; carries the running crawl so the web app can show it. */
 const alreadyRunning = (run?: CrawlRun) => new ApiError(409, 'CRAWL_ALREADY_RUNNING', run
@@ -129,6 +128,15 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     try {
       if (store && store.kind === 'file') await db.saveCrawlRows(scope, id, store.iterate());
       if (coverage) await db.saveFile(scope, `coverage/${id}.json`, Buffer.from(JSON.stringify(coverage)));
+      // Image references (input of an Image Audit, written from the HTML already fetched), so an audit can be started
+      // after a restart too. The crawl's own image link answers are kept with them.
+      const refs = imageRefs.get(id);
+      if (refs) {
+        const raw = await fsp.readFile(refs.file).catch(() => undefined);
+        if (raw) await db.saveFile(scope, `images/${id}.ndjson.gz`, raw);
+        const checked = refs.checkedFile ? await fsp.readFile(refs.checkedFile).catch(() => undefined) : undefined;
+        if (checked) await db.saveFile(scope, `images/${id}.checked.json`, checked);
+      }
       const keep = ctx.env.CRAWLER_KEEP_RESULTS ?? 3;
       const withRows = (await r.crawls.list()).filter((c) => c.engine === 'go' && c.status !== 'running' && c.status !== 'queued')
         .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? '')).slice(0, keep).map((c) => c.id);
@@ -136,6 +144,8 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       await db.pruneCrawlRows(scope, withRows);
       const covs = await db.listFiles(scope, 'coverage/');
       await db.deleteFiles(scope, covs.filter((f) => !withRows.includes(f.slice('coverage/'.length, -'.json'.length))));
+      const imgs = await db.listFiles(scope, 'images/');
+      await db.deleteFiles(scope, imgs.filter((f) => !withRows.includes(f.slice('images/'.length).replace(/\.(ndjson\.gz|checked\.json)$/, ''))));
     } catch (e) {
       ctx.log.error({ runId: id, err: (e as Error).message }, 'crawl results could not be saved in the database');
       throw e;
@@ -527,28 +537,24 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
   /**
    * Runs a crawl as a server-side background job. Its lifetime belongs to the server: it is never tied to the HTTP
    * request that started it, to a browser tab or to anyone watching — only an explicit cancel (POST /cancel), the
-   * crawl finishing or the server stopping ends it. `waitForSlot`: a restarted crawl waits for a free slot.
+   * crawl finishing or the server stopping ends it. It is queued first and starts when the server has a free slot
+   * and the memory for it (jobs/crawlSlots.ts); crawls of other websites queue the same way, in order.
    */
-  function launch(run: CrawlRun, plan: CrawlPlan, waitForSlot = false) {
+  const slotKey = (id: string) => `${scope}:${id}`;
+  function launch(run: CrawlRun, plan: CrawlPlan) {
     const ctrl = new AbortController();
     plan.signal = ctrl.signal;
     controllers.set(run.id, ctrl);
     const job = async () => {
-      if (waitForSlot) {
-        waitingJobs++;
-        try {
-          while (activeJobs >= ctx.env.CRAWLER_MAX_CONCURRENT_JOBS && !ctrl.signal.aborted && !shuttingDown) await new Promise((res) => setTimeout(res, 1000));
-        } finally { waitingJobs--; }
-        if (shuttingDown) return;
-        if (ctrl.signal.aborted) {
-          const cur = (await r.crawls.get(run.id)) ?? run;
-          await r.crawls.update({ ...cur, status: 'cancelled', outcome: 'cancelled', finishedAt: iso(), error: `Cancelled${cur.cancelledBy ? ` by ${cur.cancelledBy}` : ''} before it started again.` });
-          await db?.flush().catch(() => undefined);
-          return;
-        }
+      const granted = await acquireSlot(slotKey(run.id), ctx.env, ctrl.signal);
+      if (!granted) {
+        if (shuttingDown && !ctrl.signal.aborted) return; // stays queued in the database; queued again after the restart
+        const cur = (await r.crawls.get(run.id)) ?? run;
+        await r.crawls.update({ ...cur, status: 'cancelled', outcome: 'cancelled', phase: undefined, finishedAt: iso(), error: `Cancelled${cur.cancelledBy ? ` by ${cur.cancelledBy}` : ''} while it was queued, before it started. Nothing was fetched.` });
+        await db?.flush().catch(() => undefined);
+        return;
       }
-      activeJobs++;
-      try { await execute(run, plan); } finally { activeJobs = Math.max(0, activeJobs - 1); }
+      try { await execute(run, plan); } finally { releaseSlot(); }
     };
     const p = job().finally(() => {
       running.delete(run.id);
@@ -556,21 +562,27 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     });
     running.set(run.id, p);
   }
+  /** A queued crawl's place in the server-wide queue (not stored: it changes as other crawls end). */
+  const withQueue = (c: CrawlRun): CrawlRun => {
+    if (c.status !== 'queued') return c;
+    const q = queueInfo(slotKey(c.id));
+    return q ? { ...c, queue: q } : c;
+  };
 
   /** One start at a time per website: a double click or a repeated request can never create a second crawl. */
   let starting = false;
-  async function start(actor: Actor, type: CrawlType, trigger: CrawlRun['trigger'] = 'manual', options?: CrawlOptions): Promise<CrawlRun> {
+  async function start(actor: Actor, type: CrawlType, trigger: CrawlRun['trigger'] = 'manual', options?: CrawlOptions, batchId?: string): Promise<CrawlRun> {
     if (!['full', 'smart', 'reverify'].includes(type)) throw badRequest('Crawl type must be full, smart or reverify.');
     if (starting) throw alreadyRunning();
     starting = true;
     try {
-      return await startOne(actor, type, trigger, options);
+      return await startOne(actor, type, trigger, options, batchId);
     } finally {
       starting = false;
     }
   }
 
-  async function startOne(actor: Actor, type: CrawlType, trigger: CrawlRun['trigger'], options?: CrawlOptions): Promise<CrawlRun> {
+  async function startOne(actor: Actor, type: CrawlType, trigger: CrawlRun['trigger'], options?: CrawlOptions, batchId?: string): Promise<CrawlRun> {
     const activeRun = (await r.crawls.list()).find(isActive);
     if (activeRun) throw alreadyRunning(activeRun);
     const ready = ctx.engine.readiness();
@@ -578,9 +590,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       const why = await blockedReason();
       if (why) throw new ApiError(409, 'CRAWLER_NOT_READY', `The crawler cannot run: ${why}`);
     }
-    if (ready.ready && activeJobs >= ctx.env.CRAWLER_MAX_CONCURRENT_JOBS) {
-      throw new ApiError(429, 'CRAWL_CAPACITY', `${activeJobs} crawl${activeJobs === 1 ? ' is' : 's are'} already running on this server (limit ${ctx.env.CRAWLER_MAX_CONCURRENT_JOBS}). Try again when one finishes.`);
-    }
+    // No refusal when other websites' crawls fill the server: this crawl is stored and queued (jobs/crawlSlots.ts).
     if (!ready.ready) {
       if (trigger === 'schedule') {
         const failed: CrawlRun = { id: await r.crawls.nextId('CRL'), type, status: 'failed', trigger, startedAt: iso(), finishedAt: iso(), urlsPlanned: 0, urlsCrawled: 0, urlsFailed: 0, jsRenderedSample: 0, newIssues: 0, resolvedIssues: 0, recurringIssues: 0, scope: [], error: `Crawler not ready: ${ready.reason}`, source: 'live' };
@@ -591,7 +601,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     }
     const plan = await planFor(type, options);
     const run: CrawlRun = {
-      id: await r.crawls.nextId('CRL'), type, status: 'queued', trigger, startedAt: iso(), urlsPlanned: options ? 1 : plan.urls?.length ?? (Number.isFinite(plan.maxPages) ? plan.maxPages : 0), urlsCrawled: 0, urlsFailed: 0,
+      id: await r.crawls.nextId('CRL'), type, status: 'queued', phase: 'waiting', trigger, startedAt: iso(), ...(batchId ? { batchId } : {}), urlsPlanned: options ? 1 : plan.urls?.length ?? (Number.isFinite(plan.maxPages) ? plan.maxPages : 0), urlsCrawled: 0, urlsFailed: 0,
       urlsDiscovered: options ? 1 : undefined, urlsSucceeded: 0,
       jsRenderedSample: 0, newIssues: 0, resolvedIssues: 0, recurringIssues: 0,
       scope: options
@@ -623,12 +633,14 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     const rows = store ? await store.allIfSmall(CRAWL_DETAIL_ROW_LIMIT) : await (await storeOf(id)).allIfSmall(Number.MAX_SAFE_INTEGER);
     const urlCount = store ? store.count() : rows?.length ?? 0;
     return {
-      run, urls: rows ?? [], urlCount, urlsPaged: !rows, sitemapDiff: diff ? (({ id: _id, ...rest }) => rest)(diff) : undefined, verification,
+      run: withQueue(run), urls: rows ?? [], urlCount, urlsPaged: !rows, sitemapDiff: diff ? (({ id: _id, ...rest }) => rest)(diff) : undefined, verification,
     };
   }
 
   return {
     start,
+    /** A run with its place in the server-wide queue when it is waiting (batch view). */
+    withQueue,
     /**
      * Start-up with a database: a crawl stored as running / queued was interrupted by a restart (its process is gone).
      * It is started again automatically under the same id with the same settings (type, start URL, limits, exclusions) —
@@ -639,8 +651,18 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     async resumeInterrupted(): Promise<{ resumed: string[]; failed: string[] }> {
       const res = { resumed: [] as string[], failed: [] as string[] };
       const max = ctx.env.CRAWLER_RESUME_MAX_ATTEMPTS;
-      for (const c of await r.crawls.list()) {
-        if (!isActive(c) || running.has(c.id)) continue;
+      const stale = (await r.crawls.list()).filter((c) => isActive(c) && !running.has(c.id)).sort((a, b) => (a.startedAt ?? '').localeCompare(b.startedAt ?? ''));
+      for (const c of stale) {
+        if (c.status === 'queued' && c.phase === 'waiting' && ctx.env.CRAWLER_RESUME_INTERRUPTED && c.source === 'live') {
+          // Queued, never started (e.g. part of a batch waiting for a slot): queued again as it was — not a restart attempt.
+          let plan: CrawlPlan | undefined;
+          try { plan = await planFor(c.type, c.options); } catch { plan = undefined; }
+          if (plan && ctx.engine.readiness().ready) {
+            launch(c, plan);
+            res.resumed.push(c.id);
+            continue;
+          }
+        }
         const attempts = c.resume?.attempts ?? 0;
         const pages = c.urlsCrawled ?? 0;
         let why: string | undefined;
@@ -665,7 +687,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
         }
         const at = iso();
         const next: CrawlRun = {
-          ...c, status: 'queued', phase: undefined, outcome: undefined, error: undefined, finishedAt: undefined, durationMs: undefined,
+          ...c, status: 'queued', phase: 'waiting', outcome: undefined, error: undefined, finishedAt: undefined, durationMs: undefined,
           urlsCrawled: 0, urlsFailed: 0, urlsSucceeded: 0, urlsDiscovered: c.options ? 1 : undefined, coverage: undefined, memory: undefined, politeness: undefined,
           resume: { attempts: attempts + 1, lastAt: at, firstStartedAt: c.resume?.firstStartedAt ?? c.startedAt, pagesBeforeRestart: pages },
           warnings: [...(c.warnings ?? []), {
@@ -677,17 +699,36 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
         await r.crawls.update(next);
         await audit(ctx, SYSTEM_ACTOR, 'crawl.resume', 'crawl', c.id, `${c.type} crawl ${c.id} started again after a server restart (restart ${attempts + 1} of ${max}; ${pages} pages had been fetched)`);
         await db?.flush().catch(() => undefined);
-        launch(next, plan, true);
+        launch(next, plan);
         res.resumed.push(c.id);
       }
       return res;
     },
     /** Image references of a crawl still on this server (Image Audit input). */
-    imageRefsOf(id: string) { const r = imageRefs.get(id); return r ? { file: r.file, checkedFile: r.checkedFile } : undefined; },
+    async imageRefsOf(id: string) {
+      let ref = imageRefs.get(id);
+      if (!ref && db) {
+        // After a restart: the references saved with the crawl's results.
+        const raw = await db.readFile(scope, `images/${id}.ndjson.gz`).catch(() => undefined);
+        if (raw) {
+          const dir = path.join(ctx.env.CRAWLER_WORK_DIR ?? path.join(os.tmpdir(), 'sentinel-crawls'), 'restored', `${scope}-${id}-images`.replace(/[^\w.-]/g, '_'));
+          await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
+          const file = path.join(dir, 'images.ndjson.gz');
+          await fsp.writeFile(file, raw, { mode: 0o600 });
+          const checked = await db.readFile(scope, `images/${id}.checked.json`).catch(() => undefined);
+          if (checked) await fsp.writeFile(path.join(dir, 'images-checked.json'), checked, { mode: 0o600 });
+          keepImageRefs(id, file);
+          ref = imageRefs.get(id);
+        }
+      }
+      return ref ? { file: ref.file, checkedFile: ref.checkedFile } : undefined;
+    },
     /** Finished crawls whose image references are still here, newest first. */
     async runsWithImageRefs(): Promise<CrawlRun[]> {
       const out: CrawlRun[] = [];
-      for (const id of imageRefs.keys()) { const run = await r.crawls.get(id); if (run && run.status !== 'running' && run.status !== 'queued') out.push(run); }
+      const ids = new Set(imageRefs.keys());
+      if (db) for (const f of await db.listFiles(scope, 'images/').catch(() => [] as string[])) if (f.endsWith('.ndjson.gz')) ids.add(f.slice('images/'.length, -'.ndjson.gz'.length));
+      for (const id of ids) { const run = await r.crawls.get(id); if (run && run.status !== 'running' && run.status !== 'queued') out.push(run); }
       return out.sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
     },
     /** Await in-flight crawls (tests / graceful shutdown). */
@@ -695,14 +736,14 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
 
     async list(actor: Actor) {
       await need(ctx, actor, 'crawls.view');
-      return (await r.crawls.list()).sort((a, b) => (b.startedAt ?? b.scheduledFor ?? '').localeCompare(a.startedAt ?? a.scheduledFor ?? ''));
+      return (await r.crawls.list()).map(withQueue).sort((a, b) => (b.startedAt ?? b.scheduledFor ?? '').localeCompare(a.startedAt ?? a.scheduledFor ?? ''));
     },
     async get(actor: Actor, id: string) {
       await need(ctx, actor, 'crawls.view');
       return detail(id);
     },
     /** Start a crawl. A live crawl from the Crawl Center passes options (type 'full'); they are validated against this website. */
-    async startManual(actor: Actor, type: CrawlType, rawOptions?: unknown) {
+    async startManual(actor: Actor, type: CrawlType, rawOptions?: unknown, batchId?: string) {
       await need(ctx, actor, 'crawls.run');
       // Configuration first: without a configured website (CRAWLER_BASE_URL) or with live crawling off, the start URL
       // cannot be checked against an allowed website, so the request is refused with the fix rather than validated
@@ -711,7 +752,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       if (!ready.ready) throw new ApiError(409, 'CRAWLER_NOT_READY', `The crawler cannot run: ${ready.reason}`);
       const options = rawOptions === undefined || rawOptions === null ? undefined : validateCrawlOptions(rawOptions, await siteUrl(), ctx.env.CRAWLER_MAX_PAGES);
       if (options && type !== 'full') throw badRequest('Crawl settings apply to a live (full) crawl only.');
-      return start(actor, type, 'manual', options);
+      return start(actor, type, 'manual', options, batchId);
     },
     async cancel(actor: Actor, id: string) {
       await need(ctx, actor, 'crawls.run');

@@ -93,19 +93,15 @@ const interactions = [];
   await page.goto(`${BASE}/login`);
   await page.getByRole('button', { name: 'SEO Specialist', exact: true }).click();
   await page.waitForURL(`${BASE}/`);
-  // 1. One-tap allocation on an unallocated Critical assigns it and opens the issue workflow (Start work). The issue is picked from the board (not a fixed id) so the
-  //    check repeats against a long-lived API, where an earlier run's allocation persists in server memory.
+  // 1. The issue page has no allocation section (removed at the owner's request); Acknowledge and Not an issue remain.
   await page.goto(`${BASE}/issues?severity=critical&status=NEW&team=unallocated`);
   await page.locator('main tbody tr').first().waitFor({ timeout: 15000 });
   const target = (await page.locator('main tbody tr').first().innerText()).match(/ISS-\d+/)?.[0];
   await page.goto(`${BASE}/issues/${target}`);
-  // One tap = the engine-suggested team (other teams open an override step with an optional reason, by design).
-  const suggested = page.locator('button[title="Engine-suggested team"]').first();
-  const team = (await suggested.innerText()).replace(/^Fix with\s*/, '').trim();
-  await suggested.click();
-  const toast = await page.getByText(`Allocated to ${team}`).first().waitFor({ timeout: 5000 }).then(() => true).catch(() => false);
-  const workflow = await page.getByRole('button', { name: 'Start work' }).first().waitFor({ timeout: 5000 }).then(() => true).catch(() => false);
-  interactions.push({ name: 'one-tap allocation assigns the issue', ok: toast && workflow });
+  await page.getByRole('button', { name: 'Not an issue' }).first().waitFor({ timeout: 10000 });
+  const noAllocation = (await page.getByText('Allocate this fix').count()) === 0 && (await page.getByRole('button', { name: /^Fix with/ }).count()) === 0;
+  const kept = (await page.getByRole('button', { name: 'Acknowledge' }).count()) > 0;
+  interactions.push({ name: 'issue page has no allocation section; Acknowledge / Not an issue remain', ok: noAllocation && kept });
   // 2. Keyboard: Tab reaches a visible focused element with an outline
   await page.goto(`${BASE}/issues`);
   await page.locator('main h1').waitFor();

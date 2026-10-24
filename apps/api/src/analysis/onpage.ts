@@ -122,6 +122,7 @@ export function analyzeBreadcrumbs(prep: Prepared): AnalyzerResult {
 const STUFF_SEPARATORS = /[,|]/g;
 
 export function analyzeImageSeo(prep: Prepared): AnalyzerResult {
+  const brand = prep.ctx.config.site.brand || 'this website';
   return perTemplate(prep, prep.content, 'ONP-IMAGES', 'image SEO problems', (p) => {
     const out: { label: string; evidence?: Ev[] }[] = [];
     const imgs = p.html!.images.filter((i) => i.inMain);
@@ -139,7 +140,7 @@ export function analyzeImageSeo(prep: Prepared): AnalyzerResult {
       const primary = imgs[0];
       const nameTokens = tokens(name).slice(0, 3);
       if (primary.alt && nameTokens.length && !nameTokens.some((w) => primary.alt!.toLowerCase().includes(w))) {
-        out.push({ label: 'whose main image ALT does not follow "{product} – {key attribute} – DeoDap"', evidence: [htmlEv(p.url, 'primary product image', tag(primary))] });
+        out.push({ label: `whose main image ALT does not follow "{product} – {key attribute} – ${brand}"`, evidence: [htmlEv(p.url, 'primary product image', tag(primary))] });
       }
     }
     return out;

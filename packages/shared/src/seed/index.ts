@@ -186,7 +186,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
     let ev = 0;
     const act = (type: ActivityEvent['type'], actor: string, when: Date, message: string, meta?: Record<string, unknown>) =>
       activity.push({ id: `${id}-a${++ev}`, type, actorId: actor, actorName: empName(actor), at: when.toISOString(), message, meta });
-    act('created', byId, at, `Task created from Fix Card ${iss.id} via "Fix with ${TEAMS[team].name}"${automatic ? ' (auto-created: Critical unallocated >24h, PDF §12.4)' : ''}.`);
+    act('created', byId, at, `Task created from Fix Card ${iss.id} — allocated to ${TEAMS[team].name}${automatic ? ' (auto-created: Critical unallocated >24h, PDF §12.4)' : ''}.`);
     if (assignee) act('assigned', byId === 'system' ? 'emp-ritesh' : byId, addHours(at, 1), `Assigned to ${assignee.name}.`);
     const order: TaskStatus[] = ['ASSIGNED', 'IN_PROGRESS', 'READY_FOR_REVIEW', 'FIXED', 'VERIFIED', 'CLOSED'];
     const reached = order.indexOf(status === 'BLOCKED' ? 'IN_PROGRESS' : status);

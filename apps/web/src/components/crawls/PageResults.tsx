@@ -172,7 +172,7 @@ function PageDrawer({ page: u, runId, limits, onClose }: { page: CrawledUrl | nu
                 <ScoreBadge score={audit.score ?? undefined} />
                 <Link to={`/pages/report?run=${encodeURIComponent(runId)}&url=${encodeURIComponent(u.url)}`} className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-signal hover:underline">Full page report <ArrowUpRight className="h-3.5 w-3.5" /></Link>
               </div>
-              <AuditChecks audit={audit} only="problems" />
+              <AuditChecks audit={audit} only="problems" template={u.template} />
             </section>
           )}
           <section>

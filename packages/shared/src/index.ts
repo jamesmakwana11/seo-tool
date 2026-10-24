@@ -26,3 +26,5 @@ export * from './checks/notBuilt';
 export * from './changes';
 export * from './pageAudit';
 export * from './imageAudit';
+export * from './batches';
+export * from './fixGuide';

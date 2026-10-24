@@ -98,13 +98,16 @@ Crawling and scheduling (needed for real audits):
 | `CRAWLER_ALLOW_LIVE` | `true` once you approve live crawling of that site |
 | `CRAWLER_USER_AGENT` | optional; allow-list it in Shopify bot protection |
 | `SCHEDULER_ENABLED` | `true` for the daily/weekly crawls, escalations and digest |
-| `CRAWLER_MAX_PAGES`, `CRAWLER_REQUEST_DELAY_MS`, `CRAWLER_MAX_BODY_BYTES`, `CRAWLER_MAX_CONCURRENT_JOBS` | crawl limits: optional page cap (unset = no limit) / 250 ms / 5 MB / 2 — see `LOCAL_CRAWLING.md` |
+| `CRAWLER_MAX_PAGES`, `CRAWLER_REQUEST_DELAY_MS`, `CRAWLER_MAX_BODY_BYTES` | crawl limits: optional page cap (unset = no limit) / 250 ms / 5 MB — see `LOCAL_CRAWLING.md` |
+| `SEED_WEBSITES` | websites that are always in the website selector: added at start-up when missing, never changed or removed afterwards (stored in PostgreSQL like any added website). Entries `Name\|https://url/\|platform`, comma-separated. **Production default:** DeoDap (deodap.in), Grabnix (grabnix.in), Oblivion (oblivion.co.in), Natation (natation.in), all Shopify. `none` = off. Websites added in the app are kept as well — **with `DATABASE_URL`**; without a database every added website (and all data) is lost on each restart |
+| `CRAWLER_MAX_CONCURRENT_JOBS`, `CRAWLER_JOB_RESERVE_MB` | crawls **running** at the same time across all websites (default 3) and the memory one more crawl needs before it may start (default 90 MB). More can be started — up to 11 websites in one batch — the rest are queued and start in order (see `docs/BATCH_CRAWLS.md`, measured on 512 MB) |
+| `IMAGE_AUDIT_BUDGET_MINUTES`, `IMAGE_AUDIT_MAX_HOURS`, `IMAGE_AUDIT_CHECKPOINT_SECONDS`, `IMAGE_AUDIT_RATE_LIMIT_ROUNDS`, `IMAGE_AUDIT_RATE_LIMIT_PAUSE_SECONDS`, `IMAGE_AUDIT_REUSE_HOURS`, `IMAGE_AUDIT_MAX_CONCURRENT` | Image Audit: round length (10 min; it continues round after round until every image is answered), total limit (12 h), checkpoint interval (10 s; stored in PostgreSQL with `DATABASE_URL`), rate-limited retries (3, 60 s pause), reuse of recent answers (24 h), audits at once (2) — see `docs/IMAGE_AUDIT.md` |
 | `CRAWLER_RESUME_INTERRUPTED`, `CRAWLER_RESUME_MAX_ATTEMPTS` | with a database: start a crawl interrupted by a restart again automatically (default `true`), at most this many times (default 2) — see [Crawls are background jobs](#crawls-are-background-jobs) |
 | `CRAWL_KEEP_AWAKE`, `KEEP_AWAKE_URL`, `KEEP_AWAKE_INTERVAL_SECONDS` | while a crawl runs, request the server's own `/healthz` (default on; address `KEEP_AWAKE_URL`, else Render's `RENDER_EXTERNAL_URL`; every 300 s) so an idle-stopping host does not stop it |
 | `CRAWLER_ENGINE` | `auto` (default: Go crawler when installed — always in the Docker image) / `go` / `node` |
 | `CRAWLER_MEMORY_BUDGET_MB` | optional; default 85 % of the container memory limit (API + crawler + text core) |
 | `CRAWLER_SMART_MAX_PAGES` | pages a Smart crawl fetches, highest priority first (default and maximum 1,000; Full crawls have no such budget) |
-| `IMAGE_AUDIT_MAX_IMAGES` / `IMAGE_AUDIT_BUDGET_MINUTES` / `IMAGE_AUDIT_CONCURRENCY` | Image Audit: unique images per audit (50,000), time budget (30 min), images at once (4, max 8) — see `docs/IMAGE_AUDIT.md` |
+| `IMAGE_AUDIT_MAX_IMAGES` / `IMAGE_AUDIT_CONCURRENCY` | Image Audit: unique images per audit (50,000), images checked at once per audit (4, max 8) — see `docs/IMAGE_AUDIT.md` |
 | `CRAWLER_KEEP_RESULTS` | recent crawls whose page rows stay browsable (default 3, temporary files) |
 | `CRAWLER_GO_BIN`, `TEXTCORE_BIN`, `CRAWLER_WORK_DIR` | set by the image (`/app/bin/…`, `/tmp/sentinel-crawls`) |
 | `CRAWLER_STALL_MINUTES` | stop a crawl as *partial* (results kept) when no request was answered for this long (default 20) |
@@ -215,7 +218,6 @@ website runs (double click, another tab or browser) is refused with `409 CRAWL_A
   cannot be started again (restarted too often, `CRAWLER_RESUME_INTERRUPTED=false`, crawler not ready) is marked
   **failed** with the reason — never completed. Without a database the job exists only in memory and a restart loses it.
 
-Data that is still not kept across restarts (by design, see `docs/DATABASE.md`): Image Audit results and the image
-references of crawls, Change Monitor screenshots / captured HTML / theme snapshots (only the crawl comparison history
+Data that is still not kept across restarts (by design, see `docs/DATABASE.md`): Change Monitor screenshots / captured HTML / theme snapshots (only the crawl comparison history
 is stored), Lighthouse runs, and the Shopify OAuth token.
 

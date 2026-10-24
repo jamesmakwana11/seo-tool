@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createSeed, generateFixCard, type ModuleScore } from '@sentinel/shared';
+import { createSeed, generateFixCard, issueFixSummary, type ModuleScore } from '@sentinel/shared';
+import { IssueTable } from '../src/components/domain/IssueTable';
 import { ToastProvider } from '../src/components/ui/Toast';
 import { HealthScoreSummary, ModulePerformanceBars } from '../src/components/domain/HealthScore';
 import { SeverityBadge, SlaCountdown } from '../src/components/domain/badges';
@@ -74,12 +75,38 @@ describe('FixCardView', () => {
     const card = generateFixCard(issue, s.config, { now: NOW });
     wrap(<FixCardView card={card} issue={issue} />);
     const art = screen.getByRole('article', { name: /Fix Card/ });
-    for (const h of ["What's wrong", 'Why it matters', 'Affected URLs & page value', 'Evidence', 'Root cause (inferred)', 'Exact fix', 'Ownership, effort & impact', 'Verification']) {
+    for (const h of ["What's wrong", 'Why it matters', 'Affected URLs & page value', 'Evidence', 'Root cause (inferred)', 'How to fix it, step by step', 'Ownership, effort & impact', 'How to verify it is fixed']) {
       expect(within(art).getByRole('heading', { name: h })).toBeInTheDocument();
     }
     expect(within(art).getByText(/catalog cleanup without redirects/)).toBeInTheDocument();
     expect(within(art).getByText('Complete Fix Card')).toBeInTheDocument();
     expect(within(art).getByText(/Human approval required/)).toBeInTheDocument();
+    // Time to fix and where, at the top of the card.
+    expect(within(art).getByTestId('fix-time').textContent).toBe(card.timeEstimate!.label);
+    const where = within(art).getByTestId('fix-where');
+    expect(within(where).getAllByText('Shopify admin').length).toBeGreaterThan(0);
+    expect(where.textContent).toMatch(/URL Redirects/);
+  });
+
+  it('shows the website\'s platform equivalent and a note for a non-Shopify website', () => {
+    const s = createSeed(NOW);
+    const issue = s.issues.find((i) => i.checkId === 'TECH-4XX')!;
+    const cfg = { ...s.config, site: { ...s.config.site, brand: 'Natation', canonicalHost: 'natation.in', platform: 'woocommerce' as const } };
+    const card = generateFixCard(issue, cfg, { now: NOW });
+    wrap(<FixCardView card={card} issue={issue} />);
+    expect(screen.getByText(/This website is set to WooCommerce/)).toBeInTheDocument();
+    expect(within(screen.getAllByTestId('fix-where').at(-1)!).getAllByText('WordPress admin').length).toBeGreaterThan(0);
+  });
+});
+
+describe('IssueTable', () => {
+  it('shows each issue\'s time to fix and where', () => {
+    const s = createSeed(NOW);
+    const issues = s.issues.slice(0, 5).map((i) => ({ ...i, fix: issueFixSummary(i, s.config) }));
+    wrap(<IssueTable issues={issues} />);
+    expect(screen.getByRole('columnheader', { name: /Fix time & where/ })).toBeInTheDocument();
+    const times = screen.getAllByTestId('issue-fix-time').map((e) => e.textContent);
+    expect(times).toEqual(issues.map((i) => i.fix.time.label));
   });
 });
 
@@ -103,5 +130,19 @@ describe('DetailError (detail pages: issue, task, crawl run, brief)', () => {
     wrap(<DetailError error={new ApiError(500, 'INTERNAL', 'Boom.')} what="Issue" id="ISS-1" back={back} onRetry={() => undefined} />);
     expect(screen.getByRole('heading', { level: 1, name: 'This issue could not load' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
+  });
+});
+
+describe('AuditChecks (page report)', () => {
+  it('gives every warning and failure a time to fix, where and how to verify', async () => {
+    const { auditPage } = await import('@sentinel/shared');
+    const { AuditChecks } = await import('../src/components/crawls/PageAudit');
+    const audit = auditPage({ url: 'https://shop.test/collections/kitchen', reason: 'link', template: 'collection', status: 200, title: '', metaDescription: 'short', h1: [], wordCount: 900 } as never);
+    wrap(<AuditChecks audit={audit} only="problems" template="collection" />);
+    const meta = screen.getByTestId('fix-meta-short');
+    expect(meta.textContent).toMatch(/Time to fix: 5–10 min/);
+    expect(meta.textContent).toMatch(/Shopify admin — Products → Collections → \{collection\} → Search engine listing/);
+    expect(meta.textContent).toMatch(/Verify:/);
+    expect(screen.getByTestId('fix-title-missing')).toBeInTheDocument();
   });
 });

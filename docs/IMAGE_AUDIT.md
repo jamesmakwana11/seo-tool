@@ -28,7 +28,29 @@ Audit**, which runs only when you start it (**Image Audit** in the navigation, o
      retried `CRAWLER_RETRIES` times;
    - timeouts per request (`requestTimeoutMs` of the crawl settings); `IMAGE_AUDIT_CONCURRENCY` images at once (4);
    - only the website and image CDNs (cdn.shopify.com, imgix, Cloudinary, CloudFront, `cdn.*`) are requested.
-4. **Report** — results stream in while it runs (progress, counts, the list). Cancel at any time.
+4. **Rounds until done** — one checker process runs for at most `IMAGE_AUDIT_BUDGET_MINUTES` (10). The images it did
+   not reach stay *pending* and the next round checks them — only them — so the audit continues until every image has
+   an answer (at most `IMAGE_AUDIT_MAX_HOURS`, 12; then it stops as *Partly done* and can be resumed). An image answered
+   *rate limited* (429 / 503 after the retries) is tried again after a pause (`IMAGE_AUDIT_RATE_LIMIT_PAUSE_SECONDS`, 60;
+   a longer Retry-After is honoured up to 15 minutes), at most `IMAGE_AUDIT_RATE_LIMIT_ROUNDS` (3) rounds; after that it
+   stays *unverified*.
+5. **Checkpoints** — every `IMAGE_AUDIT_CHECKPOINT_SECONDS` (10) and after each round the answers so far are stored.
+   With `DATABASE_URL` they are stored in PostgreSQL (`sentinel_files`: one compressed snapshot of every image, then
+   small files with only the images answered since), so an audit running during a restart or redeploy **continues
+   afterwards** and never requests an image already answered (on `SIGTERM` the last answers are stored before the
+   process exits; after a crash at most the last few seconds of answers are lost and those images are asked again).
+   Without a database the checkpoint is the server's memory: Resume works until the server restarts, not after.
+6. **Resume** — a cancelled, stopped or failed audit shows **Resume (N left)**: it checks only the images still pending or
+   deferred. Answered images are never requested again.
+7. **Report** — results stream in while it runs (progress, counts, the list). It runs on the server: closing the page
+   does not stop it. Cancel at any time.
+
+**No repeated requests.** Within an audit each unique image is requested once. A new audit takes over *available* and
+*broken* answers of earlier audits — of the same crawl at any age, of other crawls of the website from the last
+`IMAGE_AUDIT_REUSE_HOURS` (24) — and the crawl's own 4xx link answers (marked *reused*).
+
+**Progress** counts images with a final answer (available, broken, failed, unverified). It shows **100 %** only when no
+image is pending or deferred. At most `IMAGE_AUDIT_MAX_CONCURRENT` (2) audits run on the server at once (all websites).
 
 ## Results
 
@@ -38,7 +60,7 @@ Audit**, which runs only when you start it (**Image Audit** in the navigation, o
 | Broken | 4xx (not 429), a redirect loop / too many redirects, or a 2xx that is not an image (e.g. an HTML error page) |
 | Failed (inaccessible) | 5xx, timeout, network or TLS error — may be temporary |
 | Unverified | not requested: robots.txt disallows it or could not be read, still rate limited after the retries, or a third-party host |
-| Deferred | not checked in this audit: the time budget (`IMAGE_AUDIT_BUDGET_MINUTES`, 30) ran out or it was cancelled |
+| Deferred | not checked yet: the audit was cancelled or stopped (time limit, checker failure) — **Resume** checks these |
 | Pending | waiting while the audit runs |
 
 **An image is never shown as available without an actual answer.** Problems per image, each with what to do: broken,
@@ -55,15 +77,15 @@ export of the filtered list (streamed).
 
 - One audit at a time per website; up to `IMAGE_AUDIT_MAX_IMAGES` (50,000) unique images — references to further images
   are counted and shown, not checked.
-- Audits and their results are kept in the API's memory (the last 5 audits) — no database. They are lost on a restart,
-  like crawl results. The image references live with the crawl's results (`CRAWLER_KEEP_RESULTS` most recent crawls,
-  temporary storage); an older crawl cannot be audited any more.
+- The last 5 audits per website are kept: in PostgreSQL with `DATABASE_URL` (kept across restarts), otherwise in the API's
+  memory (lost on a restart). The image references are stored with the crawl's results (`CRAWLER_KEEP_RESULTS` most
+  recent crawls; in PostgreSQL too), so a recent crawl can be audited after a restart; an older crawl cannot.
 - Needs the Go crawler binary (included in the Docker image). The browser-only demo cannot run it.
 - Pixel size is unknown when the image header is beyond the first 64 KB (e.g. a JPEG with a large EXIF block).
 
 ## API
 
 `GET /api/image-audits/status` · `POST /api/image-audits` (body `runId`; needs `crawls.run`) ·
-`GET /api/image-audits/:id` · `POST /api/image-audits/:id/cancel` (`crawls.run`) ·
+`GET /api/image-audits/:id` · `POST /api/image-audits/:id/cancel` · `POST /api/image-audits/:id/resume` (`crawls.run`) ·
 `GET /api/image-audits/:id/images?state&issue&q&sort&dir&offset&limit` ·
 `GET /api/image-audits/:id/export?format=csv|json&…filters`. All need sign-in and `crawls.view`.

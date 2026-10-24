@@ -82,6 +82,28 @@ export function activeChildMemoryMB(): number {
   return n;
 }
 
+/**
+ * The analysis after a crawl (reading every page row, findings, duplicate groups) is the part that needs the API's
+ * Node.js heap; the crawling itself happens in the Go process. When several websites crawl at once, their analyses run
+ * one after another so they never need the heap at the same time (a 500 MB server could not hold several).
+ */
+let analysisChain: Promise<void> = Promise.resolve();
+let analysesWaiting = 0;
+async function oneAnalysisAtATime<T>(waiting: () => void, fn: () => Promise<T>): Promise<T> {
+  const prev = analysisChain;
+  let release!: () => void;
+  analysisChain = new Promise<void>((r) => { release = r; });
+  analysesWaiting++;
+  if (analysesWaiting > 1) waiting();
+  try {
+    await prev;
+    return await fn();
+  } finally {
+    analysesWaiting--;
+    release();
+  }
+}
+
 export function defaultWorkDir(): string {
   return path.join(os.tmpdir(), 'sentinel-crawls');
 }
@@ -244,14 +266,14 @@ export function createGoCrawlEngine(o: GoEngineOptions): CrawlEngine & { binarie
     const rowsOnly = outcome === 'cancelled' || outcome === 'failed';
     let analysis: Awaited<ReturnType<typeof analyzeGoCrawl>>;
     try {
-      analysis = await analyzeGoCrawl({
+      analysis = await oneAnalysisAtATime(() => plan.onPhase?.('waiting'), () => analyzeGoCrawl({
         workDir, resultsDir, ctx, tierOf: plan.tierOf, textCore, rowsOnly, batchSize: o.analysisBatchSize, snapshot: o.changeSnapshots !== false,
         // Every page's text when custom rules will read it; otherwise a sample for rule dry runs.
         collectTexts: plan.collectTexts ? true : 1000,
         onPhase: (ph) => plan.onPhase?.(ph),
         onBatch: () => { plan.onLive?.({ memory: memNow() }); },
         log,
-      });
+      }));
     } catch (e) {
       if (!o.keepWorkFiles) await fsp.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
       throw new Error(`Reading the crawl results failed: ${(e as Error).message}${failed ? ` (crawl: ${failed})` : ''}`);

@@ -1,4 +1,4 @@
-import { ApiError, WEBSITE_HEADER, setPriorityConfig, type WebsiteInput } from '@sentinel/shared';
+import { ApiError, WEBSITE_HEADER, setPriorityConfig, type CrawlBatchInput, type WebsiteInput } from '@sentinel/shared';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import { verifyShopifyWebhook } from '../connectors';
 import type { Actor } from '../services/context';
 import { registerRoutes, type ApiRoute } from './routes';
 import { createWorkspaces } from '../websites';
+import { createBatchService } from '../batches';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -35,6 +36,7 @@ function sendError(res: Response, req: Request, err: unknown) {
 export function createApp(container: Container) {
   const { services, env, log, clock } = container;
   const ws = createWorkspaces(container);
+  const batches = createBatchService(ws);
   // Route handlers see the CURRENT REQUEST's website: services and ctx resolve through AsyncLocalStorage per call.
   const scopedService = (name: keyof Container['services']) => new Proxy({}, {
     get: (_t, k) => {
@@ -171,7 +173,7 @@ export function createApp(container: Container) {
     const id = req.header(WEBSITE_HEADER) || undefined;
     const c = ws.resolve(id);
     if (!c) {
-      if (/^\/api\/(websites|auth)(\/|$)/.test(req.path)) return ws.als.run(container, () => next());
+      if (/^\/api\/(websites|auth|crawl-batches)(\/|$)/.test(req.path)) return ws.als.run(container, () => next());
       return sendError(res, req, new ApiError(404, 'WEBSITE_NOT_FOUND', container.persistence ? 'The selected website does not exist on this server. Choose another website.' : 'The selected website does not exist on this server (without a database, websites are kept in temporary memory and are lost on restart). Choose another website.'));
     }
     ws.als.run(c, () => {
@@ -185,6 +187,12 @@ export function createApp(container: Container) {
     { method: 'get', path: '/api/websites', permission: 'dashboard.view', description: 'Websites and what is known about each', handle: (req) => ws.list(req.actor!) },
     { method: 'post', path: '/api/websites', permission: 'websites.manage', description: 'Add a website (starts empty)', status: 201, handle: (req) => ws.create(req.actor!, (req.body ?? {}) as WebsiteInput) },
     { method: 'patch', path: '/api/websites/:id', permission: 'websites.manage', description: 'Edit a website', handle: (req) => ws.update(req.actor!, String(req.params.id), (req.body ?? {}) as WebsiteInput) },
+    // Multi-website crawl batches (up to MAX_BATCH_WEBSITES websites, one crawl job each; see batches.ts).
+    { method: 'get', path: '/api/crawl-batches', permission: 'crawls.view', description: 'Recent multi-website crawl batches with each website\'s crawl', handle: (req) => batches.list(req.actor!) },
+    { method: 'post', path: '/api/crawl-batches', permission: 'crawls.run', description: 'Start crawls of up to 11 websites (body: websiteIds, type smart|full, maxPages); queued server-wide', handle: (req) => batches.start(req.actor!, (req.body ?? {}) as CrawlBatchInput) },
+    { method: 'get', path: '/api/crawl-batches/:id', permission: 'crawls.view', description: 'One crawl batch: every website\'s crawl status, progress and queue position', handle: (req) => batches.get(req.actor!, String(req.params.id)) },
+    { method: 'post', path: '/api/crawl-batches/:id/cancel', permission: 'crawls.run', description: 'Cancel every crawl of the batch still queued or running', handle: (req) => batches.cancelAll(req.actor!, String(req.params.id)) },
+    { method: 'post', path: '/api/crawl-batches/:id/jobs/:websiteId/cancel', permission: 'crawls.run', description: 'Cancel one website\'s crawl of the batch (the others continue)', handle: (req) => batches.cancelJob(req.actor!, String(req.params.id), String(req.params.websiteId)) },
   );
   app.locals.ready = ws.ready;
   container.diagnostics.endpoints.push(...routes.map((r) => ({ method: r.method.toUpperCase(), path: r.path, permission: r.permission, description: r.description })));

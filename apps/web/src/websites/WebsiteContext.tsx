@@ -60,6 +60,11 @@ export function useWebsites(): WebsiteCtx {
   return c;
 }
 
+/** The selected website's platform, or Shopify outside the website provider (tests, login). */
+export function useSitePlatform(): WebsiteSummary['platform'] {
+  return useContext(Ctx)?.current?.platform ?? 'shopify';
+}
+
 export function platformLabel(id: WebsiteSummary['platform']): string {
   return { shopify: 'Shopify', woocommerce: 'WooCommerce', magento: 'Magento', bigcommerce: 'BigCommerce', wordpress: 'WordPress', custom: 'Custom' }[id];
 }

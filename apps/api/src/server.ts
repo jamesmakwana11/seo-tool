@@ -4,6 +4,7 @@ import { createContainer } from './container';
 import { createApp } from './http/app';
 import { describeDatabaseUrl, openPersistence } from './repositories/postgres/persistence';
 import { busyCrawlJobs, suspendCrawlsForShutdown } from './services/crawls';
+import { busyImageAudits, suspendImageAuditsForShutdown } from './images/audit';
 import { startKeepAwake } from './jobs/keepAwake';
 
 async function main() {
@@ -22,7 +23,7 @@ async function main() {
   // Crawls are background jobs of this server; keep an idle-stopping host from stopping it while one runs.
   const keepAwake = startKeepAwake({
     enabled: env.CRAWL_KEEP_AWAKE, url: env.KEEP_AWAKE_URL ?? env.RENDER_EXTERNAL_URL, intervalMs: env.KEEP_AWAKE_INTERVAL_SECONDS * 1000,
-    busy: () => busyCrawlJobs() > 0, log,
+    busy: () => busyCrawlJobs() + busyImageAudits() > 0, log,
   });
 
   const server = app.listen(env.PORT, () => {
@@ -43,7 +44,9 @@ async function main() {
     suspendCrawlsForShutdown();
     // Render sends SIGTERM before a redeploy / restart: store every queued write first.
     let closing: Promise<void> | undefined;
-    const done = () => (closing ??= (persistence ? persistence.close() : Promise.resolve()).catch((e: Error) => log.error({ err: e.message }, 'could not store every change before shutting down')));
+    // Running Image Audits store their progress first (they continue after the restart with a database).
+    const audits = Promise.race([suspendImageAuditsForShutdown(), new Promise((r) => setTimeout(r, 4000))]);
+    const done = () => (closing ??= audits.then(() => (persistence ? persistence.close() : undefined)).catch((e: Error) => log.error({ err: e.message }, 'could not store every change before shutting down')));
     server.close(() => { void done().finally(() => process.exit(0)); });
     setTimeout(() => { void done().finally(() => process.exit(1)); }, 8000).unref();
   };

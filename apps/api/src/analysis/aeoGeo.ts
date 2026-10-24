@@ -140,7 +140,7 @@ export function analyzeAiCrawlers(prep: Prepared): AnalyzerResult {
       checkId: 'AEO-AI-CRAWLERS', key: `AEO-AI-CRAWLERS::site::${bot}`,
       title: `${bot} is blocked${blockedPaths.length ? ` by robots.txt (${blockedPaths.join(', ')})` : ''}${firewall ? `${blockedPaths.length ? ' and' : ''} by the firewall (HTTP ${probe!.status})` : ''}${unintentional ? ' — not in the AI-crawler policy' : ' (deliberate policy)'}`,
       summary: unintentional
-        ? `The configured policy says ${pol === 'allow' ? '"allow"' : 'nothing'} for ${bot}, but it cannot crawl ${blockedPaths.join(', ') || 'the site'}. DeoDap will be missing from ${bot === 'Bingbot' ? 'Bing / Copilot' : bot === 'GPTBot' ? 'ChatGPT' : bot === 'Google-Extended' ? 'Gemini grounding' : bot === 'PerplexityBot' ? 'Perplexity' : 'Common Crawl-based models'} answers.`
+        ? `The configured policy says ${pol === 'allow' ? '"allow"' : 'nothing'} for ${bot}, but it cannot crawl ${blockedPaths.join(', ') || 'the site'}. ${prep.ctx.config.site.brand || 'This website'} will be missing from ${bot === 'Bingbot' ? 'Bing / Copilot' : bot === 'GPTBot' ? 'ChatGPT' : bot === 'Google-Extended' ? 'Gemini grounding' : bot === 'PerplexityBot' ? 'Perplexity' : 'Common Crawl-based models'} answers.`
         : `${bot} is blocked by deliberate, documented policy (block_intentional). Surfaced for transparency.`,
       urls: [r.url], severityContext: { unintentional }, evidence,
     });

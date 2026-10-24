@@ -352,6 +352,13 @@ export interface SentinelApi {
   startImageAudit(runId: string): Promise<import('./imageAudit').ImageAuditJob>;
   getImageAudit(id: string): Promise<import('./imageAudit').ImageAuditJob>;
   cancelImageAudit(id: string): Promise<import('./imageAudit').ImageAuditJob>;
+  resumeImageAudit(id: string): Promise<import('./imageAudit').ImageAuditJob>;
+  // Multi-website crawl batches (up to MAX_BATCH_WEBSITES websites; one crawl job per website).
+  listCrawlBatches(): Promise<import('./batches').CrawlBatch[]>;
+  startCrawlBatch(input: import('./batches').CrawlBatchInput): Promise<import('./batches').CrawlBatch>;
+  getCrawlBatch(id: string): Promise<import('./batches').CrawlBatch>;
+  cancelCrawlBatch(id: string): Promise<import('./batches').CrawlBatch>;
+  cancelCrawlBatchJob(id: string, websiteId: string): Promise<import('./batches').CrawlBatch>;
   listImageAudit(id: string, query: import('./imageAudit').ImageAuditQuery): Promise<import('./imageAudit').ImageAuditListResponse>;
   exportImageAudit(id: string, format: 'csv' | 'json', query: import('./imageAudit').ImageAuditQuery): Promise<{ filename: string; mimeType: string; content: string | Blob }>;
   /** Open issues on a page of URLs (keys: normalised URLs). */

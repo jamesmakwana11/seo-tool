@@ -49,7 +49,9 @@ A **cancelled or failed** crawl is stored as such but never replaces the last va
 issue, the Health Score is unchanged, the latest page report stays on the last completed crawl, and the Change Monitor
 baseline is kept.
 
-Not kept across restarts: Image Audit jobs and the image references of crawls, Change Monitor screenshots / rendered
+Also stored (sentinel_files): Image Audit checkpoints (`image-audits/<id>/…`: a snapshot of every image plus the answers
+since) and the image references of recent crawls (`images/<run>.ndjson.gz`), and multi-website crawl batches
+(sentinel_records, collection `crawlBatches`). Not kept across restarts: Change Monitor screenshots / rendered
 HTML / theme snapshots, Lighthouse runs, the Shopify OAuth token, the progress of a crawl running during a restart (it is started again
 automatically from its stored settings — from the beginning, see "Crawls are background jobs" in `DEPLOYMENT.md`), and the page rows of crawls older than the `CRAWLER_KEEP_RESULTS` most recent ones (their run,
 issues and findings stay).

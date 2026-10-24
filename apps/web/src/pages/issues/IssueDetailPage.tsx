@@ -10,7 +10,7 @@ import { Async, Badge, Button, Checkbox, Field, KV, Notice, Panel, Tabs, Textare
 import { ConfirmDialog, Dialog } from '@/components/ui/overlay';
 import { DataTable } from '@/components/ui/DataTable';
 import { FixCardView } from '@/components/domain/FixCardView';
-import { AllocationButtons, AllocationTrail } from '@/components/domain/allocation';
+import { AllocationTrail } from '@/components/domain/allocation';
 import { DeltaBadge, IssueStatusBadge, SeverityBadge, SlaCountdown, SourceBadge, TeamBadge, TierBadge } from '@/components/domain/badges';
 import { EvidenceList, UrlList } from '@/components/domain/lists';
 import { fmtDateTime } from '@/lib/format';
@@ -60,11 +60,7 @@ function Detail({ d }: { d: IssueDetail }) {
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0 space-y-5">
           <Panel bodyClassName="p-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="mb-1.5 text-xs text-muted">Allocate this fix{issue.isTemplateGroup ? ' — allocates every child page' : ''}</p>
-                <AllocationButtons issue={issue} />
-              </div>
+            <div className="flex flex-wrap items-center justify-end gap-3">
               <div className="flex flex-wrap gap-2">
                 {!issue.acknowledgedBy && !done && <Button size="sm" icon={<CheckCheck className="h-4 w-4" />} loading={ack.isPending} onClick={() => ack.mutate()}>Acknowledge</Button>}
                 {can('issues.mark_not_issue') && !['NOT_AN_ISSUE', 'CLOSED', 'VERIFIED', 'SUPERSEDED'].includes(issue.status) && <Button size="sm" icon={<ThumbsDown className="h-4 w-4" />} onClick={() => setNai(true)}>Not an issue</Button>}
@@ -179,7 +175,7 @@ function IssueWorkflow({ d }: { d: IssueDetail }) {
         ))}
       </ol>
       {!issue.allocatedTeam && !['NOT_AN_ISSUE', 'SUPERSEDED', 'VERIFIED', 'CLOSED'].includes(issue.status) ? (
-        <p className="text-sm text-muted">Allocate the issue to a team to start work.</p>
+        <p className="text-sm text-muted">Not allocated to a team. The next crawl still re-checks it; Start work and Mark fixed appear once a team is allocated (Criticals left unallocated are allocated automatically).</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {issue.status === 'ASSIGNED' && <Button size="sm" icon={<Play className="h-3.5 w-3.5" />} disabled={!canUpdate} title={canUpdate ? undefined : 'Only the allocated team or an SEO specialist can update this issue.'} loading={status.isPending} onClick={() => status.mutate({ action: 'start' })}>Start work</Button>}

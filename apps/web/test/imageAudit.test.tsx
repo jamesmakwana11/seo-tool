@@ -9,6 +9,7 @@ const fake = vi.hoisted(() => ({
   job: undefined as unknown as ImageAuditJob,
   started: [] as string[],
   cancelled: [] as string[],
+  resumed: [] as string[],
   exported: [] as { format: string; query: ImageAuditQuery }[],
   lastQuery: undefined as ImageAuditQuery | undefined,
 }));
@@ -29,10 +30,11 @@ vi.mock('@/api/client', () => ({
     getImageAuditStatus: async (): Promise<ImageAuditStatusResponse> => ({
       runs: [{ runId: 'CRL-0007', type: 'full', startedAt: '2026-10-17T03:00:00Z', outcome: 'completed', pages: 120 }],
       jobs: fake.job ? [fake.job] : [], running: fake.job?.status === 'running' ? fake.job : undefined, available: true,
-      limits: { maxImages: 50000, budgetMinutes: 30, concurrency: 4, probeKb: 64 },
+      limits: { maxImages: 50000, budgetMinutes: 10, concurrency: 4, probeKb: 64, maxHours: 12 }, storage: 'memory',
     }),
     startImageAudit: async (runId: string) => { fake.started.push(runId); return fake.job; },
     getImageAudit: async () => fake.job,
+    resumeImageAudit: async (id: string) => { fake.resumed.push(id); fake.job = { ...fake.job, status: 'running', resumable: false }; return fake.job; },
     cancelImageAudit: async (id: string) => { fake.cancelled.push(id); fake.job = { ...fake.job, status: 'cancelled' }; return fake.job; },
     listImageAudit: async (_id: string, q: ImageAuditQuery): Promise<ImageAuditListResponse> => {
       fake.lastQuery = q;
@@ -60,8 +62,8 @@ function show() {
 
 const job = (status: ImageAuditJob['status']): ImageAuditJob => ({
   id: 'IMG-ABC123', runId: 'CRL-0007', status, startedAt: '2026-10-17T03:10:00Z', startedBy: 'Owner', pages: 120, references: 380, images: 4, inlineImages: 2, overLimit: 0,
-  budgetMs: 1_800_000, heavyKb: 200,
-  counts: { total: 4, pending: status === 'running' ? 1 : 0, checked: 3, ok: 2, broken: 1, failed: 0, unverified: 0, deferred: status === 'running' ? 0 : 1, reused: 0, requests: 3 },
+  budgetMs: 600_000, heavyKb: 200, rounds: 1, resumable: status !== 'running',
+  counts: { total: 4, pending: status === 'running' ? 1 : 0, checked: 3, finished: 3, ok: 2, broken: 1, failed: 0, unverified: 0, deferred: status === 'running' ? 0 : 1, reused: 0, requests: 3 },
 });
 
 describe('Image Audit screen', () => {
@@ -70,7 +72,8 @@ describe('Image Audit screen', () => {
     show();
     expect(await screen.findByText(/IMG-ABC123 · crawl CRL-0007/)).toBeTruthy();
     expect(screen.getByText(/4 unique images from 380 references on 120 pages/)).toBeTruthy();
-    expect(screen.getByRole('progressbar', { name: 'Images processed' }).getAttribute('aria-valuenow')).toBe('75');
+    expect(screen.getByRole('progressbar', { name: 'Images with a final answer' }).getAttribute('aria-valuenow')).toBe('75');
+    expect(screen.getByTestId('image-audit-progress').textContent).toMatch(/3 of 4 images answered \(75%\) · 1 pending · 0 deferred/);
     fireEvent.click(screen.getByRole('button', { name: /Cancel audit/ }));
     await waitFor(() => expect(fake.cancelled).toEqual(['IMG-ABC123']));
     // Start is disabled while one runs; nothing was started by just opening the page.
@@ -92,5 +95,23 @@ describe('Image Audit screen', () => {
     expect(screen.getAllByText('HTTP 404').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
     await waitFor(() => expect(fake.exported).toEqual([{ format: 'csv', query: expect.objectContaining({ state: 'broken' }) }]));
+  });
+
+  it('never shows 100 % while images are deferred, and resumes with only those', async () => {
+    fake.job = { ...job('partial'), counts: { ...job('partial').counts, total: 200, finished: 199, checked: 199, ok: 199, broken: 0, deferred: 1 } };
+    fake.resumed = [];
+    show();
+    expect(await screen.findByText(/199 of 200 images answered \(99%\)/)).toBeTruthy();
+    expect(screen.getByRole('progressbar', { name: 'Images with a final answer' }).getAttribute('aria-valuenow')).toBe('99');
+    expect(screen.getByText('Partly done — resume to finish')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Resume \(1 left\)/ }));
+    await waitFor(() => expect(fake.resumed).toEqual(['IMG-ABC123']));
+  });
+
+  it('shows 100 % only when every image is answered', async () => {
+    fake.job = { ...job('completed'), resumable: false, counts: { ...job('completed').counts, finished: 4, checked: 4, ok: 3, deferred: 0 } };
+    show();
+    expect(await screen.findByText(/4 of 4 images answered \(100%\) · every image is answered/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Resume/ })).toBeNull();
   });
 });

@@ -6,6 +6,7 @@
  * Score: 100, minus 15 per failed check and 5 per warning (never below 0). Only fetched HTML pages are scored.
  */
 import type { CrawledUrl } from './types';
+import { fixTime, loc, type FixLocation, type FixTime } from './fixGuide';
 
 export type PageAuditArea = 'response' | 'title' | 'meta' | 'headings' | 'canonical' | 'indexability' | 'content' | 'links' | 'images';
 export type PageAuditStatus = 'pass' | 'warn' | 'fail' | 'info';
@@ -279,4 +280,73 @@ export function scoreSummaryFrom(sum: number, n: number, byT: Map<string, { sum:
   const byTemplate: PageScoreSummary['byTemplate'] = {};
   for (const [t, v] of byT) if (v.n) byTemplate[t || 'other'] = { average: Math.round(v.sum / v.n), pages: v.n };
   return { average: n ? Math.round(sum / n) : null, scored: n, byTemplate };
+}
+
+// ------------------------------------------------------------------ where to fix a page-audit finding, and how long
+
+/** Where a page's SEO title / meta description is edited in Shopify admin, by template. */
+const SEO_LISTING: Record<string, string> = {
+  product: 'Products → {product} → Search engine listing → Edit',
+  collection: 'Products → Collections → {collection} → Search engine listing → Edit',
+  page: 'Online Store → Pages → {page} → Search engine listing → Edit',
+  blog_article: 'Online Store → Blog posts → {post} → Search engine listing → Edit',
+  blog_index: 'Online Store → Blog posts → Manage blogs → {blog} → Search engine listing',
+  home: 'Online Store → Preferences → Home page title and meta description',
+};
+const CONTENT_EDITOR: Record<string, string> = {
+  product: 'Products → {product} → Description', collection: 'Products → Collections → {collection} → Description',
+  page: 'Online Store → Pages → {page} → Content', blog_article: 'Online Store → Blog posts → {post} → Content', home: 'Online Store → Themes → Customize → Home page sections',
+};
+const VERIFY = 'Save, then start a crawl in the Crawl Center (or wait for the next scheduled one) and open this page report again — the check shows as passed.';
+
+/**
+ * What to change, where and how long for one page-audit finding (warnings and fails). Locations are Shopify's; the web
+ * app shows the equivalent for websites on another platform.
+ */
+export function pageCheckFix(id: string, template?: string): { where: FixLocation[]; time: FixTime; verify: string } | undefined {
+  const t = template ?? 'other';
+  const listing = loc('shopify-admin', SEO_LISTING[t] ?? 'The page’s SEO title / description field in Shopify admin');
+  const editor = loc('seo-tool', 'SEO editor (proposes the change, writes to Shopify only after you confirm)');
+  const content = loc('shopify-admin', CONTENT_EDITOR[t] ?? 'The page’s content editor in Shopify admin');
+  const theme = (path: string) => loc('theme-code', `Online Store → Themes → … → Edit code → ${path}`);
+  const m = (a: number, b: number, basis: string) => fixTime(a, b, basis);
+  const one = 'one page';
+  const map: Record<string, { where: FixLocation[]; time: FixTime; verify?: string }> = {
+    'title-missing': { where: [listing, editor], time: m(5, 10, `write one title for ${one}`) },
+    'title-long': { where: [listing, editor], time: m(5, 10, `rewrite one title for ${one}`) },
+    'title-short': { where: [listing, editor], time: m(5, 10, `rewrite one title for ${one}`) },
+    'title-duplicate': { where: [listing, editor], time: m(5, 15, 'make this page’s title unique (the other pages need the same)') },
+    'title-multiple': { where: [theme('layout/theme.liquid (look for a second <title>)'), loc('app', 'SEO app that adds its own title tag')], time: m(15, 30, 'find and remove the duplicate tag in the theme or app — fixes every page using it') },
+    'meta-missing': { where: [listing, editor], time: m(5, 10, `write one meta description for ${one}`) },
+    'meta-long': { where: [listing, editor], time: m(5, 10, `shorten one meta description for ${one}`) },
+    'meta-short': { where: [listing, editor], time: m(5, 10, `expand one meta description for ${one}`) },
+    'meta-duplicate': { where: [listing, editor], time: m(5, 15, 'write a description specific to this page') },
+    'meta-multiple': { where: [theme('layout/theme.liquid / snippets/meta-tags.liquid'), loc('app', 'SEO app settings')], time: m(15, 30, 'remove the duplicate tag once in the theme or app') },
+    'h1-missing': { where: [theme(`sections/main-${t === 'other' ? 'page' : t.replace('blog_article', 'article')}.liquid (make the title an <h1>)`), content], time: m(15, 30, 'theme change: wrap the page title in <h1> — fixes every page of this template') },
+    'h1-multiple': { where: [theme('sections/ (a section repeating the title as <h1>)'), content], time: m(15, 30, 'change the extra <h1> to <h2> in the section or description') },
+    'h1-empty': { where: [theme('the section that renders the <h1>'), content], time: m(10, 20, 'put text in the H1 (an image-only H1 has none)') },
+    'h2-missing': { where: [content], time: m(10, 20, 'add sub-headings to the description') },
+    'headings-skip': { where: [content, theme('sections/ heading tags')], time: m(10, 20, 'fix the heading levels in the description or section') },
+    'headings-count': { where: [content], time: m(10, 20, 'structure the copy with H2 / H3 sub-headings') },
+    'canonical-missing': { where: [theme('layout/theme.liquid → <link rel="canonical" href="{{ canonical_url }}">')], time: m(15, 30, 'add the canonical tag once in the layout — fixes every page') },
+    'canonical-multiple': { where: [theme('layout/theme.liquid'), loc('app', 'SEO app adding a second canonical')], time: m(15, 30, 'remove the duplicate canonical once') },
+    'canonical-other': { where: [theme('layout/theme.liquid (canonical_url)'), loc('app', 'SEO app canonical settings')], time: m(10, 30, 'check whether pointing elsewhere is intended; otherwise make it self-referencing') },
+    'not-indexable': { where: [theme('layout/theme.liquid (meta robots condition)'), loc('shopify-admin', 'Products / Pages → {item} → Metafields → seo.hidden'), loc('app', 'SEO / bot-protection app (X-Robots-Tag)')], time: m(15, 45, 'find the noindex source (meta tag, metafield or header) and remove it') },
+    'page-nofollow': { where: [theme('layout/theme.liquid (meta robots)'), loc('app', 'SEO app settings')], time: m(15, 30, 'remove nofollow from the page’s meta robots') },
+    'error-status': { where: [loc('shopify-admin', 'Online Store → Navigation → URL Redirects → Create URL redirect'), content], time: m(5, 10, 'one 301 redirect to the closest live page (or republish it)') },
+    'no-response': { where: [loc('app', 'App proxy / app named in the error'), loc('site-settings', 'Domain / DNS settings (Settings → Domains)')], time: m(15, 60, 'find why the URL does not answer (app proxy, DNS, timeout)') },
+    redirect: { where: [loc('shopify-admin', 'Online Store → Navigation (menus) and the descriptions linking here')], time: m(5, 15, 'point the links straight to the final URL') },
+    slow: { where: [theme('the template’s sections (large Liquid loops)'), loc('app', 'Apps → recently installed apps')], time: m(60, 180, 'profile the template and remove the slow section or app') },
+    thin: { where: [content], time: m(20, 45, 'write 150–300 useful words for this page') },
+    'alt-missing': { where: [loc('shopify-admin', 'Products → {product} → Media → each image → Add alt text'), theme('the section rendering images (alt="{{ image.alt }}")')], time: m(5, 15, 'add ALT text to this page’s images (2–5 min each)') },
+    'broken-links': { where: [content, loc('shopify-admin', 'Online Store → Navigation (menus)')], time: m(5, 15, 'update or remove the broken links on this page') },
+    'no-internal-links': { where: [content, loc('shopify-admin', 'Online Store → Navigation')], time: m(10, 20, 'add links to related products / collections') },
+    orphan: { where: [loc('shopify-admin', 'Online Store → Navigation, or add it to a collection (Products → Collections)')], time: m(10, 20, 'link the page from a menu, collection or related page') },
+    inlinks: { where: [loc('shopify-admin', 'Online Store → Navigation / related collections')], time: m(10, 20, 'add 2–3 internal links to this page') },
+    'not-in-sitemap': { where: [loc('shopify-admin', 'Products → {product} → Sales channels → Online Store (published)')], time: m(5, 10, 'publish it to the Online Store channel; Shopify adds it to the sitemap') },
+    'nofollow-links': { where: [content], time: m(10, 20, 'remove rel="nofollow" from internal links') },
+    'robots-blocked': { where: [theme('templates/robots.txt.liquid'), loc('search-console', 'Settings → robots.txt report')], time: m(15, 30, 'remove the Disallow rule that matches this URL') },
+  };
+  const f = map[id];
+  return f ? { where: f.where, time: f.time, verify: f.verify ?? VERIFY } : undefined;
 }

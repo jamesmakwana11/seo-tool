@@ -1,6 +1,6 @@
 # Backend status — Phase 2
 
-_Last updated: 16 Oct 2026 · Phase 2 gate evaluated: **PASS with documented limitations** · Storage: **temporary in-memory** · **No database work has been started** — Phase 3 waits for your explicit authorization._
+_Last updated: 21 Oct 2026 · Storage: **PostgreSQL** with `DATABASE_URL` (temporary in-memory without it) · see the dated sections below._
 
 ## 1. What exists
 
@@ -58,6 +58,72 @@ node scripts/package-review.mjs <dir>
 ```
 
 ## 3. Verification
+
+### 24 Oct 2026 — Fix guidance with location and time for every issue; DeoDap group websites always saved
+
+**Recommendations — what was missing.** Issues had Fix Cards with steps, but 11 checks (striking-distance queries,
+extractability, PAA, featured snippets, new-page QA gate, citation-worthiness, brand mentions, digital PR, disavow,
+backlink gap, referring domains) fell back to generic steps ("apply the remediation appropriate to …"); effort was a bare
+"~N h"; the place to make the change was only on some steps; the Issues board showed no fix information; page-audit
+findings and Image Audit problems had a sentence but no location, time or verification; and every text and draft said
+"DeoDap" (with DeoDap's No MOQ / wholesale / COD selling points) on every website, with Shopify paths regardless of
+platform. **Fix** (`packages/shared/src/fixGuide.ts`, `fixcards/playbook.ts`, `fixcards/generate.ts`, `pageAudit.ts`,
+`imageAudit.ts`): 11 specific playbooks (every check now has its own); each Fix Card has **Where to fix** (Shopify admin
+path, theme file, app, Search Console, SEO Sentinel section) and an **estimated time range** (per page / link / image
+for page-by-page work — e.g. one meta description 10–15 min, 120 pages with a bulk-edit hint — otherwise the playbook
+effort as a range, template fixes counted once); verification is always shown. Wording uses the selected website's name;
+drafts for other websites claim no DeoDap selling points; for a non-Shopify platform every location is translated
+(WooCommerce / WordPress / Magento / BigCommerce / custom) with a note. Issue lists carry time, where and the first step
+(new *Fix time & where* column). Page-audit findings and Image Audit problems show time, where and how to verify.
+
+**Websites — root cause.** Websites are kept only with `DATABASE_URL` (PostgreSQL, since 17 Oct): without it the list
+lives in the API's memory, so a Render restart, redeploy or free-plan idle spin-down leaves only the primary website
+(DeoDap). The code path with a database keeps every website (tested again below). **Added:** `SEED_WEBSITES` — in
+production DeoDap, Grabnix, Oblivion and Natation are created at start-up when missing (never duplicated, edited or
+removed); each website's name and platform are kept in its settings so recommendations follow the selected website.
+
+**Tests:** `packages/shared/test/fixGuide.test.ts` (every check has a specific playbook with where / time / verification;
+time ranges; brand and platform wording; page-audit and image fixes), `apps/api/test/api/seed-websites.test.ts`,
+`apps/api/test/persistence/savedWebsites.test.ts` (real API process in production mode with PostgreSQL: the four
+websites present, a fifth added, an edit kept, sign-out / sign-in and two restarts → same five websites, same ids, 5 rows),
+web: Fix Card summary, platform note, Issues table column, page-report fix hints.
+
+### 21 Oct 2026 — Image Audit completion (checkpoints, resume) and crawl batches of up to 11 websites
+
+**Image Audit — why it stopped.** One checker process ran with one time budget (`IMAGE_AUDIT_BUDGET_MINUTES`, 30); when
+it ran out, every image not reached was marked *deferred* and the job ended *partial*. Nothing continued it, a new audit
+started over, progress counted deferred images as processed (the bar could show 100 % with images unchecked), and the
+results lived only in memory.
+
+**Fix** (`apps/api/src/images/audit.ts`, no Go change): the audit runs in **rounds** — the images a round did not reach
+stay *pending* and the next round checks only them — until every image is answered (`IMAGE_AUDIT_MAX_HOURS`, 12, then
+*Partly done* + Resume). Rate-limited images are tried again after a pause honouring Retry-After (up to 3 rounds).
+**Checkpoints** every 10 s and after each round: in PostgreSQL (`sentinel_files`, a gzip snapshot of all images + small
+files with only the answers since) or, without a database, in memory (stated in the UI). After a restart the running
+audit continues automatically; on SIGTERM the last answers are stored first. **Resume** (`POST /api/image-audits/:id/resume`)
+checks only pending / deferred images. New audits reuse available / broken answers of recent audits of the website
+(24 h) and the crawl's own 4xx link answers. Image references are stored with the crawl's results, so a recent crawl
+can be audited after a restart. Progress = images with a final answer; 100 % only when nothing is pending or deferred.
+At most `IMAGE_AUDIT_MAX_CONCURRENT` (2) audits run at once. Crawls still make no image request (ALT from the HTML).
+
+**Batches — the two-website limit.** `CRAWLER_MAX_CONCURRENT_JOBS` (default 2) made a third crawl on the server fail
+with `429 CRAWL_CAPACITY` ("2 crawls already running"), so only two websites could be crawled together and nothing
+queued. **Fix:** `jobs/crawlSlots.ts` — every crawl is stored as a job and queued; a server-wide FIFO starts it when a slot
+is free (`CRAWLER_MAX_CONCURRENT_JOBS`, now default 3, max 11) **and** API + crawler memory + `CRAWLER_JOB_RESERVE_MB`
+fits the memory budget and the Node heap has room; post-crawl analyses of different websites run one at a time
+(`gocrawl/engine.ts`). `batches.ts` + `/api/crawl-batches`: one start for up to 11 websites, a job per website in its
+own workspace (`batchId` on each crawl), Running / Queued (position, reason) / Completed / Failed / Cancelled / Not
+started, cancel one website or all remaining. Web: *Crawl several websites* (`/websites/batch`). Queued jobs survive a
+restart (queued again, not counted as a restart attempt).
+
+**Tests:** `test/gocrawl/image-audit-resume.test.ts` (rounds until done with each image requested once; cancel + resume
+requests only unanswered images; 429 retried after Retry-After; reuse across crawls; PostgreSQL: real API process
+stopped with SIGTERM and SIGKILL mid-audit continues after restart without re-requesting answered images, and a new audit
+after the restart reuses everything); `test/persistence/batchCrawl.test.ts` (11 local websites on 127.0.0.2–12: one job
+each, ≤ 3 running, queue positions, cancel one queued + one running → 9 completed / 2 cancelled, pages and findings of
+each site only on its own origin; 12 refused, duplicates / unknown refused, already-running site followed; PostgreSQL:
+SIGTERM with 1 running + 4 queued → all 5 complete after the restart). Web: batch screen, Image Audit progress / resume.
+Measurements: `docs/measurements/batch-11-sites.json`, `docs/BATCH_CRAWLS.md`.
 
 ### 17 Oct 2026 (third pass) — Background crawls: independent of the browser, restarted after a server restart
 

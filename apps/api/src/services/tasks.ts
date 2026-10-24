@@ -87,7 +87,7 @@ export function createTaskService(ctx: Ctx) {
         assignmentHistory: [{ at: now, byId: actor.id, byName: actor.name, toTeam: team }], relatedIssueIds: issue.childIssueIds ?? [], reopenCount: 0,
         source: issue.source === 'demo' ? 'demo' : 'live',
       };
-      act(t, actor, 'created', `Task created from Fix Card ${issue.id} via "Fix with ${TEAMS[team].name}"${automatic ? ' (automatic: Critical unallocated past threshold, PDF §12.4)' : ''}. Priority ${t.priority} (from ${issue.severity}); due ${t.dueAt} (SLA).`);
+      act(t, actor, 'created', `Task created from Fix Card ${issue.id} — allocated to ${TEAMS[team].name}${automatic ? ' (automatic: Critical unallocated past threshold, PDF §12.4)' : ''}. Priority ${t.priority} (from ${issue.severity}); due ${t.dueAt} (SLA).`);
       await r.tasks.insert(t);
       await syncTaskOps(t, issue);
       return (await r.tasks.get(t.id))!;

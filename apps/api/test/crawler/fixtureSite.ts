@@ -31,7 +31,7 @@ export interface FixtureOptions {
   brokenImages: string[];
   /** Every page shows the same decorative banner (alt="", no width / height); the homepage also a second URL of it. */
   sharedBanner: boolean;
-  /** Host name in the site's own links (the server always listens on 127.0.0.1); 'localhost' gives a second distinct website. */
+  /** Host name in the site's own links; 'localhost' or another loopback address (127.0.0.2 …) gives a further distinct website. */
   host: string;
   /** Product handles whose Product JSON-LD has no offers. */
   noOffers: string[];
@@ -65,13 +65,17 @@ export interface FixtureOptions {
   unavailable: string[];
   /** Theme stylesheet version: above 1, base.css gets ?v=N and a different background colour (visual / asset changes). */
   themeVersion: number;
+  /** Extra gallery images per product page (/cdn/img/<handle>-g<n>.webp), for Image Audit tests. */
+  galleryImages: number;
+  /** Image path → how many times it answers 429 (Retry-After: 1) before it answers normally. */
+  limitImages: Record<string, number>;
 }
 
 export const defaultFixtureOptions = (): FixtureOptions => ({
   noindex: [], xRobotsNoindex: [], deletedProducts: [], missingCanonical: [], duplicateTitle: [], thinCollections: [], longTitle: [], missingMeta: [],
   multipleH1: [], missingAlt: [], largeImage: [], brokenImages: [], sharedBanner: false, host: '127.0.0.1', noOffers: [], productTemplateNoOffers: false, priceMismatch: {}, reviewMarkupWithoutReviews: [],
   robotsDisallowCollections: false, robotsBlockGptBot: false, aiBoilerplate: [], ymylClaim: [], newHeadScriptOnProducts: false, linkErrorRoutes: false,
-  slowMs: 1500, ssrfRedirect: false, malformedPage: false, orphanInSitemap: false, scopedSelfCanonical: false, unavailable: [], themeVersion: 1,
+  slowMs: 1500, ssrfRedirect: false, malformedPage: false, orphanInSitemap: false, scopedSelfCanonical: false, unavailable: [], themeVersion: 1, galleryImages: 0, limitImages: {},
 });
 
 interface Product { handle: string; name: string; price: number; collection: string; material: string; size: string; use: string; detail: string; more: string; review: string }
@@ -258,7 +262,7 @@ ${p.body}
       description: `Buy ${p.name} at wholesale price with No MOQ. COD available and fast shipping across India from DeoDap.`,
       jsonld: [product, { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: [{ '@type': 'Question', name: 'Can I order a single piece?', acceptedAnswer: { '@type': 'Answer', text: 'Yes, there is no minimum order quantity.' } }] }, crumbs([['Home', '/'], [col.name, `/collections/${col.handle}`], [p.name, `/products/${p.handle}`]])],
       body: `${visibleCrumbs([['Home', '/'], [col.name, `/collections/${col.handle}`], [p.name, `/products/${p.handle}`]])}
-<div class="product__media"><img src="/cdn/img/${imgName}"${alt} width="800" height="800"></div>
+<div class="product__media"><img src="/cdn/img/${imgName}"${alt} width="800" height="800">${Array.from({ length: opts.galleryImages }, (_, k) => `<img src="/cdn/img/${p.handle}-g${k + 1}.webp" alt="${esc(p.name)} view ${k + 2}" width="400" height="400" loading="lazy">`).join('')}</div>
 <div class="product__info">
 <div class="price"><span class="price-item price-item--regular">₹ ${p.price.toFixed(2)}</span></div>
 <p>Wholesale slab pricing: 10+ units save 5%, 50+ units save 10%. No minimum order quantity.</p>
@@ -401,6 +405,10 @@ ${a.sections.map(([h, t]) => `<h2>${esc(h)}</h2><p>${esc(t)}</p>`).join('\n')}
     if (path === '/robots.txt') return send(res, 200, robotsTxt(), { 'content-type': 'text/plain' }, method);
     if (path === '/sitemap.xml') return send(res, 200, sitemapXml(), { 'content-type': 'application/xml' }, method);
     if (path.startsWith('/cdn/img/missing-')) return send(res, 404, 'Not found', { 'content-type': 'text/plain' }, method);
+    if (path.startsWith('/cdn/img/') && (opts.limitImages[path] ?? 0) > 0) {
+      opts.limitImages[path]--;
+      return send(res, 429, 'Too Many Requests', { 'content-type': 'text/plain', 'retry-after': '1' }, method);
+    }
     if (path.startsWith('/cdn/img/')) {
       const big = path.endsWith('big-photo.jpg');
       const size = big ? 300 * 1024 : 18 * 1024;
@@ -467,7 +475,8 @@ ${a.sections.map(([h, t]) => `<h2>${esc(h)}</h2><p>${esc(t)}</p>`).join('\n')}
     return send(res, 404, layout({ path, title: '404 Not Found | DeoDap', h1: 'Page not found', body: '<p>Not found.</p>', jsonld: [] }), {}, method);
   }
 
-  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  // A 127.x.y.z host (all loopback) listens on that address: several distinct local websites on one machine.
+  await new Promise<void>((r) => server.listen(0, /^127\.\d+\.\d+\.\d+$/.test(opts.host) ? opts.host : '127.0.0.1', r));
   const port = (server.address() as AddressInfo).port;
   origin = `http://${opts.host}:${port}`;
   return {

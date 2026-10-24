@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { CheckCircle2, CircleAlert, ClipboardCopy, FileWarning, Lightbulb, Repeat, ShieldCheck, Target, Wand2 } from 'lucide-react';
+import { CheckCircle2, CircleAlert, ClipboardCopy, Clock, FileWarning, Lightbulb, MapPin, Repeat, ShieldCheck, Target, Wand2 } from 'lucide-react';
 import { TEAMS, type FixCard, type Issue } from '@sentinel/shared';
 import { Badge, Button, Code, KV, Notice } from '@/components/ui/primitives';
 import { ConfirmDialog } from '@/components/ui/overlay';
@@ -36,6 +36,29 @@ export function FixCardView({ card, issue, done }: { card: FixCard; issue: Issue
         {card.completeness.complete ? <Badge tone="ok" icon={<CheckCircle2 className="h-3 w-3" />}>Complete Fix Card</Badge> : <Badge tone="crit" icon={<CircleAlert className="h-3 w-3" />}>Missing: {card.completeness.missing.join(', ')}</Badge>}
       </div>
 
+      {(card.timeEstimate || card.where?.length) ? (
+        <div className="mb-4 grid grid-cols-1 gap-3 rounded-ctl border border-signal/30 bg-signal/5 p-3 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]" data-testid="fix-summary">
+          {card.timeEstimate && (
+            <div>
+              <p className="flex items-center gap-1.5 text-xs font-medium text-muted"><Clock className="h-3.5 w-3.5" /> Estimated time to fix</p>
+              <p className="mt-0.5 text-xl font-semibold tabular-nums text-ink" data-testid="fix-time">{card.timeEstimate.label}</p>
+              <p className="mt-0.5 text-xs text-muted">{card.timeEstimate.basis}</p>
+            </div>
+          )}
+          {!!card.where?.length && (
+            <div>
+              <p className="flex items-center gap-1.5 text-xs font-medium text-muted"><MapPin className="h-3.5 w-3.5" /> Where to fix</p>
+              <ul className="mt-1 space-y-1" data-testid="fix-where">
+                {card.where.map((w) => (
+                  <li key={`${w.kind}-${w.path ?? ''}`} className="text-sm"><span className="font-medium text-ink">{w.label}</span>{w.path && <span className="text-ink-soft"> — {w.path}</span>}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {card.platformNote && <p className="text-xs text-med-ink md:col-span-2">{card.platformNote}</p>}
+        </div>
+      ) : null}
+
       <Section title="What's wrong" icon={<FileWarning className="h-4 w-4 text-crit-ink" />}><p className="text-sm text-ink-soft">{card.whatsWrong}</p></Section>
       <Section title="Why it matters"><p className="text-sm text-ink-soft">{card.whyItMatters}</p></Section>
 
@@ -55,14 +78,14 @@ export function FixCardView({ card, issue, done }: { card: FixCard; issue: Issue
         ) : <p className="text-sm text-muted">Not inferred — the available evidence doesn't support a single root cause. Investigate using the evidence above.</p>}
       </Section>
 
-      <Section title="Exact fix" icon={<Wand2 className="h-4 w-4 text-signal" />}>
+      <Section title="How to fix it, step by step" icon={<Wand2 className="h-4 w-4 text-signal" />}>
         <ol className="space-y-3">
           {card.steps.map((st) => (
             <li key={st.order} className="flex gap-3">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-signal-tint text-xs font-semibold text-signal-dark">{st.order}</span>
               <div className="min-w-0 flex-1 space-y-1.5">
                 <p className="text-sm text-ink">{st.text}</p>
-                {st.adminPath && <p className="text-xs text-muted">Shopify Admin: <span className="font-medium text-ink-soft">{st.adminPath}</span></p>}
+                {st.adminPath && <p className="text-xs text-muted">{card.platformNote ? 'Shopify admin (see the note above for this platform)' : 'Shopify admin'}: <span className="font-medium text-ink-soft">{st.adminPath}</span></p>}
                 {st.code && (
                   <div className="relative">
                     <Code language={st.code.language}>{st.code.snippet}</Code>
@@ -101,7 +124,7 @@ export function FixCardView({ card, issue, done }: { card: FixCard; issue: Issue
       <Section title="Ownership, effort & impact" icon={<Target className="h-4 w-4 text-muted" />}>
         <KV cols={3} items={[
           { k: 'Owner suggestion', v: <><span className="font-medium">{TEAMS[card.ownerSuggestion].name}</span><span className="block text-xs text-muted">{card.ownerReason}</span></> },
-          { k: 'Estimated effort', v: `~${card.effortHours} h` },
+          { k: 'Estimated time', v: card.timeEstimate ? <><span className="font-medium">{card.timeEstimate.label}</span><span className="block text-xs text-muted">{card.timeEstimate.basis}</span></> : `~${card.effortHours} h` },
           { k: 'Expected impact', v: <span className="capitalize">{card.expectedImpact} (impact {card.impactScore}/5)</span> },
           { k: 'Confidence', v: `${Math.round(card.confidence * 100)}%` },
           { k: 'SLA deadline', v: <SlaCountdown dueAt={card.slaDueAt} done={done} /> },
@@ -116,7 +139,7 @@ export function FixCardView({ card, issue, done }: { card: FixCard; issue: Issue
         )}
       </Section>
 
-      <Section title="Verification" icon={<ShieldCheck className="h-4 w-4 text-ok-ink" />}>
+      <Section title="How to verify it is fixed" icon={<ShieldCheck className="h-4 w-4 text-ok-ink" />}>
         <p className="text-sm text-ink"><span className="text-muted">Verify by: </span>{card.verifyBy}</p>
         <ul className="mt-2 space-y-1">{card.acceptanceCriteria.map((a) => <li key={a} className="flex gap-2 text-sm"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-faint" />{a}</li>)}</ul>
         <p className="mt-2 text-xs text-muted">The card closes only when automated re-verification finds 0 failing pages — marking an issue Fixed does not verify it.</p>
@@ -124,11 +147,11 @@ export function FixCardView({ card, issue, done }: { card: FixCard; issue: Issue
 
       {card.requiresHumanApproval && (
         <Notice tone="signal" title="Human approval required (PDF §17)">
-          Sentinel proposes this change (redirect, metadata rewrite, schema update or disavow) but never applies it to the live site. Approve here to record the decision, then apply it in Shopify.
+          Sentinel proposes this change (redirect, metadata rewrite, schema update or disavow) but never applies it to the live site. Approve here to record the decision, then apply it on the website.
           {can('fixcards.approve_proposal') && <div className="mt-2"><Button size="sm" variant="primary" onClick={() => setApprove(true)}>Record approval</Button></div>}
         </Notice>
       )}
-      <ConfirmDialog open={approve} onClose={() => setApprove(false)} title="Record approval of proposed change" body="This writes your approval to the audit log. It does not change deodap.in." reason="optional" reasonLabel="Note" confirmLabel="Record approval" loading={approveM.isPending} onConfirm={(n) => approveM.mutate(n)} />
+      <ConfirmDialog open={approve} onClose={() => setApprove(false)} title="Record approval of proposed change" body="This writes your approval to the audit log. It does not change the live website." reason="optional" reasonLabel="Note" confirmLabel="Record approval" loading={approveM.isPending} onConfirm={(n) => approveM.mutate(n)} />
     </article>
   );
 }

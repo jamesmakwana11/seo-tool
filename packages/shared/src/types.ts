@@ -323,6 +323,8 @@ export interface Issue {
   /** Stable identity across crawl runs when an analyzer emits several findings per check × template (e.g. one per blocked AI bot). */
   findingKey?: string;
   source: DataSource;
+  /** In issue lists only (never stored): time to fix, where, first step. */
+  fix?: IssueFixSummary;
 }
 
 export interface FixStep {
@@ -339,6 +341,14 @@ export interface DraftVariant {
   body?: string;
   score?: number; // relative CTR score 0–100 (heuristic, labelled as estimate)
   scoreBasis?: string;
+}
+
+/** Short fix information shown with an issue in lists (not stored: computed from its Fix Card when listed). */
+export interface IssueFixSummary {
+  time: import('./fixGuide').FixTime;
+  where: import('./fixGuide').FixLocation[];
+  firstStep: string;
+  playbookId: string;
 }
 
 export interface FixCard {
@@ -374,6 +384,12 @@ export interface FixCard {
   playbookId: string;
   generatedAt: ISODate;
   completeness: { complete: boolean; missing: string[] };
+  /** Where the change is made (Shopify admin, theme code, app, Search Console, SEO Sentinel …), for this website's platform. */
+  where?: import('./fixGuide').FixLocation[];
+  /** Realistic time to fix, as a range, with how it was estimated. */
+  timeEstimate?: import('./fixGuide').FixTime;
+  /** Set when the website is not on Shopify: how to read the Shopify-worded steps. */
+  platformNote?: string;
 }
 
 export interface IssueGroup {
@@ -626,10 +642,17 @@ export interface CrawlRun {
    * (from the beginning: page-level checkpoints are not kept). attempts = restarts so far.
    */
   resume?: { attempts: number; lastAt: ISODate; firstStartedAt?: ISODate; pagesBeforeRestart: number };
+  /** Started as part of a multi-website batch (see CrawlBatch). */
+  batchId?: string;
+  /**
+   * Queued and waiting for the server (not stored): place in the server-wide queue (1 = next), how many crawls wait,
+   * and why it has not started yet (all slots in use, or not enough memory for another crawl).
+   */
+  queue?: { position: number; waiting: number; reason?: string };
 }
 
 export type CrawlPhase =
-  | 'preflight' | 'robots' | 'sitemaps' | 'crawling' | 'crawling_sitemap_only' | 'samples' | 'checks' | 'finalizing' | 'text_analysis' | 'analysing' | 'saving';
+  | 'waiting' | 'preflight' | 'robots' | 'sitemaps' | 'crawling' | 'crawling_sitemap_only' | 'samples' | 'checks' | 'finalizing' | 'text_analysis' | 'analysing' | 'saving';
 
 export type CrawlOutcomeState = 'completed' | 'partial' | 'cancelled' | 'failed' | 'resource_stopped';
 
@@ -949,7 +972,8 @@ export interface AlertRule {
 // ---------------------------------------------------------------------------
 
 export interface SentinelConfig {
-  site: { baseUrl: string; canonicalHost: string; brand: string; timezone: 'Asia/Kolkata' };
+  /** platform: the website's platform (Manage websites); Fix Card locations follow it. Absent = Shopify. */
+  site: { baseUrl: string; canonicalHost: string; brand: string; timezone: 'Asia/Kolkata'; platform?: WebsitePlatform };
   tiers: {
     tier1TopCollections: number; // 20
     tier1TopProducts: number; // 200

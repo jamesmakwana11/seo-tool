@@ -1,11 +1,10 @@
 import { Link } from 'react-router-dom';
 import { ArrowUpRight, Bot, CheckCircle2, PartyPopper } from 'lucide-react';
-import { MODULE_LABELS, TEAMS, TEAM_IDS, type DailyDigest, type IssueStatus, type TeamId } from '@sentinel/shared';
+import { MODULE_LABELS, TEAMS, TEAM_IDS, type DailyDigest } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { Async, Badge, DemoBadge, EmptyState, Mono, PageHeader, Panel, Stat } from '@/components/ui/primitives';
 import { TrendChart } from '@/components/ui/charts';
-import { AllocationButtons } from '@/components/domain/allocation';
 import { SeverityBadge, SlaCountdown, TeamBadge } from '@/components/domain/badges';
 import { scoreColor } from '@/components/domain/HealthScore';
 import { ReportActions, ReportMetaPanel } from '@/components/reports/ReportParts';
@@ -24,12 +23,6 @@ export default function DailyDigestPage() {
       <Async q={q} rows={12}>{(d) => <Digest d={d} />}</Async>
     </div>
   );
-}
-
-/** The digest line only carries ids/teams; derive the fields AllocationButtons needs. */
-function lineIssue(x: { issueId: string; title: string; recommendedTeam: TeamId; allocatedTeam?: TeamId }) {
-  const status: IssueStatus = x.allocatedTeam ? 'ASSIGNED' : 'NEW';
-  return { id: x.issueId, title: x.title, recommendedTeam: x.recommendedTeam, allocatedTeam: x.allocatedTeam, status };
 }
 
 function Digest({ d }: { d: DailyDigest }) {
@@ -64,7 +57,6 @@ function Digest({ d }: { d: DailyDigest }) {
                   </div>
                   <Link to={`/issues/${c.issueId}`} className="inline-flex shrink-0 items-center gap-1 text-sm text-signal hover:underline">Fix Card <span className="font-mono text-xs">{c.issueId}</span><ArrowUpRight className="h-3.5 w-3.5" /></Link>
                 </div>
-                <AllocationButtons compact issue={lineIssue(c)} />
               </li>
             ))}
           </ul>
@@ -87,7 +79,6 @@ function Digest({ d }: { d: DailyDigest }) {
                         <Mono className="shrink-0 text-muted">{i.issueId}</Mono>
                         <span className="min-w-0 flex-1 hover:underline">{i.title}</span>
                       </Link>
-                      <AllocationButtons compact issue={lineIssue(i)} />
                     </li>
                   ))}
                 </ul>

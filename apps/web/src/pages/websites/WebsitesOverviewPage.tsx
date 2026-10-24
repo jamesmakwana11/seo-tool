@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
-import { ArrowUpRight, Plus } from 'lucide-react';
+import { ArrowUpRight, Layers, Plus } from 'lucide-react';
 import type { WebsiteSummary } from '@sentinel/shared';
 import { useAuth } from '@/auth/AuthContext';
 import { EmptyState, ErrorState, LoadingBlock, PageHeader, Panel } from '@/components/ui/primitives';
@@ -75,7 +75,12 @@ export default function WebsitesOverviewPage() {
       <PageHeader
         title="All websites"
         description="Every workspace at a glance. Figures appear only for websites with audit data; a website that has never been crawled shows no score."
-        actions={can('websites.manage') ? <Link to="/websites?add=1" className="inline-flex h-9 items-center gap-1.5 rounded-ctl bg-signal px-3 text-sm font-semibold text-on-signal hover:bg-signal-dark"><Plus className="h-4 w-4" /> Add website</Link> : undefined}
+        actions={(
+          <span className="flex gap-2">
+            {can('crawls.run') && list.length > 1 && <Link to="/websites/batch" className="inline-flex h-9 items-center gap-1.5 rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card hover:border-signal/40 hover:text-signal-dark"><Layers className="h-4 w-4" /> Crawl several websites</Link>}
+            {can('websites.manage') && <Link to="/websites?add=1" className="inline-flex h-9 items-center gap-1.5 rounded-ctl bg-signal px-3 text-sm font-semibold text-on-signal hover:bg-signal-dark"><Plus className="h-4 w-4" /> Add website</Link>}
+          </span>
+        )}
       />
       {loading ? <LoadingBlock rows={6} /> : error ? <ErrorState error={error} onRetry={refetch} /> : (
         <>

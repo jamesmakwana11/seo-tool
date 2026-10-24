@@ -252,7 +252,7 @@ const server = http.createServer((req, res) => {
   return send(404, layout({ title: 'Page not found | DeoShop', canonical: p, body: '<p>Not found</p>', h1: '<h1>404</h1>' }));
 });
 server.keepAliveTimeout = 30_000;
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, /^127\.\d+\.\d+\.\d+$/.test(arg('host', '')) ? arg('host', '') : '127.0.0.1', () => {
   ORIGIN = `http://${arg('host', '127.0.0.1')}:${server.address().port}`; // --host localhost: a second, distinct website on this machine
   const collectionPages = Array.from({ length: COLLECTIONS }, (_, c) => Math.max(1, Math.ceil(Math.ceil((N - c) / COLLECTIONS) / PER_PAGE))).reduce((a, b) => a + b, 0);
   process.stdout.write(`${JSON.stringify({ ready: true, url: `${ORIGIN}/`, products: N, collections: COLLECTIONS, collectionPages, articles: ARTICLES })}\n`);

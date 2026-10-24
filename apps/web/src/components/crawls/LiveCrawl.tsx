@@ -166,12 +166,12 @@ function ago(iso: string | undefined, now: number): string | undefined {
 }
 
 const PHASE_SHORT: Record<string, string> = {
-  preflight: 'Checking address', robots: 'robots.txt', sitemaps: 'Sitemaps', crawling: 'Fetching pages', crawling_sitemap_only: 'Sitemap-only pages', samples: 'Samples',
+  waiting: 'Waiting for the server', preflight: 'Checking address', robots: 'robots.txt', sitemaps: 'Sitemaps', crawling: 'Fetching pages', crawling_sitemap_only: 'Sitemap-only pages', samples: 'Samples',
   checks: 'Checks after crawl', finalizing: 'Writing results', text_analysis: 'Duplicate analysis', analysing: 'Analysing', saving: 'Saving',
 };
 
 const PHASES: Record<string, string> = {
-  preflight: 'Checking the site address…', robots: 'Reading robots.txt…', sitemaps: 'Reading sitemaps…', crawling_sitemap_only: 'Fetching pages found only in the sitemap…',
+  waiting: 'Fetching finished; waiting while another website\'s crawl is analysed (one analysis at a time keeps memory safe)…', preflight: 'Checking the site address…', robots: 'Reading robots.txt…', sitemaps: 'Reading sitemaps…', crawling_sitemap_only: 'Fetching pages found only in the sitemap…',
   samples: 'Fetching parameter, pagination and duplicate-path samples…', checks: 'Checking links, images, scripts, host variants and TLS…', finalizing: 'Writing results…',
   text_analysis: 'Comparing page text for duplicates (Rust text core)…',
 };
@@ -209,7 +209,9 @@ export function CrawlProgress({ run, showLink = true }: { run: CrawlRun; showLin
   const perMinute = cov?.pagesPerMin || undefined;
   const waiting = run.urlsDiscovered !== undefined ? Math.max(0, Math.min(cap, run.urlsDiscovered) - processed) : undefined;
   const phaseText = run.status === 'queued'
-    ? 'Queued — checking the site address before the first request…'
+    ? run.queue
+      ? `Queued — position ${run.queue.position} of ${run.queue.waiting} on this server${run.queue.reason ? ` (${run.queue.reason})` : ''}. It starts automatically when a slot is free.`
+      : run.phase === 'waiting' ? 'Queued — starts automatically when the server has a free slot.' : 'Queued — checking the site address before the first request…'
     : run.phase === 'analysing'
       ? `Fetching finished. Analysing ${fmtNum(processed)} pages — on a large crawl this can take several minutes.`
       : run.phase === 'saving'

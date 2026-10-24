@@ -15,11 +15,24 @@ import {
   DEMO_WEBSITE_ID, computeHealthScore, defaultConfig, normalizeDomain, siteHasAuditData, validateWebsiteInput,
   type Website, type WebsiteInput, type WebsiteSummary,
 } from '@sentinel/shared';
+import { WEBSITE_PLATFORMS } from '@sentinel/shared';
 import { createContainer, type Container } from './container';
 import { createInMemoryRepositories } from './repositories/memory/inMemory';
 import type { Repositories } from './repositories/types';
 import { badRequest, notFound } from './lib/errors';
 import { audit, need, type Actor } from './services/context';
+
+/** SEED_WEBSITES entries: "Name|https://url/|platform" (name and platform optional), comma- or newline-separated. */
+export function parseSeedWebsites(raw: string | undefined): WebsiteInput[] {
+  if (!raw || raw.trim().toLowerCase() === 'none') return [];
+  return raw.split(/[,\n]/).map((e) => e.trim()).filter(Boolean).map((e) => {
+    const parts = e.split('|').map((x) => x.trim());
+    const url = parts.find((p) => /^https?:\/\//i.test(p)) ?? parts[0];
+    const name = parts[0] !== url ? parts[0] : new URL(/^https?:/i.test(url) ? url : `https://${url}`).hostname.replace(/^www\./, '');
+    const platform = (WEBSITE_PLATFORMS.find((p) => p.id === parts[parts.indexOf(url) + 1])?.id ?? 'shopify') as WebsiteInput['platform'];
+    return { name, url, platform };
+  });
+}
 
 export function createWorkspaces(primary: Container) {
   const als = new AsyncLocalStorage<Container>();
@@ -55,8 +68,41 @@ export function createWorkspaces(primary: Container) {
         if (primary.env.SCHEDULER_ENABLED) c.scheduler.start();
       }
       if (saved.length) primary.log.info({ websites: websites.length }, 'websites loaded from the database');
+      // Recommendations follow each website's platform (Manage websites): keep it in the website's settings.
+      for (const w of websites) await syncSiteSettings(containers.get(w.id)!, w);
+      await seedWebsites();
     })();
     return ready;
+  }
+
+  /** The website's name and platform in its settings (brand and platform used by Fix Cards). Only writes when they differ. */
+  async function syncSiteSettings(c: Container, w: Website) {
+    const cfg = await c.repos.config.get();
+    const brand = w.id === DEMO_WEBSITE_ID ? cfg.site.brand : w.name;
+    if (cfg.site.platform !== w.platform || cfg.site.brand !== brand) await c.repos.config.set({ ...cfg, site: { ...cfg.site, platform: w.platform, brand } });
+  }
+
+  /**
+   * SEED_WEBSITES: websites that must always be selectable. Each one missing (by domain) is added like a website added
+   * by a person — stored with DATABASE_URL — and never changed or removed afterwards.
+   */
+  async function seedWebsites() {
+    for (const input of parseSeedWebsites(primary.env.SEED_WEBSITES)) {
+      let v: ReturnType<typeof validateWebsiteInput>;
+      try { v = validateWebsiteInput(input, websites); } catch (e) {
+        if ((e as { code?: string }).code !== 'DUPLICATE_DOMAIN') primary.log.warn({ url: input.url, err: (e as Error).message }, 'SEED_WEBSITES entry skipped');
+        continue;
+      }
+      const at = primary.clock().toISOString();
+      const w: Website = { id: `site-${v.domain.replace(/[^a-z0-9]+/g, '-')}`, ...v, createdAt: at, updatedAt: at, createdByName: 'Server configuration (SEED_WEBSITES)', source: 'manual' };
+      if (containers.has(w.id)) continue;
+      const c = await openSite(w, true);
+      if (db) { await db.flush(); await db.saveWebsite(w); }
+      containers.set(w.id, c);
+      websites.push(w);
+      if (primary.env.SCHEDULER_ENABLED) c.scheduler.start();
+      primary.log.info({ website: w.domain }, 'website added from SEED_WEBSITES');
+    }
   }
 
   /** A website's container: its own (stored) data, shared people / sign-in / permissions, its own crawler. */
@@ -67,7 +113,7 @@ export function createWorkspaces(primary: Container) {
     Object.assign(repos, { employees: p.employees, credentials: p.credentials, resetTokens: p.resetTokens, sessions: p.sessions, permissions: p.permissions });
     if (isNew) {
       const cfg = defaultConfig(now);
-      cfg.site = { ...cfg.site, baseUrl: w.url.replace(/\/$/, ''), canonicalHost: w.domain, brand: w.name };
+      cfg.site = { ...cfg.site, baseUrl: w.url.replace(/\/$/, ''), canonicalHost: w.domain, brand: w.name, platform: w.platform };
       cfg.competitors = [];
       await repos.config.set(cfg);
       // Schedules exist but start disabled: nothing is crawled until someone turns a schedule on or starts a crawl.
@@ -91,6 +137,8 @@ export function createWorkspaces(primary: Container) {
     ready: init,
     /** The container a request runs against; undefined for an unknown website id. */
     resolve(id: string | undefined): Container | undefined { return id ? containers.get(id) : primary; },
+    /** Every website with its container (in the order they were added). */
+    entries(): { website: Website; container: Container }[] { return websites.map((w) => ({ website: w, container: containers.get(w.id)! })); },
     /** Container for the current request (falls back to the primary website outside a request). */
     current(): Container { return als.getStore() ?? primary; },
 
@@ -142,7 +190,7 @@ export function createWorkspaces(primary: Container) {
       Object.assign(w, v, { updatedAt: primary.clock().toISOString() });
       if (db) await db.saveWebsite(w);
       const cfg = await c.repos.config.get();
-      await c.repos.config.set({ ...cfg, site: { ...cfg.site, baseUrl: w.url.replace(/\/$/, ''), canonicalHost: w.domain, brand: w.name } });
+      await c.repos.config.set({ ...cfg, site: { ...cfg.site, baseUrl: w.url.replace(/\/$/, ''), canonicalHost: w.domain, brand: w.name, platform: w.platform } });
       await audit(c.ctx, actor, 'website.update', 'config', w.id, `Updated website ${w.name}`);
       return w;
     },

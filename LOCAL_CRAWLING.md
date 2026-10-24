@@ -62,7 +62,7 @@ What the template sets (all variables are documented in `apps/api/.env.example`)
 | `SCHEDULER_ENABLED` | `false` | Nothing is crawled automatically — every crawl starts from the Start crawl button |
 | `CRAWLER_REQUEST_DELAY_MS` | `250` | Minimum gap between requests to the site |
 | `CRAWLER_MAX_BODY_BYTES` | `5242880` | Largest page body read (5 MB); bigger pages are truncated |
-| `CRAWLER_MAX_CONCURRENT_JOBS` | `2` | Crawls that may run at the same time on the server |
+| `CRAWLER_MAX_CONCURRENT_JOBS` | `3` | Crawls that run at the same time on the server (all websites); more are queued — see `docs/BATCH_CRAWLS.md` |
 | `CRAWLER_RETRIES` | `2` | Retries after 429 / 502 / 503 / 504, a timeout or a dropped connection |
 | `CRAWLER_CHECKS_BUDGET_MINUTES` | automatic | Most time the post-crawl checks may take (default: as long as the page crawl, 5–20 min) |
 | `CRAWLER_STALL_MINUTES` | `20` | A crawl with no answered request for this long stops as partial (results kept) |

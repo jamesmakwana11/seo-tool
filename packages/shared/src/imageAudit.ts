@@ -9,6 +9,8 @@
  * unverified = not checked (robots.txt, rate limited, third-party host) · deferred = not checked in this job (time budget
  * or cancelled) · pending = waiting to be checked while the job runs.
  */
+import { fixTime, loc, type FixLocation, type FixTime } from './fixGuide';
+
 export type ImageCheckState = 'ok' | 'broken' | 'failed' | 'unverified' | 'deferred' | 'pending';
 export const IMAGE_STATES: ImageCheckState[] = ['ok', 'broken', 'failed', 'unverified', 'deferred', 'pending'];
 export const IMAGE_STATE_LABELS: Record<ImageCheckState, string> = {
@@ -41,6 +43,8 @@ export interface ImageAuditItem {
   height?: number;
   checkedAt?: string;
   ms?: number;
+  /** Rounds in which the image was answered "rate limited" (it is tried again up to IMAGE_AUDIT_RATE_LIMIT_ROUNDS). */
+  rateLimitedRounds?: number;
   // ---- from the crawled HTML (no request)
   /** Pages showing it, and the first of them. */
   pageCount: number;
@@ -74,6 +78,8 @@ export interface ImageAuditCounts {
   pending: number;
   /** ok + broken + failed (an answer was received). */
   checked: number;
+  /** Images with a final result: checked + unverified. Progress = finished / total; 100 % only when nothing is pending or deferred. */
+  finished: number;
   ok: number;
   broken: number;
   failed: number;
@@ -104,8 +110,19 @@ export interface ImageAuditJob {
   overLimit: number;
   reason?: string;
   error?: string;
+  /** Length of one checking round (ms). */
   budgetMs: number;
   heavyKb: number;
+  /** Checking rounds run so far (one Go checker process each; the next round takes the images still pending). */
+  rounds: number;
+  /** Times the audit was resumed (by a user, or automatically after a server restart). */
+  resumes?: number;
+  /** Last stored progress: where (database = survives a restart; memory = lost on a restart) and when. */
+  checkpoint?: { at: string; storage: 'database' | 'memory'; finished: number };
+  /** Waiting before it can run: another audit on this server, or a pause for rate-limited images. */
+  waiting?: string;
+  /** Not finished and can be resumed: images still pending or deferred. */
+  resumable?: boolean;
 }
 
 export interface ImageAuditQuery {
@@ -135,7 +152,9 @@ export interface ImageAuditStatusResponse {
   running?: ImageAuditJob;
   available: boolean;
   reason?: string;
-  limits: { maxImages: number; budgetMinutes: number; concurrency: number; probeKb: number };
+  limits: { maxImages: number; budgetMinutes: number; concurrency: number; probeKb: number; maxHours: number };
+  /** Where audit progress is stored: database = an audit continues after a server restart; memory = lost on a restart. */
+  storage: 'database' | 'memory';
 }
 
 /** CSV columns of an Image Audit export. */
@@ -169,3 +188,28 @@ export const IMAGE_AUDIT_CSV: { header: string; value: (i: ImageAuditItem) => un
   { header: 'example_pages', value: (i) => i.pages.join(' ') },
   { header: 'checked_at', value: (i) => i.checkedAt },
 ];
+
+/** Where an image problem is fixed, how long it takes per image and how to verify it (Shopify; the web app localizes). */
+export function imageIssueFix(id: ImageIssueId): { where: FixLocation[]; time: FixTime; verify: string } | undefined {
+  const media = loc('shopify-admin', 'Products → {product} → Media → the image');
+  const theme = (p: string) => loc('theme-code', `Online Store → Themes → … → Edit code → ${p}`);
+  const reaudit = 'Run a crawl, then start a new Image Audit (answers already checked are reused) — the image no longer shows this problem.';
+  const t = (a: number, b: number, basis: string) => fixTime(a, b, basis);
+  const map: Partial<Record<ImageIssueId, { where: FixLocation[]; time: FixTime; verify?: string }>> = {
+    broken: { where: [media, loc('shopify-admin', 'Content → Files (re-upload) / the section or description that references it')], time: t(5, 15, 'per image: re-upload or replace the reference') },
+    failed: { where: [loc('app', 'The image host / CDN named in the URL'), media], time: t(10, 30, 'per image: check the host, then re-upload if it keeps failing'), verify: 'Re-run the Image Audit later; a temporary failure answers 2xx, a permanent one must be re-uploaded.' },
+    'alt-missing': { where: [media, theme('the section rendering the image (alt="{{ image.alt | escape }}")')], time: t(2, 5, 'per image: write ALT text') },
+    'alt-empty': { where: [media], time: t(2, 5, 'per image: describe it, or keep alt="" if it is purely decorative') },
+    'no-dimensions': { where: [theme('the section / snippet rendering <img> (use image_tag or add width and height)')], time: t(15, 30, 'one theme change fixes every image rendered by that section') },
+    'not-lazy': { where: [theme('the section rendering below-the-fold images (loading="lazy")')], time: t(15, 30, 'one theme change for the section') },
+    heavy: { where: [media, loc('app', 'Image compression app, or re-export the file under the size limit')], time: t(5, 10, 'per image: compress and re-upload') },
+    'legacy-format': { where: [theme('use the image_url filter (Shopify serves WebP / AVIF automatically)')], time: t(15, 45, 'one theme change for hard-coded image URLs') },
+    oversized: { where: [theme('add srcset / sizes or a width parameter (image_url: width: …)')], time: t(15, 45, 'one theme change for the section') },
+    redirect: { where: [loc('shopify-admin', 'The description / section that references the old image URL')], time: t(5, 10, 'per reference: use the final URL') },
+    duplicate: { where: [theme('use one image URL (drop extra query strings)'), loc('shopify-admin', 'Content → Files')], time: t(10, 20, 'per file: point every reference at one URL') },
+    repeated: { where: [theme('the section or gallery that outputs the image twice')], time: t(10, 20, 'remove the duplicate block') },
+    unverified: { where: [loc('site-settings', 'robots.txt or the rate limit that blocked the check (only if the image must be checked)')], time: t(5, 15, 'decide whether it needs checking; resume the audit later if it was rate limited'), verify: 'Resume the Image Audit — it checks only the images not answered yet.' },
+  };
+  const f = map[id];
+  return f ? { where: f.where, time: f.time, verify: f.verify ?? reaudit } : undefined;
+}

@@ -10,7 +10,7 @@
  * - Never claims an external action succeeded: crawls are SIMULATED (no HTTP), deliveries are
  *   "skipped — not configured", integrations can't connect from the browser.
  */
-import {
+import { issueFixSummary,
   crawlExportFilename, crawlResultsCsv, crawlResultsJson,
   ApiError, CHECKS_BY_ID, DEMO_PASSWORD, INTEGRATION_CATALOG, PREVIEW_USER_BY_ROLE, TEAMS, ROLE_LABELS, buildDailyDigest,
   buildDashboard, buildModuleData, buildMonthlyReport, buildWeeklyReport, canTransition, computeHealthScore,
@@ -180,7 +180,7 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
       verification: [], activity: [], assignmentHistory: [{ at: iso(), byId: sessionUserId ?? 'system', byName: nameOf(sessionUserId ?? 'system'), toTeam: team }],
       relatedIssueIds: i.childIssueIds ?? [], reopenCount: 0, source: 'simulated',
     };
-    act(t, 'created', `Task created from Fix Card ${i.id} via "Fix with ${TEAMS[team].name}"${automatic ? ' (automatic)' : ''}. Priority ${t.priority} (from ${i.severity}); due ${new Date(t.dueAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST (SLA).`);
+    act(t, 'created', `Task created from Fix Card ${i.id} — allocated to ${TEAMS[team].name}${automatic ? ' (automatic)' : ''}. Priority ${t.priority} (from ${i.severity}); due ${new Date(t.dueAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST (SLA).`);
     s.tasks.push(t);
     return t;
   };
@@ -304,7 +304,7 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
     getCwv: () => call('getCwv', () => { need('modules.view'); return s.cwv; }),
     getContentScores: () => call('getContentScores', () => { need('modules.view'); return s.contentScores; }),
 
-    listIssues: (f: IssueFilter) => call('listIssues', () => { need('issues.view'); return filterIssues(s.issues, f, now()); }),
+    listIssues: (f: IssueFilter) => call('listIssues', () => { need('issues.view'); const p = filterIssues(s.issues, f, now()); return { ...p, items: p.items.map((i) => ({ ...i, fix: issueFixSummary(i, s.config) })) }; }),
     getIssue: (id) => call('getIssue', () => { need('issues.view'); return issueDetail(issueById(id)); }),
     allocateIssue: (id, team, reason) => call('allocateIssue', () => {
       need('issues.allocate');
@@ -609,11 +609,18 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
     // The Image Audit requests real images from the API server; the browser-only demo never makes up results.
     getImageAuditStatus: () => call('getImageAuditStatus', () => {
       need('crawls.view');
-      return { runs: [], jobs: [], available: false, reason: 'The Image Audit runs on the API server and checks real images. This browser-only demo has no crawl to audit.', limits: { maxImages: 50000, budgetMinutes: 30, concurrency: 4, probeKb: 64 } };
+      return { runs: [], jobs: [], available: false, reason: 'The Image Audit runs on the API server and checks real images. This browser-only demo has no crawl to audit.', limits: { maxImages: 50000, budgetMinutes: 10, concurrency: 4, probeKb: 64, maxHours: 12 }, storage: 'memory' };
     }),
     startImageAudit: () => call('startImageAudit', () => { need('crawls.run'); throw new ApiError(409, 'IMAGE_AUDIT_UNAVAILABLE', 'The Image Audit runs on the API server; it is not available in the browser-only demo.'); }),
     getImageAudit: (id) => call('getImageAudit', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
     cancelImageAudit: (id) => call('cancelImageAudit', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
+    resumeImageAudit: (id) => call('resumeImageAudit', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
+    // Batches crawl real websites through the API server; the browser-only demo has none.
+    listCrawlBatches: () => call('listCrawlBatches', () => []),
+    startCrawlBatch: () => call('startCrawlBatch', () => { throw new ApiError(409, 'MOCK_MODE', 'Multi-website crawl batches run on the API server. This browser-only demo cannot crawl.'); }),
+    getCrawlBatch: (id) => call('getCrawlBatch', () => { throw new ApiError(404, 'NOT_FOUND', `Crawl batch ${id} not found.`); }),
+    cancelCrawlBatch: (id) => call('cancelCrawlBatch', () => { throw new ApiError(404, 'NOT_FOUND', `Crawl batch ${id} not found.`); }),
+    cancelCrawlBatchJob: (id) => call('cancelCrawlBatchJob', () => { throw new ApiError(404, 'NOT_FOUND', `Crawl batch ${id} not found.`); }),
     listImageAudit: (id) => call('listImageAudit', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
     exportImageAudit: (id) => call('exportImageAudit', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
     exportChanges: () => call('exportChanges', () => { need('crawls.view'); throw changesMock(); }),

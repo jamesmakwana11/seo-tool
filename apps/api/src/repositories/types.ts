@@ -80,6 +80,8 @@ export interface Repositories {
   verifications: Repository<VerificationAttempt>;
   crawls: Repository<CrawlRun>;
   crawlUrls: Repository<CrawlUrlSet>;
+  /** Multi-website crawl batches (kept with the primary website; each job's data stays in its own website). */
+  crawlBatches: Repository<import('@sentinel/shared').CrawlBatchRecord>;
   sitemapDiffs: Repository<StoredSitemapDiff>;
   schedules: Repository<CrawlSchedule>;
   snapshots: Repository<PageSnapshot>;
