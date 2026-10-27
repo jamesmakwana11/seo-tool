@@ -85,6 +85,8 @@ export function createWorkspaces(primary: Container) {
       // Recommendations follow each website's platform (Manage websites): keep it in the website's settings.
       for (const w of websites) await syncSiteSettings(containers.get(w.id)!, w);
       await seedWebsites();
+      // Shopify app credentials / tokens entered in the app (encrypted): decrypted into memory, app URL sub-path known.
+      for (const w of websites) await containers.get(w.id)!.services.shopify.restore().catch((e: Error) => primary.log.warn({ website: w.id, err: e.message }, 'Shopify credentials could not be loaded'));
     })();
     return ready;
   }

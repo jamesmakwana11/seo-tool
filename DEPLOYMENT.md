@@ -162,17 +162,24 @@ The API then accepts every request with or without the `/seo-tool` prefix (so th
 and the web app (built with `npm run build:prod`) loads its files, pages and API calls under that path — no rebuild per
 path. Proxy example (nginx): `location /seo-tool/ { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }`.
 
-**Shopify ("Connect with Shopify")** — one-time setup:
+**Shopify ("Connect with Shopify")** — one-time setup, no environment variables needed:
 1. Shopify Dev Dashboard → your app → Configuration: App URL `https://apps.deodap.info/seo-tool`, **Allowed redirection URL**
-   `https://apps.deodap.info/seo-tool/api/shopify/oauth/callback` (exactly; the Shopify page in Sentinel shows the URL it
-   uses), access scopes `read_products, write_products, read_content, write_content` (optional `read_themes, write_themes,
-   write_files`). Release the version and install the app on the store (or let the first connection install it).
-2. API environment: `SHOPIFY_API_KEY=<Client ID>`, `SHOPIFY_API_SECRET=<Client secret>`, `APP_BASE_URL` as above
-   (`https://` required in production). Do not set `SHOPIFY_SCOPES` unless you need different scopes. Restart the API.
-3. Settings → Shopify → enter `<store>.myshopify.com` → Connect with Shopify → approve. Until step 2 is done the page
-   says exactly which setting is missing. The access token stays in the API server's memory only (never in the browser,
-   logs or the database): after an API restart click Connect again, or use `SHOPIFY_STORE_DOMAIN` + `SHOPIFY_ADMIN_TOKEN`
-   (custom-app token) for the primary website.
+   `https://apps.deodap.info/seo-tool/api/shopify/oauth/callback` (exactly), access scopes `read_products, write_products,
+   read_content, write_content` (optional `read_themes, write_themes, write_files`). Release the version.
+2. Sentinel → Settings → Shopify → **Shopify app credentials**: Client ID, Client secret (Dev Dashboard → your app →
+   Settings) and App URL `https://apps.deodap.info/seo-tool` → Save. The Client secret is encrypted (AES-256-GCM) on the
+   server and stored in the database; it is never shown again or sent to the browser.
+3. Enter `<store>.myshopify.com` → **Connect with Shopify** → approve in Shopify. The access token is stored encrypted in
+   the database too, so the connection survives restarts. **Disconnect** deletes it.
+
+What the server must already have (it does on every production install): `SESSION_SECRET` (the encryption key is
+derived from it — or set a separate `CREDENTIALS_ENCRYPTION_KEY`, ≥ 32 characters, to rotate sessions independently)
+and `DATABASE_URL` (without a database, saved credentials last until the API restarts). If `SESSION_SECRET` /
+`CREDENTIALS_ENCRYPTION_KEY` changes, the stored secret and token cannot be decrypted: the Shopify page says so — enter
+the Client secret again and connect again. `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` / `APP_BASE_URL` still work as a
+fallback; credentials saved in the app take precedence for that website. If your reverse proxy does **not** strip
+`/seo-tool`, also set `APP_BASE_URL=https://apps.deodap.info/seo-tool` so the web app itself loads under that path
+(otherwise the saved App URL is enough).
 
 **Google Search Console / GA4** — one-time setup: create a Google Cloud service account, enable the *Search Console API*
 and the *Google Analytics Data API* in its project, download its JSON key and set it (single line) as

@@ -12,6 +12,11 @@ const schema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   /** HMAC secret for session tokens. Required in production; a random per-process secret is generated otherwise. */
   SESSION_SECRET: z.string().min(32).optional(),
+  /**
+   * OPTIONAL key material (≥ 32 chars) for credentials entered in the app (Shopify Client secret, OAuth token), stored
+   * encrypted in the database. Default: derived from SESSION_SECRET. Changing it makes stored credentials unreadable.
+   */
+  CREDENTIALS_ENCRYPTION_KEY: z.string().min(32).optional(),
   /** 0 (default) = a session lasts until the user signs out; a positive number of hours caps it. */
   /**
    * PostgreSQL connection (Render: the database's Internal Database URL). Set = websites, crawls, page results, issues and

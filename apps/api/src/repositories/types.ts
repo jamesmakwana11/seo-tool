@@ -36,6 +36,21 @@ export interface ResetToken { id: string /* sha256 of token */; email: string; e
 export interface CrawlUrlSet { id: string /* crawl run id */; urls: CrawledUrl[] }
 export interface StoredSitemapDiff extends SitemapDiff { id: string }
 export interface IntegrationSettingsDoc { id: IntegrationId; settings: Record<string, string | number | boolean> }
+/**
+ * Credentials entered in the app for one integration. Secret fields are SealedValue (AES-256-GCM, see security/secretBox);
+ * only non-secret fields are plain. Never returned by any API as stored.
+ */
+export interface IntegrationSecretDoc {
+  id: IntegrationId;
+  /** Non-secret configuration entered with the credentials (e.g. Shopify Client ID, public app URL). */
+  plain: Record<string, string>;
+  /** Encrypted values (e.g. clientSecret, accessToken). */
+  sealed: Record<string, import('../security/secretBox').SealedValue>;
+  /** Non-secret facts about a stored token (shop, scopes, when, by whom). */
+  meta?: Record<string, unknown>;
+  updatedAt: string;
+  updatedBy?: string;
+}
 export interface IntegrationTestDoc { id: IntegrationId; at: string; ok: boolean; result: string; lastSuccessfulSyncAt?: string; lastSyncError?: string; rateLimited?: boolean }
 export interface PageTextDoc { id: string /* url */; url: string; template: PageTemplate; tier: PageTier; collectionHandle?: string; text: string; publishedAt?: string; source: DataSource }
 /** Last observed state of a URL — used for delta detection (yesterday vs today) and robots/script diffs. */
@@ -101,6 +116,7 @@ export interface Repositories {
   disavow: Repository<DisavowCandidate>;
   integrationSettings: Repository<IntegrationSettingsDoc>;
   integrationTests: Repository<IntegrationTestDoc>;
+  integrationSecrets: Repository<IntegrationSecretDoc>;
   config: DocumentStore<SentinelConfig>;
   permissions: DocumentStore<PermissionMatrix>;
   metrics: DocumentStore<MetricsDoc>;

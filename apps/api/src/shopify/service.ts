@@ -1,9 +1,13 @@
 /**
  * Shopify connection + SEO editor + theme proposals.
  *
- * Token handling: the Admin API access token (from OAuth on this server, or SHOPIFY_ADMIN_TOKEN on the primary website)
- * lives only in this closure's memory. It is never returned by any method, never logged, never written to disk, and
- * never passed to child processes. After a restart the merchant connects again (or the env token is used).
+ * App credentials: the Shopify app's Client ID / Client secret and Sentinel's public URL can be entered under Settings →
+ * Shopify (per website). The Client secret is stored encrypted (AES-256-GCM, security/secretBox) in the database and
+ * never returned to the browser; SHOPIFY_API_KEY / SHOPIFY_API_SECRET / APP_BASE_URL remain the fallback.
+ *
+ * Token handling: the Admin API access token from OAuth is kept in this closure's memory and, when encryption is
+ * available, stored encrypted in the database so it survives restarts. SHOPIFY_ADMIN_TOKEN (primary website) is read
+ * from the environment. A token is never returned by any method, logged, or passed to child processes.
  *
  * Writes: nothing is written to Shopify until a user with `shopify.edit` (content) or `shopify.theme` (theme files)
  * previews the exact changes and types the confirmation phrase. Every write is read back to verify it, then the
@@ -23,6 +27,8 @@ import { parseHtml } from '../crawler/parse';
 import { hostOf } from '../crawler/url';
 import { badRequest, conflict, ApiError, notFound } from '../lib/errors';
 import { randomToken } from '../lib/passwords';
+import { SecretBoxError, type SecretBox } from '../security/secretBox';
+import { firstBasePath, registerBasePath } from '../http/basePath';
 import { audit, need, type Actor, type Ctx } from '../services/context';
 import { createAdminClient, ShopifyApiError, type AdminClient } from './client';
 import { buildFields, detectH1Sources, sourceTexts, themeNotes, validateField, type Limits } from './drafts';
@@ -41,7 +47,14 @@ export interface ShopifyDeps {
   sleep?: (ms: number) => Promise<void>;
   /** Folder for read-only theme source snapshots (Change Monitor storage). */
   themeSnapshotDir?: () => Promise<string>;
+  /** Website id: binds encrypted credentials to this website. */
+  scope?: string;
+  /** Encryption for credentials entered in the app; undefined = they cannot be stored (no key material). */
+  secretBox?: SecretBox;
 }
+
+/** Credentials entered in the app (decrypted, in memory only). */
+interface SavedApp { clientId?: string; clientSecret?: string; appUrl?: string; updatedAt?: string; updatedBy?: string; problem?: string }
 
 interface Connection {
   shop: string;
@@ -62,6 +75,22 @@ const states = createStateStore();
 const owners = new Map<string, ReturnType<typeof createShopifyService>>();
 
 const TOKEN_NOTE = 'The access token is kept only in this server’s memory: it is never sent to the browser, saved to disk, written to logs or included in exports. After a restart or redeploy, connect again — or set SHOPIFY_STORE_DOMAIN and SHOPIFY_ADMIN_TOKEN in the server environment (primary website only).';
+const TOKEN_NOTE_SEALED = 'The access token is stored encrypted (AES-256-GCM) in the database and kept in this server’s memory while in use: it is never sent to the browser, written to logs or included in exports, and it survives restarts. Disconnect removes it.';
+
+const CLIENT_ID_RE = /^[A-Za-z0-9_-]{16,128}$/;
+const CLIENT_SECRET_RE = /^[\x21-\x7e]{16,256}$/;
+
+/** Validated public URL of Sentinel (no trailing slash), or an error message. */
+export function checkAppUrl(raw: string, production: boolean): { ok: true; value: string } | { ok: false; error: string } {
+  let u: URL;
+  try { u = new URL(raw.trim()); } catch { return { ok: false, error: 'Enter the full public address of Sentinel, e.g. https://apps.deodap.info/seo-tool.' }; }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return { ok: false, error: 'The app URL must start with https://.' };
+  if (production && u.protocol !== 'https:') return { ok: false, error: 'Shopify only redirects to https addresses: the app URL must start with https://.' };
+  if (u.username || u.password || u.search || u.hash) return { ok: false, error: 'The app URL has no user name, password, ? query or # part.' };
+  const path = u.pathname.replace(/\/+$/, '');
+  if (/\/api(\/|$)/.test(path)) return { ok: false, error: 'Enter the address of the app itself (e.g. https://apps.deodap.info/seo-tool), not the callback URL.' };
+  return { ok: true, value: `${u.protocol}//${u.host}${path}` };
+}
 
 export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
   const env = ctx.env;
@@ -72,6 +101,53 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
   if (deps.useEnvToken && env.SHOPIFY_STORE_DOMAIN && env.SHOPIFY_ADMIN_TOKEN) {
     conn = { shop: shopifyDomain(env.SHOPIFY_STORE_DOMAIN), token: env.SHOPIFY_ADMIN_TOKEN, via: 'env_token', connectedAt: iso() };
   }
+  const box = deps.secretBox;
+  const aad = (field: string) => `${deps.scope ?? 'default'}:shopify:${field}`;
+  let saved: SavedApp = {};
+  let loaded: Promise<void> | undefined;
+  let tokenPersisted = false;
+  let tokenProblem: string | undefined;
+
+  /** Credentials entered in the app (and a stored OAuth token), decrypted into memory once. */
+  function load(force = false): Promise<void> {
+    if (force) loaded = undefined;
+    loaded ??= (async () => {
+      const doc = await ctx.repos.integrationSecrets.get('shopify');
+      saved = {};
+      tokenPersisted = false;
+      tokenProblem = undefined;
+      if (!doc) return;
+      saved = { clientId: doc.plain.clientId || undefined, appUrl: doc.plain.appUrl || undefined, updatedAt: doc.updatedAt, updatedBy: doc.updatedBy };
+      if (saved.appUrl) registerBasePath(saved.appUrl);
+      const why = box ? `${box.keySource} changed since they were saved` : 'no encryption key is configured on the server';
+      if (doc.sealed.clientSecret) {
+        try {
+          if (!box) throw new SecretBoxError('no key');
+          saved.clientSecret = box.open(doc.sealed.clientSecret, aad('clientSecret'));
+        } catch (e) {
+          saved.problem = `The saved Shopify Client secret could not be decrypted — ${why}. Enter the Client secret again${doc.sealed.accessToken ? ' and connect the store again' : ''}.`;
+          ctx.log.warn({ err: (e as Error).message }, 'stored Shopify Client secret could not be decrypted');
+        }
+      }
+      if (doc.sealed.accessToken && doc.meta?.shop) {
+        try {
+          if (!box) throw new SecretBoxError('no key');
+          const m = doc.meta as { shop: string; scopes?: string[]; connectedAt?: string; connectedBy?: string; expiresAt?: number };
+          conn = { shop: m.shop, token: box.open(doc.sealed.accessToken, aad('accessToken')), via: 'oauth', scopes: m.scopes, connectedAt: m.connectedAt ?? iso(), connectedBy: m.connectedBy, expiresAt: m.expiresAt };
+          tokenPersisted = true;
+        } catch (e) {
+          tokenProblem = `The stored connection to ${String(doc.meta.shop)} could not be decrypted — ${why}. Connect the store again.`;
+          ctx.log.warn({ err: (e as Error).message }, 'stored Shopify token could not be decrypted');
+        }
+      }
+    })();
+    return loaded;
+  }
+
+  /** The app credentials in use: the pair entered in the app, else the server environment (never mixed). */
+  const creds = (): { apiKey?: string; apiSecret?: string; source: 'saved' | 'env' | 'none' } => (saved.clientId
+    ? { apiKey: saved.clientId, apiSecret: saved.clientSecret, source: 'saved' }
+    : env.SHOPIFY_API_KEY || env.SHOPIFY_API_SECRET ? { apiKey: env.SHOPIFY_API_KEY, apiSecret: env.SHOPIFY_API_SECRET, source: 'env' } : { source: 'none' });
   const drafts = new Map<string, ShopifyDraft>();
   const proposals = new Map<string, ThemeProposalInternal>();
   /** Existing text of each draft's resource (facts check for hand edits). */
@@ -79,9 +155,10 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
   let applying = false;
   const snapshots = deps.themeSnapshotDir ? createThemeSnapshotStore(deps.themeSnapshotDir) : undefined;
   const requestedScopes = () => (env.SHOPIFY_SCOPES ? env.SHOPIFY_SCOPES.split(',').map((s) => s.trim()).filter(Boolean) : [...SHOPIFY_REQUIRED_SCOPES, ...SHOPIFY_OPTIONAL_SCOPES]);
-  const appUrl = () => (env.SHOPIFY_APP_URL ?? env.APP_BASE_URL)?.replace(/\/$/, '');
+  const appUrl = () => (saved.appUrl ?? env.SHOPIFY_APP_URL ?? env.APP_BASE_URL)?.replace(/\/$/, '');
+  const appUrlSource = (): 'saved' | 'env' | 'none' => (saved.appUrl ? 'saved' : env.SHOPIFY_APP_URL || env.APP_BASE_URL ? 'env' : 'none');
   const redirectUrl = () => (appUrl() ? `${appUrl()}/api/shopify/oauth/callback` : undefined);
-  const oauthConfigured = () => !!(env.SHOPIFY_API_KEY && env.SHOPIFY_API_SECRET && appUrl()) && !oauthSetupProblem();
+  const oauthConfigured = () => !!(creds().apiKey && creds().apiSecret && appUrl()) && !oauthSetupProblem();
 
   /**
    * What stops "Connect with Shopify" from working, in words an admin can act on (names only — never values), or
@@ -89,22 +166,46 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
    * can only be checked by Shopify, so the exact URL to register is part of the message.
    */
   function oauthSetupProblem(): string | undefined {
-    const missing = [!env.SHOPIFY_API_KEY && 'SHOPIFY_API_KEY (the app\u2019s Client ID)', !env.SHOPIFY_API_SECRET && 'SHOPIFY_API_SECRET (the app\u2019s Client secret)', !appUrl() && 'APP_BASE_URL (the public address of Sentinel, e.g. https://apps.deodap.info/seo-tool)'].filter(Boolean);
+    if (saved.problem) return saved.problem;
+    const c = creds();
+    const missing = [!c.apiKey && 'the Client ID', !c.apiSecret && 'the Client secret', !appUrl() && 'the app URL (the public address of Sentinel, e.g. https://apps.deodap.info/seo-tool)'].filter(Boolean);
     const register = redirectUrl() ? ` In the Shopify Dev Dashboard → your app → Configuration, the Allowed redirection URL must be exactly ${redirectUrl()}.` : '';
     if (missing.length) {
-      return `Connect with Shopify is not set up on the server: set ${missing.join(', ')} in the API server environment and restart the API.${register}${deps.useEnvToken ? ' (Alternative for the primary website: SHOPIFY_STORE_DOMAIN + SHOPIFY_ADMIN_TOKEN from a custom app.)' : ''}`;
+      return `Connect with Shopify needs the Shopify app’s credentials: enter ${missing.length > 1 ? `${missing.slice(0, -1).join(', ')} and ${missing.at(-1)}` : missing[0]} under “Shopify app credentials” below (the Client secret is stored encrypted on the server)${c.source === 'env' ? ' — or complete SHOPIFY_API_KEY / SHOPIFY_API_SECRET / APP_BASE_URL in the API server environment' : ''}.${register}${deps.useEnvToken ? ' (Alternative for the primary website: SHOPIFY_STORE_DOMAIN + SHOPIFY_ADMIN_TOKEN from a custom app.)' : ''}`;
     }
     const u = appUrl()!;
-    if (env.NODE_ENV === 'production' && !/^https:\/\//i.test(u)) return `Shopify only redirects to https addresses: ${env.SHOPIFY_APP_URL ? 'SHOPIFY_APP_URL' : 'APP_BASE_URL'} must start with https:// (now ${new URL(u).protocol}).`;
+    if (env.NODE_ENV === 'production' && !/^https:\/\//i.test(u)) return `Shopify only redirects to https addresses: the app URL must start with https:// (now ${new URL(u).protocol}).`;
     const miss = missingScopes(SHOPIFY_REQUIRED_SCOPES, requestedScopes());
     if (miss.length) return `SHOPIFY_SCOPES leaves out ${miss.join(', ')}, which the SEO editor needs — remove SHOPIFY_SCOPES (the defaults are correct) or add them, then restart the API.`;
     return undefined;
   }
 
+  /** Stores the OAuth token encrypted (when possible) so the connection survives restarts. */
+  async function persistToken(): Promise<void> {
+    if (!box || !conn || conn.via !== 'oauth') return;
+    const prev = await ctx.repos.integrationSecrets.get('shopify');
+    const sealedToken = box.seal(conn.token, aad('accessToken'));
+    await ctx.repos.integrationSecrets.upsert({
+      id: 'shopify', plain: prev?.plain ?? {}, sealed: { ...(prev?.sealed ?? {}), accessToken: sealedToken },
+      meta: { shop: conn.shop, scopes: conn.scopes, connectedAt: conn.connectedAt, connectedBy: conn.connectedBy, expiresAt: conn.expiresAt },
+      updatedAt: prev?.updatedAt ?? iso(), updatedBy: prev?.updatedBy,
+    });
+    tokenPersisted = true;
+  }
+
+  async function forgetToken(): Promise<void> {
+    const prev = await ctx.repos.integrationSecrets.get('shopify');
+    if (prev?.sealed.accessToken) {
+      const { accessToken: _t, ...rest } = prev.sealed;
+      await ctx.repos.integrationSecrets.upsert({ ...prev, sealed: rest, meta: undefined });
+    }
+    tokenPersisted = false;
+  }
+
   function client(): AdminClient {
     if (!conn) throw new ApiError(409, 'SHOPIFY_NOT_CONNECTED', 'Shopify is not connected. Connect the store in Settings → Shopify.');
     if (conn.expiresAt && conn.expiresAt <= Date.now()) throw new ApiError(409, 'SHOPIFY_TOKEN_EXPIRED', 'The Shopify access token has expired. Connect the store again.');
-    return createAdminClient({ shop: conn.shop, token: conn.token, apiVersion: env.SHOPIFY_API_VERSION, fetchImpl, sleep: deps.sleep, secrets: [env.SHOPIFY_API_SECRET ?? ''].filter((s) => s.length >= 4) });
+    return createAdminClient({ shop: conn.shop, token: conn.token, apiVersion: env.SHOPIFY_API_VERSION, fetchImpl, sleep: deps.sleep, secrets: [env.SHOPIFY_API_SECRET ?? '', saved.clientSecret ?? ''].filter((s) => s.length >= 4) });
   }
 
   /** Shopify errors → API errors (502 for Shopify-side failures, 409 for configuration problems). Messages are already scrubbed. */
@@ -150,12 +251,14 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
   }
 
   async function status(): Promise<ShopifyStatus> {
+    await load();
     await loadScopes();
     const problems: string[] = [];
     if (!conn) {
       const setup = oauthSetupProblem();
       if (setup) problems.push(setup);
     }
+    if (!conn && tokenProblem) problems.push(tokenProblem);
     if (conn?.scopeProblem) problems.push(conn.scopeProblem);
     const missing = conn?.scopes ? missingScopes(SHOPIFY_REQUIRED_SCOPES, conn.scopes) : [];
     const missingOpt = conn?.scopes ? missingScopes(SHOPIFY_OPTIONAL_SCOPES, conn.scopes) : [];
@@ -166,7 +269,13 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
       connected: !!conn, via: conn?.via ?? null, shop: conn?.shop, shopName: conn?.shopName, apiVersion: env.SHOPIFY_API_VERSION,
       scopes: conn?.scopes ?? [], missingScopes: missing, missingOptionalScopes: missingOpt,
       requiredScopes: [...SHOPIFY_REQUIRED_SCOPES], optionalScopes: [...SHOPIFY_OPTIONAL_SCOPES],
-      oauthConfigured: oauthConfigured(), redirectUrl: redirectUrl(), connectedAt: conn?.connectedAt, connectedBy: conn?.connectedBy, problems, tokenNote: TOKEN_NOTE,
+      oauthConfigured: oauthConfigured(), redirectUrl: redirectUrl(), connectedAt: conn?.connectedAt, connectedBy: conn?.connectedBy, problems,
+      tokenNote: conn?.via === 'oauth' && tokenPersisted ? TOKEN_NOTE_SEALED : TOKEN_NOTE,
+      appCredentials: {
+        source: creds().source, clientId: creds().apiKey, secretSet: !!creds().apiSecret, appUrl: appUrl(), appUrlSource: appUrlSource(),
+        updatedAt: saved.updatedAt, updatedBy: saved.updatedBy, canStore: !!box, persistent: ctx.repos.storage.persistent !== false,
+        ...(box ? {} : { storeProblem: 'Credentials cannot be stored: the API server has no SESSION_SECRET (or CREDENTIALS_ENCRYPTION_KEY) to encrypt them with.' }),
+      },
       capabilities: { edit: ok, themes: ok && (hasScope('read_themes')), themeWrite: ok && hasScope('write_themes'), imageAlt: ok && (hasScope('write_files') || hasScope('write_themes')) },
     };
   }
@@ -349,17 +458,21 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
 
     async startOAuth(actor: Actor, shopInput: string): Promise<{ authorizeUrl: string }> {
       await need(ctx, actor, 'integrations.manage');
+      await load();
       if (!oauthConfigured()) throw new ApiError(409, 'SHOPIFY_OAUTH_NOT_CONFIGURED', oauthSetupProblem() ?? 'OAuth is not configured.');
       const shop = normalizeShop(shopInput);
       if (!shop) throw badRequest('Enter the store’s .myshopify.com domain (Shopify admin → Settings → Domains), e.g. deodap.myshopify.com — not the storefront domain.');
       const st = states.issue({ shop, actorId: actor.id, actorName: actor.name, owner: ownerKey });
       await audit(ctx, actor, 'shopify.oauth_start', 'shopify', shop, `Started Shopify connection for ${shop}`);
-      return { authorizeUrl: authorizeUrl({ shop, apiKey: env.SHOPIFY_API_KEY!, scopes: requestedScopes(), redirectUri: redirectUrl()!, state: st.state }) };
+      return { authorizeUrl: authorizeUrl({ shop, apiKey: creds().apiKey!, scopes: requestedScopes(), redirectUri: redirectUrl()!, state: st.state }) };
     },
 
     /** Completes OAuth for the workspace that issued the state. Returns where to send the browser. */
     async completeOAuth(shop: string, code: string, actorId: string, actorName: string): Promise<void> {
-      const grant = await exchangeCode(fetchImpl, { shop, apiKey: env.SHOPIFY_API_KEY!, apiSecret: env.SHOPIFY_API_SECRET!, code });
+      await load();
+      const c = creds();
+      if (!c.apiKey || !c.apiSecret) throw new OAuthError('The Shopify app credentials are no longer set.', 'NOT_CONFIGURED');
+      const grant = await exchangeCode(fetchImpl, { shop, apiKey: c.apiKey, apiSecret: c.apiSecret, code });
       const miss = missingScopes(SHOPIFY_REQUIRED_SCOPES, grant.scopes);
       if (miss.length) throw new OAuthError(`Shopify granted the app without ${miss.join(', ')}. Approve all requested scopes.`, 'MISSING_SCOPES');
       conn = { shop, token: grant.accessToken, via: 'oauth', scopes: grant.scopes, connectedAt: iso(), connectedBy: actorName, expiresAt: grant.expiresAt };
@@ -369,17 +482,83 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
         conn.shopName = d.shop.name;
       } catch { /* name is cosmetic */ }
       await audit(ctx, { id: actorId, name: actorName, role: 'admin', teamIds: [], permissions: [], demo: false }, 'shopify.connect', 'shopify', shop, `Connected Shopify store ${shop} (OAuth; scopes ${grant.scopes.join(', ')})`);
-      ctx.log.info({ shop, via: 'oauth', scopes: grant.scopes }, 'shopify connected');
+      try {
+        await persistToken();
+      } catch (e) {
+        ctx.log.warn({ err: (e as Error).message }, 'the Shopify token could not be stored (kept in memory only)');
+      }
+      ctx.log.info({ shop, via: 'oauth', scopes: grant.scopes, stored: tokenPersisted }, 'shopify connected');
     },
 
     async disconnect(actor: Actor): Promise<ShopifyStatus> {
       await need(ctx, actor, 'integrations.manage');
+      await load();
       const shop = conn?.shop;
       conn = undefined;
+      await forgetToken();
       drafts.clear();
       draftSources.clear();
       proposals.clear();
       if (shop) await audit(ctx, actor, 'shopify.disconnect', 'shopify', shop, `Disconnected Shopify store ${shop} (token dropped from memory; uninstall the app in Shopify to revoke it)`);
+      return status();
+    },
+
+    /** Loads stored credentials / token at start-up (and registers the app URL's sub-path). */
+    restore: () => load(),
+
+    /** The secret used to verify a callback for this website (never leaves the server). */
+    async callbackSecret(): Promise<string | undefined> { await load(); return creds().apiSecret; },
+    async returnBase(): Promise<string> { await load(); return appUrl() ?? ''; },
+
+    /**
+     * Saves the Shopify app's Client ID, Client secret (encrypted) and Sentinel's public URL for this website. An empty
+     * clientSecret keeps the stored one. Never returns or logs the secret.
+     */
+    async saveAppCredentials(actor: Actor, input: { clientId?: unknown; clientSecret?: unknown; appUrl?: unknown }): Promise<ShopifyStatus> {
+      await need(ctx, actor, 'integrations.manage');
+      await load();
+      if (!box) throw new ApiError(409, 'NO_ENCRYPTION_KEY', 'Credentials cannot be stored: the API server has no SESSION_SECRET (or CREDENTIALS_ENCRYPTION_KEY, ≥ 32 characters) to encrypt them with. Set one and restart the API.');
+      const fields: Record<string, string> = {};
+      const clientId = typeof input.clientId === 'string' ? input.clientId.trim() : '';
+      const secret = typeof input.clientSecret === 'string' ? input.clientSecret.trim() : '';
+      const url = typeof input.appUrl === 'string' ? input.appUrl.trim() : '';
+      if (!CLIENT_ID_RE.test(clientId)) fields.clientId = 'Enter the Client ID from the Shopify Dev Dashboard → your app → Settings (letters and digits, usually 32 characters).';
+      const prev = await ctx.repos.integrationSecrets.get('shopify');
+      const keepSecret = !secret && !!prev?.sealed.clientSecret && prev.plain.clientId === clientId && !saved.problem;
+      if (!secret && !keepSecret) fields.clientSecret = 'Enter the Client secret from the Shopify Dev Dashboard → your app → Settings.';
+      else if (secret && !CLIENT_SECRET_RE.test(secret)) fields.clientSecret = 'That does not look like a Client secret (16–256 characters, no spaces).';
+      if (secret && secret === clientId) fields.clientSecret = 'The Client secret is not the same as the Client ID.';
+      let appUrlValue: string | undefined;
+      if (url) {
+        const chk = checkAppUrl(url, env.NODE_ENV === 'production');
+        if (!chk.ok) fields.appUrl = chk.error; else appUrlValue = chk.value;
+      } else if (!env.SHOPIFY_APP_URL && !env.APP_BASE_URL) fields.appUrl = 'Enter the public address of Sentinel, e.g. https://apps.deodap.info/seo-tool.';
+      if (Object.keys(fields).length) throw new ApiError(400, 'VALIDATION', Object.values(fields).join(' '), { fields });
+      const sealed = { ...(prev?.sealed ?? {}) };
+      if (secret) sealed.clientSecret = box.seal(secret, aad('clientSecret'));
+      // A stored token that can no longer be decrypted is useless: drop it (the store is connected again with OAuth).
+      const dropToken = !!tokenProblem;
+      if (dropToken) delete sealed.accessToken;
+      await ctx.repos.integrationSecrets.upsert({
+        id: 'shopify', plain: { clientId, ...(appUrlValue ? { appUrl: appUrlValue } : {}) }, sealed, meta: dropToken ? undefined : prev?.meta,
+        updatedAt: iso(), updatedBy: actor.name,
+      });
+      await load(true);
+      await audit(ctx, actor, 'shopify.app_credentials', 'shopify', clientId.slice(0, 6), `Saved the Shopify app credentials (Client ID ${clientId.slice(0, 6)}…, Client secret ${secret ? 'replaced' : 'kept'}, stored encrypted)${appUrlValue ? `; app URL ${appUrlValue}` : ''}`);
+      ctx.log.info({ clientId: `${clientId.slice(0, 6)}…`, secretReplaced: !!secret }, 'shopify app credentials saved');
+      return status();
+    },
+
+    /** Removes the credentials entered in the app (a stored token stays until Disconnect). */
+    async removeAppCredentials(actor: Actor): Promise<ShopifyStatus> {
+      await need(ctx, actor, 'integrations.manage');
+      const prev = await ctx.repos.integrationSecrets.get('shopify');
+      if (prev) {
+        const { clientSecret: _s, ...rest } = prev.sealed;
+        await ctx.repos.integrationSecrets.upsert({ ...prev, plain: {}, sealed: rest, updatedAt: iso(), updatedBy: actor.name });
+      }
+      await load(true);
+      await audit(ctx, actor, 'shopify.app_credentials_removed', 'shopify', 'shopify', 'Removed the Shopify app credentials entered in Sentinel');
       return status();
     },
 
@@ -678,27 +857,32 @@ function publicProposal(p: ThemeProposalInternal): ShopifyThemeProposal {
 }
 
 /**
- * GET /api/shopify/oauth/callback — public (Shopify redirects the browser here). Verifies the HMAC with the app secret,
- * the single-use state, the shop domain and the timestamp before exchanging the code. Always answers with a redirect
- * to the app (never with the token); the reason for a failure is a short code in the query string.
+ * GET /api/shopify/oauth/callback — public (Shopify redirects the browser here). Finds the website that started the
+ * flow from the (not yet consumed) state, verifies the HMAC with THAT website's Client secret (saved in the app or from
+ * the environment), then the shop, timestamp and single-use state, then exchanges the code. Always answers with a
+ * redirect to the app (never with the token); the reason for a failure is a short code in the query string.
  */
 export async function handleOAuthCallback(req: Request, env: Ctx['env']): Promise<string> {
-  const appBase = (env.SHOPIFY_APP_URL ?? env.APP_BASE_URL ?? '').replace(/\/$/, '');
-  const back = (q: string) => `${appBase}/settings/shopify?${q}`;
   const q = req.query as Record<string, string | string[] | undefined>;
+  const stateParam = typeof q.state === 'string' ? q.state : undefined;
+  const pending = states.peek(stateParam);
+  const svc = pending ? owners.get(pending.owner) : undefined;
+  const appBase = (svc ? await svc.returnBase() : (env.SHOPIFY_APP_URL ?? env.APP_BASE_URL ?? '')).replace(/\/$/, '') || firstBasePath();
+  const back = (x: string) => `${appBase}/settings/shopify?${x}`;
   const fail = (code: string) => back(`shopify=error&reason=${encodeURIComponent(code)}`);
-  if (!env.SHOPIFY_API_SECRET || !env.SHOPIFY_API_KEY) return fail('not_configured');
-  if (!verifyQueryHmac(q, env.SHOPIFY_API_SECRET)) return fail('bad_hmac');
+  if (!pending) return fail('bad_state');
+  if (!svc) return fail('workspace_gone');
+  const secret = await svc.callbackSecret();
+  if (!secret) return fail('not_configured');
+  if (!verifyQueryHmac(q, secret)) return fail('bad_hmac');
   const shop = typeof q.shop === 'string' ? normalizeShop(q.shop) : undefined;
   if (!shop || shop !== q.shop) return fail('bad_shop');
   const ts = Number(q.timestamp);
   if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > CALLBACK_MAX_AGE_S) return fail('expired');
-  const st = states.consume(typeof q.state === 'string' ? q.state : undefined);
+  const st = states.consume(stateParam);
   if (!st) return fail('bad_state');
   if (st.shop !== shop) return fail('shop_mismatch');
   if (typeof q.code !== 'string' || !q.code) return fail('no_code');
-  const svc = owners.get(st.owner);
-  if (!svc) return fail('workspace_gone');
   try {
     await svc.completeOAuth(shop, q.code, st.actorId, st.actorName);
   } catch (e) {

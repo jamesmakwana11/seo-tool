@@ -89,6 +89,12 @@ export function createStateStore(now: () => number = Date.now) {
       pending.set(st.state, st);
       return st;
     },
+    /** The state without using it up (to find the website whose secret verifies the callback); undefined when unknown or expired. */
+    peek(state: string | undefined): PendingState | undefined {
+      sweep();
+      const st = state ? pending.get(state) : undefined;
+      return st && st.expiresAt > now() ? st : undefined;
+    },
     /** Returns and removes the state (single use); undefined when unknown or expired. */
     consume(state: string | undefined): PendingState | undefined {
       sweep();

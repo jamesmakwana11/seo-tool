@@ -105,18 +105,17 @@ describe('clear errors instead of a button that does nothing', () => {
     const h = await setup({ APP_BASE_URL: 'https://apps.deodap.info/seo-tool' });
     const st = (await h.get('/api/shopify/status')).body as ShopifyStatus;
     expect(st.oauthConfigured).toBe(false);
-    expect(st.problems[0]).toMatch(/SHOPIFY_API_KEY \(the app’s Client ID\)/);
-    expect(st.problems[0]).toMatch(/SHOPIFY_API_SECRET/);
+    expect(st.problems[0]).toMatch(/enter the Client ID and the Client secret under “Shopify app credentials”/);
     expect(st.problems[0]).toContain(CALLBACK);
     const start = await h.post('/api/shopify/oauth/start', { shop: SHOP });
     expect(start.status).toBe(409);
     expect(start.body.error.code).toBe('SHOPIFY_OAUTH_NOT_CONFIGURED');
-    expect(start.body.error.message).toMatch(/SHOPIFY_API_KEY/);
+    expect(start.body.error.message).toMatch(/Client ID/);
   });
 
   it('missing APP_BASE_URL, or SHOPIFY_SCOPES without the required scopes, are reported', async () => {
     const noUrl = await setup({ SHOPIFY_API_KEY: API_KEY, SHOPIFY_API_SECRET: API_SECRET });
-    expect(((await noUrl.get('/api/shopify/status')).body as ShopifyStatus).problems[0]).toMatch(/APP_BASE_URL/);
+    expect(((await noUrl.get('/api/shopify/status')).body as ShopifyStatus).problems[0]).toMatch(/the app URL/);
     const scopes = await setup({ SHOPIFY_API_KEY: API_KEY, SHOPIFY_API_SECRET: API_SECRET, APP_BASE_URL: 'https://apps.deodap.info/seo-tool', SHOPIFY_SCOPES: 'read_products' });
     const st = (await scopes.get('/api/shopify/status')).body as ShopifyStatus;
     expect(st.oauthConfigured).toBe(false);

@@ -309,6 +309,9 @@ export interface SentinelApi {
   /** Starts OAuth: returns the Shopify authorize URL to open (state is single-use and expires in 10 minutes). */
   startShopifyOAuth(shop: string): Promise<{ authorizeUrl: string }>;
   disconnectShopify(): Promise<ShopifyStatus>;
+  /** Save the Shopify app's Client ID, Client secret (stored encrypted on the server; empty = keep) and app URL. */
+  saveShopifyAppCredentials(input: { clientId: string; clientSecret?: string; appUrl?: string }): Promise<ShopifyStatus>;
+  removeShopifyAppCredentials(): Promise<ShopifyStatus>;
   resolveShopifyUrl(url: string): Promise<ShopifyResolveResult>;
   listShopifyResources(input: { kind: ShopifyResourceKind; q?: string; after?: string }): Promise<ShopifyResourceList>;
   /** Builds a draft for one resource (from a crawled URL, or kind + id) with suggested changes. Nothing is written to Shopify. */

@@ -152,6 +152,8 @@ export function createHttpApi(baseUrl = '/api', websiteId: () => string | undefi
     getShopifyStatus: () => get<ShopifyStatus>('/shopify/status'),
     startShopifyOAuth: (shop) => post<{ authorizeUrl: string }>('/shopify/oauth/start', { shop }),
     disconnectShopify: () => post<ShopifyStatus>('/shopify/disconnect'),
+    saveShopifyAppCredentials: (input) => put<ShopifyStatus>('/shopify/app-credentials', input),
+    removeShopifyAppCredentials: () => del<ShopifyStatus>('/shopify/app-credentials'),
     resolveShopifyUrl: (url) => get<ShopifyResolveResult>(`/shopify/resolve${qs({ url })}`),
     listShopifyResources: (input) => get<ShopifyResourceList>(`/shopify/resources${qs(input)}`),
     createShopifyDraft: (input) => post<ShopifyDraft>('/shopify/drafts', input),

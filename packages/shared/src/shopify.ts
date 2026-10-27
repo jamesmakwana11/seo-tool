@@ -46,6 +46,22 @@ export interface ShopifyStatus {
   /** Where the token lives and what happens on restart. */
   tokenNote: string;
   capabilities: { edit: boolean; themes: boolean; themeWrite: boolean; imageAlt: boolean };
+  /** The Shopify app credentials in use (never the secret itself). */
+  appCredentials?: {
+    /** saved = entered in Sentinel (secret stored encrypted); env = SHOPIFY_API_KEY / SHOPIFY_API_SECRET. */
+    source: 'saved' | 'env' | 'none';
+    clientId?: string;
+    secretSet: boolean;
+    appUrl?: string;
+    appUrlSource: 'saved' | 'env' | 'none';
+    updatedAt?: string;
+    updatedBy?: string;
+    /** false when the server has no key to encrypt with (then credentials cannot be saved here). */
+    canStore: boolean;
+    storeProblem?: string;
+    /** false without a database: saved credentials last until the API restarts. */
+    persistent: boolean;
+  };
 }
 
 export interface ShopifyResourceSummary {

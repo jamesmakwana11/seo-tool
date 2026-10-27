@@ -59,6 +59,23 @@ node scripts/package-review.mjs <dir>
 
 ## 3. Verification
 
+### 27 Oct 2026 (second pass) — Shopify app credentials entered in the app, stored encrypted
+
+**Inspected:** the project had no encrypted credential storage — integration settings refuse secrets by design and
+the Shopify OAuth token lived in memory only, so "Connect with Shopify" required SHOPIFY_API_KEY / SHOPIFY_API_SECRET /
+APP_BASE_URL in the server environment. **Added:** `security/secretBox.ts` (AES-256-GCM, random IV, associated data =
+website + field, key = HKDF-SHA256 of CREDENTIALS_ENCRYPTION_KEY or SESSION_SECRET) and a per-website
+`integrationSecrets` collection (stored in PostgreSQL like every other collection). Settings → Shopify has a "Shopify app
+credentials" form (Client ID, write-only Client secret, App URL); `PUT/DELETE /api/shopify/app-credentials`
+(integrations.manage) validate and store them, never returning the secret. OAuth uses them: the authorize URL carries
+the saved Client ID and the callback URL of the saved App URL; the public callback finds the website from the
+(unconsumed) state, verifies the HMAC with that website's secret, then shop / timestamp / single-use state, exchanges
+the code with the saved credentials and stores the token encrypted (restored at start-up; Disconnect deletes it). The
+saved App URL's sub-path (`/seo-tool`) is recognised like APP_BASE_URL's. A changed key is reported ("could not be
+decrypted — enter the Client secret again and connect again") instead of failing silently. Env variables remain a
+fallback. **Tests:** `apps/api/test/shopify/app-credentials.test.ts`, `apps/api/test/persistence/shopifyCredentials.test.ts`
+(PostgreSQL: ciphertext only in the rows, connection back after a restart), web `integrationsPage.test.tsx`.
+
 ### 27 Oct 2026 — Crawler default User-Agent, GSC / GA4 properties from the UI, integrations dropdown, Shopify OAuth under /seo-tool
 
 **Crawler:** the Site crawler card reported `CRAWLER_USER_AGENT` as a missing setting (and its test sent no

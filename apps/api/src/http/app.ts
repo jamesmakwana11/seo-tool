@@ -37,13 +37,10 @@ function sendError(res: Response, req: Request, err: unknown) {
  * The path this app is served under, from APP_BASE_URL (e.g. https://apps.deodap.info/seo-tool → "/seo-tool"); "" when it
  * is served at the root. Requests under it are accepted whether or not the reverse proxy strips it.
  */
+import { basePaths, pathOfUrl } from './basePath';
+
 export function publicBasePath(env: Pick<Container['env'], 'APP_BASE_URL'>): string {
-  if (!env.APP_BASE_URL) return '';
-  try {
-    return new URL(env.APP_BASE_URL).pathname.replace(/\/+$/, '');
-  } catch {
-    return '';
-  }
+  return pathOfUrl(env.APP_BASE_URL);
 }
 
 /** The web app's index.html for this base path: <base href> for its relative assets and the path for the router / API. */
@@ -73,16 +70,17 @@ export function createApp(container: Container) {
   app.disable('x-powered-by');
   // Served under a sub-path (APP_BASE_URL=https://apps.deodap.info/seo-tool): accept /seo-tool/… as well as the
   // stripped path a reverse proxy may forward, so /seo-tool/api/shopify/oauth/callback reaches the callback route.
-  const basePath = publicBasePath(env);
-  if (basePath) {
-    app.use((req, _res, next) => {
+  // Known sub-paths: APP_BASE_URL's, plus the app URL entered with the Shopify app credentials (loaded at start-up).
+  app.use((req, _res, next) => {
+    for (const basePath of basePaths(env.APP_BASE_URL)) {
       if (req.url === basePath || req.url.startsWith(`${basePath}/`) || req.url.startsWith(`${basePath}?`)) {
         const rest = req.url.slice(basePath.length);
         req.url = rest.startsWith('/') ? rest : `/${rest}`;
+        break;
       }
-      next();
-    });
-  }
+    }
+    next();
+  });
   const prod = env.NODE_ENV === 'production';
   if (env.TRUST_PROXY !== undefined) app.set('trust proxy', /^\d+$/.test(env.TRUST_PROXY) ? Number(env.TRUST_PROXY) : env.TRUST_PROXY === 'true' ? true : env.TRUST_PROXY);
   else if (prod) app.set('trust proxy', 1);
@@ -184,10 +182,11 @@ export function createApp(container: Container) {
     const dist = path.resolve(env.WEB_DIST_DIR);
     const index = path.join(dist, 'index.html');
     if (!fs.existsSync(index)) throw new Error(`WEB_DIST_DIR has no index.html: ${dist}`);
-    let cached: { mtime: number; html: string } | undefined;
+    let cached: { mtime: number; basePath: string; html: string } | undefined;
     const indexHtml = () => {
       const mtime = fs.statSync(index).mtimeMs;
-      if (!cached || cached.mtime !== mtime) cached = { mtime, html: indexHtmlFor(fs.readFileSync(index, 'utf8'), basePath) };
+      const basePath = publicBasePath(env) || basePaths(undefined)[0] || '';
+      if (!cached || cached.mtime !== mtime || cached.basePath !== basePath) cached = { mtime, basePath, html: indexHtmlFor(fs.readFileSync(index, 'utf8'), basePath) };
       return cached.html;
     };
     // Hashed bundles are immutable; everything else revalidates.

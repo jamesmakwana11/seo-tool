@@ -236,6 +236,8 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
     method: 'get', path: '/api/shopify/oauth/callback', public: true, raw: true, description: 'Shopify OAuth callback (HMAC + single-use state verified; redirects to the app)',
     handle: async (req) => { const to = await handleOAuthCallback(req, c.env); req.res!.setHeader('Cache-Control', 'no-store'); req.res!.redirect(302, to); },
   });
+  add({ method: 'put', path: '/api/shopify/app-credentials', permission: 'integrations.manage', description: 'Save the Shopify app Client ID, Client secret (stored encrypted, never returned) and app URL for this website', handle: (req) => shopify.saveAppCredentials(actorOf(req), (req.body ?? {}) as Record<string, unknown>) });
+  add({ method: 'delete', path: '/api/shopify/app-credentials', permission: 'integrations.manage', description: 'Remove the Shopify app credentials entered in Sentinel', handle: (req) => shopify.removeAppCredentials(actorOf(req)) });
   add({ method: 'post', path: '/api/shopify/disconnect', permission: 'integrations.manage', description: 'Drop the Shopify token from server memory', handle: (req) => shopify.disconnect(actorOf(req)) });
   add({ method: 'get', path: '/api/shopify/resolve', permission: 'shopify.edit', description: 'Match a crawled URL to its Shopify product / collection / page / article', handle: (req) => shopify.resolveUrl(actorOf(req), str(req.query.url, 'url')) });
   add({ method: 'get', path: '/api/shopify/resources', permission: 'shopify.edit', description: 'List products, collections, pages or articles (query: kind, q, after)', handle: (req) => shopify.list(actorOf(req), str(req.query.kind, 'kind') as never, optStr(req.query.q), optStr(req.query.after)) });

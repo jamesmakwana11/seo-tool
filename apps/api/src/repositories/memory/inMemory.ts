@@ -114,7 +114,7 @@ export function createInMemoryRepositories(now = new Date(), f: RepositoryFactor
     sitePages: r('sitePages'), pageTexts: r('pageTexts'), notifications: r('notifications'), deliveries: r('deliveries'), audit: r('audit'),
     rules: r('rules'), aiFlags: r('aiFlags'), briefs: r('briefs'), keywordGaps: r('keywordGaps'), opportunities: r('opportunities'),
     mentions: r('mentions'), prospects: r('prospects'), disavow: r('disavow'), integrationSettings: r('integrationSettings'),
-    integrationTests: r('integrationTests'),
+    integrationTests: r('integrationTests'), integrationSecrets: r('integrationSecrets'),
     config: f.doc('config', defaultConfig(now)),
     permissions: f.doc('permissions', structuredClone(DEFAULT_PERMISSIONS)),
     metrics: f.doc('metrics', {

@@ -13,6 +13,7 @@ import { cleanStaleWork, createGoCrawlEngine, defaultWorkDir } from './gocrawl/e
 import { memoryPlan } from './gocrawl/memoryBudget';
 import { createLighthouseService } from './lighthouse/service';
 import { createShopifyService } from './shopify/service';
+import { createSecretBox } from './security/secretBox';
 import { isLocalHost } from './crawler/url';
 import { createReverifier } from './analysis/reverify';
 import { crawlerUserAgent } from './connectors/connectors';
@@ -201,7 +202,7 @@ export async function createContainer(o: ContainerOptions) {
   const lighthouse = createLighthouseService(ctx, env, baseEngine.collector, { allowLoopback: engineOpts.allowLoopback ?? false, userAgent: engineOpts.userAgent });
   // SHOPIFY_ADMIN_TOKEN belongs to the primary website only; added websites connect their own store with OAuth.
   const shopify = createShopifyService(ctx, {
-    fetchImpl, collector: baseEngine.collector, latestRow: (u) => crawls.latestRow(u), useEnvToken: !o.repos,
+    fetchImpl, collector: baseEngine.collector, latestRow: (u) => crawls.latestRow(u), useEnvToken: !o.repos, scope, secretBox: createSecretBox(env),
     themeSnapshotDir: async () => path.join(changes.directory, safeName(new URL(engine.readiness().baseUrl ?? env.CRAWLER_BASE_URL ?? (await repos.config.get()).site.baseUrl).host), 'themes'),
   });
   const reports = createReportService(ctx);

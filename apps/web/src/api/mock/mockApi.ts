@@ -577,6 +577,8 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
     }),
     startShopifyOAuth: () => call('startShopifyOAuth', () => { need('integrations.manage'); throw shopifyMock(); }),
     disconnectShopify: () => call('disconnectShopify', () => { need('integrations.manage'); throw shopifyMock(); }),
+    saveShopifyAppCredentials: () => call('saveShopifyAppCredentials', () => { need('integrations.manage'); throw shopifyMock(); }),
+    removeShopifyAppCredentials: () => call('removeShopifyAppCredentials', () => { need('integrations.manage'); throw shopifyMock(); }),
     resolveShopifyUrl: () => call('resolveShopifyUrl', () => { need('shopify.edit'); throw shopifyMock(); }),
     listShopifyResources: () => call('listShopifyResources', () => { need('shopify.edit'); throw shopifyMock(); }),
     createShopifyDraft: () => call('createShopifyDraft', () => { need('shopify.edit'); throw shopifyMock(); }),
