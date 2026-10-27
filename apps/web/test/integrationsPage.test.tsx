@@ -168,47 +168,136 @@ describe('Shopify connect', () => {
   });
 });
 
+
 describe('Shopify app credentials form', () => {
   const st = (): ShopifyStatus => ({
-    connected: false, via: null, apiVersion: '2026-07', scopes: [], missingScopes: [], missingOptionalScopes: [], requiredScopes: ['read_products'], optionalScopes: [],
-    oauthConfigured: false, problems: ['Connect with Shopify needs the Shopify app’s credentials: enter the Client ID, the Client secret and the app URL …'], tokenNote: 'memory',
-    capabilities: { edit: false, themes: false, themeWrite: false, imageAlt: false },
-    appCredentials: { source: 'none', secretSet: false, appUrlSource: 'none', canStore: true, persistent: true },
+    connected: false,
+    via: null,
+    apiVersion: '2026-07',
+    scopes: [],
+    missingScopes: [],
+    missingOptionalScopes: [],
+    requiredScopes: ['read_products'],
+    optionalScopes: [],
+    oauthConfigured: false,
+    problems: [
+      'Connect with Shopify needs the Shopify app’s credentials: enter the Client ID, the Client secret and the app URL …',
+    ],
+    tokenNote: 'memory',
+    capabilities: {
+      edit: false,
+      themes: false,
+      themeWrite: false,
+      imageAlt: false,
+    },
+    appCredentials: {
+      source: 'none',
+      secretSet: false,
+      appUrlSource: 'none',
+      canStore: true,
+      persistent: true,
+    },
   } as ShopifyStatus);
 
   it('sends the Client ID, Client secret and app URL once; afterwards the secret is never shown, only "saved"', async () => {
     fake.shopify = st();
     fake.savedCreds = [];
     show(<ShopifyPage />);
+
     const form = await screen.findByTestId('shopify-app-credentials');
     const secret = within(form).getByLabelText('Client secret') as HTMLInputElement;
+
     expect(secret.type).toBe('password');
     expect(secret.autocomplete).toBe('new-password');
-    fireEvent.change(within(form).getByLabelText('Client ID'), { target: { value: 'abcdef0123456789abcdef0123456789' } });
-    fireEvent.change(secret, { target: { value: 'test-shopify-secret-placeholder' } });
-    fireEvent.change(within(form).getByLabelText('App URL (public address of Sentinel)'), { target: { value: 'https://apps.deodap.info/seo-tool' } });
-    expect(within(form).getByText('https://apps.deodap.info/seo-tool/api/shopify/oauth/callback')).toBeTruthy();
-    fireEvent.click(within(form).getByRole('button', { name: 'Save credentials' }));
-    await waitFor(() => expect(fake.savedCreds).toEqual([{ clientId: 'abcdef0123456789abcdef0123456789', clientSecret: 'test-shopify-secret-placeholder', appUrl: 'https://apps.deodap.info/seo-tool' }]));
-    await waitFor(() => expect((within(screen.getByTestId('shopify-app-credentials')).getByLabelText('Client secret') as HTMLInputElement).value).toBe(''));
-    expect(screen.getByTestId('shopify-app-credentials').textContent).toMatch(/Saved in Sentinel by Owner/);
-    expect((screen.getByLabelText('Client secret') as HTMLInputElement).placeholder).toMatch(/saved/);
-    // Connect is now possible.
-    await waitFor(() => expect(screen.queryByTestId('shopify-not-configured')).toBeNull());
+
+    fireEvent.change(within(form).getByLabelText('Client ID'), {
+      target: { value: 'abcdef0123456789abcdef0123456789' },
+    });
+    fireEvent.change(secret, {
+      target: { value: 'test-shopify-secret-placeholder' },
+    });
+    fireEvent.change(
+      within(form).getByLabelText('App URL (public address of Sentinel)'),
+      { target: { value: 'https://apps.deodap.info/seo-tool' } },
+    );
+
+    expect(
+      within(form).getByText(
+        'https://apps.deodap.info/seo-tool/api/shopify/oauth/callback',
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      within(form).getByRole('button', { name: 'Save credentials' }),
+    );
+
+    await waitFor(() =>
+      expect(fake.savedCreds).toEqual([
+        {
+          clientId: 'abcdef0123456789abcdef0123456789',
+          clientSecret: 'test-shopify-secret-placeholder',
+          appUrl: 'https://apps.deodap.info/seo-tool',
+        },
+      ]),
+    );
+
+    await waitFor(() =>
+      expect(
+        (
+          within(screen.getByTestId('shopify-app-credentials').getByLabelText(
+            'Client secret',
+          ) as HTMLInputElement)
+        ).value,
+      ).toBe(''),
+    );
+
+    expect(
+      screen.getByTestId('shopify-app-credentials').textContent,
+    ).toMatch(/Saved in Sentinel by Owner/);
+
+    expect(
+      (screen.getByLabelText('Client secret') as HTMLInputElement).placeholder,
+    ).toMatch(/saved/);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('shopify-not-configured')).toBeNull(),
+    );
   });
 
   it('says so when the server cannot encrypt', async () => {
-    fake.shopify = { ...st(), appCredentials: { ...st().appCredentials!, canStore: false, storeProblem: 'Credentials cannot be stored: the API server has no SESSION_SECRET …' } };
+    fake.shopify = {
+      ...st(),
+      appCredentials: {
+        ...st().appCredentials!,
+        canStore: false,
+        storeProblem:
+          'Credentials cannot be stored: the API server has no SESSION_SECRET …',
+      },
+    };
+
     show(<ShopifyPage />);
+
     const form = await screen.findByTestId('shopify-app-credentials');
     expect(form.textContent).toMatch(/no SESSION_SECRET/);
-    expect((within(form).getByRole('button', { name: 'Save credentials' }) as HTMLButtonElement).disabled).toBe(true);
+
+    expect(
+      (
+        within(form).getByRole('button', {
+          name: 'Save credentials',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 });
 
 describe('base path', () => {
   it('reads the path the server set in index.html', () => {
-    const doc = (content?: string) => ({ querySelector: () => (content === undefined ? null : { getAttribute: () => content }) }) as unknown as Document;
+    const doc = (content?: string) =>
+      ({
+        querySelector: () =>
+          content === undefined ? null : { getAttribute: () => content },
+      }) as unknown as Document;
+
     expect(appBasePath(doc('/seo-tool'))).toBe('/seo-tool');
     expect(appBasePath(doc('/seo-tool/'))).toBe('/seo-tool');
     expect(appBasePath(doc(''))).toBe('');
