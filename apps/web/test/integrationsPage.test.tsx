@@ -243,14 +243,9 @@ describe('Shopify app credentials form', () => {
 
     await waitFor(() =>
       expect(
-        (
-          within(screen.getByTestId('shopify-app-credentials').getByLabelText(
-            'Client secret',
-          ) as HTMLInputElement)
-        ).value,
+        (screen.getByLabelText('Client secret') as HTMLInputElement).value,
       ).toBe(''),
     );
-
     expect(
       screen.getByTestId('shopify-app-credentials').textContent,
     ).toMatch(/Saved in Sentinel by Owner/);
