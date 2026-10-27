@@ -1,4 +1,4 @@
-import { loadEnv } from './config/env';
+import { CRAWLER_BASE_URL_MISSING, loadEnv } from './config/env';
 import { createLogger } from './lib/logger';
 import { createContainer } from './container';
 import { createApp } from './http/app';
@@ -6,6 +6,7 @@ import { describeDatabaseUrl, openPersistence } from './repositories/postgres/pe
 import { busyCrawlJobs, suspendCrawlsForShutdown } from './services/crawls';
 import { busyImageAudits, suspendImageAuditsForShutdown } from './images/audit';
 import { startKeepAwake } from './jobs/keepAwake';
+import type { Workspaces } from './websites';
 
 async function main() {
   const env = loadEnv();
@@ -30,6 +31,10 @@ async function main() {
     log.info({ port: env.PORT, env: env.NODE_ENV, scheduler: env.SCHEDULER_ENABLED, demoSeed: env.SEED_DEMO_DATA }, `DeoDap SEO Sentinel API listening on :${env.PORT}`);
     if (persistence) log.info({ database: describeDatabaseUrl(env.DATABASE_URL!) }, 'Storage: PostgreSQL — websites, crawls and results are kept across restarts.');
     else log.warn('Storage is TEMPORARY in-memory: all websites, crawls and issues are lost on restart. Set DATABASE_URL to keep them in PostgreSQL.');
+    // Live crawling: one switch for every registered website; each website's crawler only requests its own host.
+    if (!env.CRAWLER_ALLOW_LIVE) log.warn('Live crawling is OFF (CRAWLER_ALLOW_LIVE is not "true"): no website can be crawled. Set CRAWLER_ALLOW_LIVE=true in the API environment and restart.');
+    else if (!env.CRAWLER_BASE_URL) log.warn(CRAWLER_BASE_URL_MISSING);
+    else log.info({ primary: env.CRAWLER_BASE_URL, websites: (app.locals.workspaces as Workspaces).entries().length }, 'Live crawling is ON for every registered website (each limited to its own host).');
   });
 
   let stopping = false;

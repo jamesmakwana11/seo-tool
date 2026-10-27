@@ -26,14 +26,26 @@ thin content under 150 words, slow response over 2 s).
 | Response | no response (fail), 4xx / 5xx (fail), redirect (warn), slow response (warn) |
 | Title | missing (fail), too long / too short (warn), same as other pages (warn), several `<title>` tags (warn) |
 | Meta description | missing (fail), too long / too short (warn), same as other pages (warn), several tags (warn) |
-| Headings | no H1 (fail), several H1s (warn), empty H1 (warn), no H2 on a long product / collection / article (warn), skipped levels with the headings listed (warn), H2 / H3 counts (info) |
+| Headings | no H1 (fail), several H1s (warn), empty H1 (warn), same H1 as other pages (warn), no H2 on a long product / collection / article (warn), skipped levels with the headings listed (warn), H2 / H3 counts (info) |
 | Canonical | conflicting canonical tags (fail), none (warn), points to another URL (info), self-referencing (pass) |
 | Indexability | noindex but listed in the sitemap (fail), noindex (info), page links set to nofollow (warn), not in the sitemap (info) |
 | Content | thin content (warn) with the word count and words unique to the page |
 | Links | broken internal links, listed (fail), no internal links (warn), nothing links here (warn), internal links with rel="nofollow" (warn), links to other websites (info) |
-| Images | images without ALT text, with the first 5 image addresses (fail when ≥ 3 or all, else warn) |
+| Images | images without ALT text, with every image address (fail when ≥ 3 or all, else warn); the same image shown more than once on this page (warn) — the same image on several different pages is not flagged |
 
-Duplicate titles and descriptions are worked out over the whole crawl (pages answering 200). The CSV / JSON export
+Duplicate titles, descriptions and H1s are worked out over the whole crawl (pages answering 200).
+
+**Details of every finding.** In the page drawer (All pages) and the page report each finding opens (*Details*, or
+*Expand all details*) to show, without leaving the report: the affected page; the detected values (title / description
+text with its character count and the recommended range, the H1s, response time, word count, redirect target, error,
+indexability reason, canonical); for duplicates the shared text, **every** other page with it (each opens its page
+report; copy all) and the exact count; images without ALT with a preview of each; each image repeated on the page with a
+preview, how many times, and every copy with its position, HTML location (landmark › Shopify section › theme component,
+e.g. `footer › section "footer" › .footer__payment`), ALT and loading; broken links as source page → destination, HTTP
+status and error type; and how many pages of the crawl have the same finding, linked to that list. What a crawl did not
+record says *could not be identified* — crawls made before 24 Oct 2026 have no image list, repeated-image locations or
+link statuses, so they show that until the website is crawled again. Duplicate lists are complete up to 10,000 other
+pages (the count is always exact); a page keeps up to 500 broken links. The CSV / JSON export
 has `audit_score` and `audit_to_do` columns for every URL.
 
 ## Measured cost (synthetic store, 25,000 products, 53,491 URLs, 256 MB Node heap)
@@ -60,5 +72,6 @@ Files: `docs/measurements/go-crawl-25k-before-page-audit-details.json`, `docs/me
 
 `GET /api/crawls/:id/pages?score=poor|fair|good|none&check=<id>&sort=score` (plus the existing filters) — rows carry
 `auditScore` and `auditTodo`; the response has `facets.score`, `facets.check`, `scoreSummary` and `auditLimits`.
-`GET /api/crawls/:id/page?url=` (`id` may be `latest`) — the page report. `GET /api/changes/for-url?url=` — latest change
+`GET /api/crawls/:id/page?url=` (`id` may be `latest`) — the page report, with `duplicates.title / meta / h1`
+(`text`, every other page in `urls`, exact `total`). `GET /api/changes/for-url?url=` — latest change
 record of a URL. All need sign-in and `crawls.view`.

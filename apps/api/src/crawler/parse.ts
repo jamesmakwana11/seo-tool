@@ -133,6 +133,33 @@ function toIso(s: string): string | undefined {
 /**
  * Parse one HTML document. Pure: no network. All URLs returned are absolute.
  */
+const COMPONENT_CLASS = /(gallery|slider|slideshow|carousel|swiper|thumbnail|media|card|logo|banner|badge|icon|menu|footer__|header__|collage|grid__item|image-with-text|multicolumn|testimonial)/i;
+
+/**
+ * Where an <img> is (from its parent up): page landmark, Shopify section (id="shopify-section-…", part after "__") and
+ * the nearest component class — same rule and wording as the Go crawler (services/crawler-go/extract.go imageLocation).
+ */
+function imageLocation(parent: ReturnType<CheerioAPI>): string {
+  const parts: string[] = [];
+  const land = parent.closest('header, nav, main, aside, footer');
+  if (land.length) parts.push((land.get(0) as { tagName?: string }).tagName ?? '');
+  const sec = parent.closest('[id^="shopify-section-"]');
+  if (sec.length) {
+    let id = (sec.attr('id') ?? '').replace(/^shopify-section-/, '');
+    const k = id.lastIndexOf('__');
+    if (k >= 0) id = id.slice(k + 2);
+    parts.push(`section "${id}"`);
+  }
+  // Parent first, then its ancestors (nearest first) — like Go's closest(img.Parent, …).
+  const chain = [...parent.toArray(), ...parent.parents().toArray()];
+  const comp = chain.find((n) => COMPONENT_CLASS.test((n as { attribs?: Record<string, string> }).attribs?.class ?? ''));
+  if (comp) {
+    const tok = ((comp as { attribs?: Record<string, string> }).attribs?.class ?? '').split(/\s+/).find((t) => COMPONENT_CLASS.test(t));
+    if (tok) parts.push(`.${tok}`);
+  }
+  return parts.filter(Boolean).join(' › ');
+}
+
 export function parseHtml(html: string, pageUrl: string, siteHost: string): ParsedHtml {
   const $: CheerioAPI = load(html);
   const isHttps = pageUrl.startsWith('https:');
@@ -246,9 +273,11 @@ export function parseHtml(html: string, pageUrl: string, siteHost: string): Pars
     const src = abs(rawSrc.startsWith('//') ? `${pageUrl.startsWith('https') ? 'https:' : 'http:'}${rawSrc}` : rawSrc);
     if (!src) return;
     const alt = el.attr('alt');
+    const location = imageLocation(el.parent());
     images.push({
       src, alt: alt === undefined ? null : alt, width: el.attr('width'), height: el.attr('height'), loading: el.attr('loading')?.toLowerCase(),
       inMain: mainEl.length ? el.closest(mainEl).length > 0 : el.closest('header, nav, footer').length === 0, index: i,
+      ...(location ? { location } : {}),
     });
   });
 

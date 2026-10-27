@@ -12,7 +12,7 @@
  */
 import type { PageTier, SentinelConfig, SitePage } from '@sentinel/shared';
 import type { Ctx } from '../services/context';
-import { GA4_SCOPE, googleToken, guardedSync, livePagesByPath, normalizePath, num, postJson, siteOrigin, SyncError, upsertLivePage, type SyncDeps, type SyncResult } from './common';
+import { GA4_SCOPE, googleToken, guardedSync, integrationProperty, livePagesByPath, normalizePath, num, postJson, siteOrigin, SyncError, upsertLivePage, type SyncDeps, type SyncResult } from './common';
 
 const PAGE_SIZE = 100_000;
 const MAX_PAGES = 10;
@@ -24,8 +24,8 @@ export async function ga4Tiers(ctx: Ctx, deps: SyncDeps = {}): Promise<SyncResul
     const label = 'Google Analytics 4';
     const cfg = await ctx.repos.config.get();
     const days = cfg.tiers.tier1LookbackDays;
-    const pid = (ctx.env.GA4_PROPERTY_ID ?? '').replace(/^properties\//, '').trim();
-    if (!pid) throw new SyncError(`${label}: GA4_PROPERTY_ID is not set`);
+    const pid = await integrationProperty(ctx, 'ga4');
+    if (!pid) throw new SyncError(`${label}: no property ID — save it under Settings → Integrations (or set GA4_PROPERTY_ID)`);
     const token = await googleToken(ctx, deps, label, ctx.env.GA4_SERVICE_ACCOUNT_JSON, GA4_SCOPE);
     const url = `https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(pid)}:runReport`;
 

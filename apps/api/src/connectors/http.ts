@@ -154,36 +154,62 @@ export function sendError(label: string, url: string, r: HttpResult): { ok: fals
 
 // ---------------------------------------------------------------------------------------------- connector factory
 
+/** Non-secret integration settings saved for the website (Integrations screen). */
+export type IntegrationSettings = Record<string, string | number | boolean>;
+
 export interface ConnectorSpec {
   id: IntegrationId;
   env: Env;
   envVars: string[];
   optionalVars?: string[];
+  /**
+   * Env vars that a saved (non-secret) integration setting can provide instead, e.g. GSC_PROPERTY ← settings.property.
+   * The saved setting wins over the env var; secrets can never come from settings.
+   */
+  settingVars?: Record<string, string>;
   /** Override for connectors with conditional requirements (e.g. backlinks provider). */
   isConfigured?: () => boolean;
   missingVars?: () => string[];
-  run: () => Promise<ConnectorTestResult>;
+  run: (value: (name: string) => string | undefined) => Promise<ConnectorTestResult>;
 }
 
 /** A Connector that can also name its missing env vars (names only). */
-export type HintedConnector = Connector & { missingVars(): string[] };
+export type HintedConnector = Connector & { missingVars(settings?: IntegrationSettings): string[] };
+
+/** A setting's value as text ('' when unset). */
+const settingText = (settings: IntegrationSettings | undefined, key: string): string => {
+  const v = settings?.[key];
+  return v === undefined || v === null || v === false ? '' : String(v).trim();
+};
 
 /** Wraps a connector so test() never throws, never runs unconfigured, and never leaks secrets. */
 export function defineConnector(spec: ConnectorSpec): HintedConnector {
   const optional = new Set(spec.optionalVars ?? []);
-  const missingVars = spec.missingVars ?? (() => spec.envVars.filter((n) => !optional.has(n) && !configuredVars(spec.env, [n]).length));
-  const isConfigured = spec.isConfigured ?? (() => missingVars().length === 0);
+  const fromSetting = spec.settingVars ?? {};
+  /** Saved setting first (when this env var may come from one), then the server environment. */
+  const valueOf = (settings: IntegrationSettings | undefined) => (name: string): string | undefined => {
+    const key = fromSetting[name];
+    const saved = key ? settingText(settings, key) : '';
+    if (saved) return saved;
+    const v = (spec.env as Record<string, unknown>)[name];
+    return v === undefined || v === '' || v === false ? undefined : String(v);
+  };
+  const missingVars = (settings?: IntegrationSettings) => (spec.missingVars
+    ? spec.missingVars()
+    : spec.envVars.filter((n) => !optional.has(n) && !configuredVars(spec.env, [n]).length && !(fromSetting[n] && settingText(settings, fromSetting[n]))));
+  const isConfigured = (settings?: IntegrationSettings) => (spec.isConfigured ? spec.isConfigured() : missingVars(settings).length === 0);
   return {
     id: spec.id,
     envVars: spec.envVars,
     optionalVars: spec.optionalVars,
+    settingVars: spec.settingVars,
     isConfigured,
     missingVars,
-    async test() {
-      if (!isConfigured()) return { ok: false, result: `Not configured — missing ${missingVars().join(', ') || 'required settings'}` };
+    async test(settings?: IntegrationSettings) {
+      if (!isConfigured(settings)) return { ok: false, result: `Not configured — missing ${missingVars(settings).join(', ') || 'required settings'}` };
       let out: ConnectorTestResult;
       try {
-        out = await spec.run();
+        out = await spec.run(valueOf(settings));
       } catch (e) {
         out = { ok: false, result: `Unexpected error during connection test: ${truncate(errMsg(e))}` };
       }

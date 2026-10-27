@@ -7,7 +7,7 @@ import { wordCount } from '@sentinel/shared';
 import type { Finding } from '../services/ports';
 import type { ParsedPage } from '../crawler/types';
 import { collectionHandle, hostOf, isCollectionTagPage, pathOf, productHandle, sameUrl } from '../crawler/url';
-import { aggregate, escapeHtml, htmlEv, isNoindex, metricEv, perTemplate, textEv, trunc, type AnalyzerResult, type Ev, type Prepared, type Problem } from './context';
+import { aggregate, dupEv, escapeHtml, htmlEv, isNoindex, metricEv, perTemplate, textEv, trunc, type AnalyzerResult, type Ev, type Prepared, type Problem } from './context';
 import { hasType, nodesOfType } from './schema';
 import { duplicateGroups } from './technical';
 
@@ -18,7 +18,14 @@ function pagesForMeta(prep: Prepared): ParsedPage[] {
   return prep.content.filter((p) => !isNoindex(p).noindex);
 }
 
+/** One evidence item per duplicate group (it already lists every page of the group), not one per page. */
+function onceEach() {
+  const seen = new Set<string[]>();
+  return (ev: Ev, group: string[]): Ev[] | undefined => (seen.has(group) ? undefined : (seen.add(group), [ev]));
+}
+
 export function analyzeTitle(prep: Prepared): AnalyzerResult {
+  const once = onceEach();
   const t = prep.ctx.thresholds;
   const brand = prep.ctx.config.site.brand || 'DeoDap';
   const pages = pagesForMeta(prep);
@@ -34,13 +41,14 @@ export function analyzeTitle(prep: Prepared): AnalyzerResult {
     const art = title.match(TITLE_ARTIFACT);
     if (art) out.push({ label: 'with template artifacts in the title', evidence: [htmlEv(p.url, `artifact "${art[0]}"`, tag)] });
     if (!title.toLowerCase().includes(brand.toLowerCase())) out.push({ label: `with titles missing the brand "${brand}"`, evidence: [htmlEv(p.url, 'brand pattern missing', tag)] });
-    if (dups.has(p.url)) out.push({ label: 'with a title duplicated on other pages', evidence: [htmlEv(p.url, `duplicate of ${dups.get(p.url)!.length - 1} other page(s)`, tag)] });
+    if (dups.has(p.url)) out.push({ label: 'with a title duplicated on other pages', evidence: once(dupEv(p.url, 'title', title, tag, dups.get(p.url)!), dups.get(p.url)!) });
     if (p.html!.titleCount > 1) out.push({ label: 'with more than one <title> element', evidence: [htmlEv(p.url, `${p.html!.titleCount} <title> elements`, tag)] });
     return out;
   });
 }
 
 export function analyzeMeta(prep: Prepared): AnalyzerResult {
+  const once = onceEach();
   const t = prep.ctx.thresholds;
   const pages = pagesForMeta(prep);
   const dups = prep.global?.metaDups ?? new Map<string, string[]>();
@@ -52,7 +60,7 @@ export function analyzeMeta(prep: Prepared): AnalyzerResult {
     const tag = `<meta name="description" content="${escapeHtml(m)}">`;
     if (m.length > (t.metaMaxChars ?? 160)) out.push({ label: `with meta descriptions over ${t.metaMaxChars ?? 160} characters`, evidence: [htmlEv(p.url, `${m.length} characters`, tag)] });
     if (m.length < (t.metaMinChars ?? 70)) out.push({ label: `with meta descriptions under ${t.metaMinChars ?? 70} characters`, evidence: [htmlEv(p.url, `${m.length} characters`, tag)] });
-    if (dups.has(p.url)) out.push({ label: 'with a meta description duplicated on other pages', evidence: [htmlEv(p.url, `duplicate of ${dups.get(p.url)!.length - 1} other page(s)`, tag)] });
+    if (dups.has(p.url)) out.push({ label: 'with a meta description duplicated on other pages', evidence: once(dupEv(p.url, 'meta description', m, tag, dups.get(p.url)!), dups.get(p.url)!) });
     if (['home', 'collection', 'product'].includes(p.template) && !CTA_USP.test(m)) {
       out.push({ label: 'with meta descriptions lacking a CTA/USP (No MOQ, wholesale price, COD, fast shipping)', evidence: [htmlEv(p.url, 'no CTA/USP terms', tag)] });
     }
@@ -64,6 +72,7 @@ const STOP = new Set(['the', 'a', 'an', 'and', 'or', 'for', 'of', 'to', 'in', 'o
 export const tokens = (s: string) => (s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => w.length > 2 && !STOP.has(w));
 
 export function analyzeH1(prep: Prepared): AnalyzerResult {
+  const once = onceEach();
   const pages = pagesForMeta(prep);
   const dups = prep.global?.h1Dups ?? new Map<string, string[]>();
   if (!prep.global?.h1Dups) for (const g of duplicateGroups(pages.filter((p) => p.template !== 'home'), (p) => (p.html!.h1s.length === 1 ? p.html!.h1s[0].toLowerCase() : undefined))) for (const u of g) dups.set(u, g);
@@ -72,7 +81,7 @@ export function analyzeH1(prep: Prepared): AnalyzerResult {
     if (!h1s.length) return [{ label: 'missing an H1', evidence: [htmlEv(p.url, 'H1', p.html!.h1s.length ? '<h1></h1> (empty)' : '(no <h1> on page)')] }];
     const out: { label: string; evidence?: Ev[] }[] = [];
     if (h1s.length > 1) out.push({ label: 'with multiple H1s', evidence: [htmlEv(p.url, `${h1s.length} H1 elements`, h1s.map((h) => `<h1>${escapeHtml(h)}</h1>`).join('\n'))] });
-    if (dups.has(p.url)) out.push({ label: 'with an H1 duplicated on other pages', evidence: [htmlEv(p.url, `duplicate of ${dups.get(p.url)!.length - 1} other page(s)`, `<h1>${escapeHtml(h1s[0])}</h1>`)] });
+    if (dups.has(p.url)) out.push({ label: 'with an H1 duplicated on other pages', evidence: once(dupEv(p.url, 'H1', h1s[0], `<h1>${escapeHtml(h1s[0])}</h1>`, dups.get(p.url)!), dups.get(p.url)!) });
     const tt = tokens(p.html!.title ?? '');
     const ht = tokens(h1s[0]);
     if (tt.length && ht.length && !ht.some((w) => tt.includes(w))) out.push({ label: 'whose H1 does not match the topic of the title', evidence: [htmlEv(p.url, 'title vs H1', `<title>${escapeHtml(p.html!.title ?? '')}</title>\n<h1>${escapeHtml(h1s[0])}</h1>`)] });

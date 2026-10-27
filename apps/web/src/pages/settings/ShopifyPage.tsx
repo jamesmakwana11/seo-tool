@@ -21,7 +21,18 @@ const CALLBACK_REASONS: Record<string, string> = {
   exchange_network: 'The server could not reach Shopify to finish the connection.',
   not_configured: 'OAuth is not configured on the server (SHOPIFY_API_KEY / SHOPIFY_API_SECRET).',
   workspace_gone: 'The website that started the connection no longer exists on this server (it restarted). Start again.',
+  no_code: 'Shopify did not send an authorization code (the approval was cancelled). Start the connection again.',
+  exchange_failed: 'The server could not finish the connection with Shopify. Start the connection again.',
+  exchange_bad_response: 'Shopify answered the token request unexpectedly. Start the connection again.',
 };
+
+/** Same rule as the server: “deodap”, “deodap.myshopify.com” or the admin URL → “deodap.myshopify.com”. */
+function myshopifyDomain(input: string): string | undefined {
+  let v = input.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/[/?#].*$/, '');
+  if (!v) return undefined;
+  if (!v.includes('.')) v = `${v}.myshopify.com`;
+  return /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(v) ? v : undefined;
+}
 
 export default function ShopifyPage() {
   const q = useApiQuery(['shopify', 'status'], () => api.getShopifyStatus());
@@ -50,13 +61,20 @@ function Connection({ st }: { st: ShopifyStatus }) {
   const [busy, setBusy] = useState(false);
   const [confirmOff, setConfirmOff] = useState(false);
   const disconnect = useApiMutation(() => api.disconnectShopify(), { success: 'Disconnected — the token was dropped from server memory', invalidate: [['shopify']], onSuccess: () => setConfirmOff(false) });
+  const [startError, setStartError] = useState<string | null>(null);
+  const domain = myshopifyDomain(shop);
+  const shopError = shop.trim() && !domain ? 'Enter the store’s .myshopify.com domain (Shopify admin → Settings → Domains), e.g. deodap.myshopify.com — not the storefront domain.' : undefined;
   const start = async (e: FormEvent) => {
     e.preventDefault();
+    if (!domain) { setStartError(shopError ?? 'Enter the store’s .myshopify.com domain.'); return; }
     setBusy(true);
+    setStartError(null);
     try {
-      const r = await api.startShopifyOAuth(shop);
+      const r = await api.startShopifyOAuth(domain);
       window.location.assign(r.authorizeUrl);
     } catch (err) {
+      // Shown next to the button (and as a toast): the reason is never lost.
+      setStartError(errorMessage(err));
       toast.error(errorMessage(err));
       setBusy(false);
     }
@@ -71,7 +89,7 @@ function Connection({ st }: { st: ShopifyStatus }) {
         actions={st.connected && manage ? <Button variant="ghost" icon={<Unplug className="h-4 w-4" />} onClick={() => setConfirmOff(true)}>Disconnect</Button> : undefined}
       >
         <div className="mt-3 space-y-4">
-          {st.problems.map((p) => <Notice key={p} tone="med">{p}</Notice>)}
+          {st.problems.filter((_p, k) => !(k === 0 && !st.connected && manage && !st.oauthConfigured)).map((p) => <Notice key={p} tone="med">{p}</Notice>)}
           {st.connected && (
             <KV
               cols={3}
@@ -85,13 +103,23 @@ function Connection({ st }: { st: ShopifyStatus }) {
             />
           )}
           {!st.connected && manage && (
-            <form onSubmit={start} className="flex flex-wrap items-end gap-3">
-              <div className="min-w-[260px] flex-1">
-                <Field label="Store" htmlFor="shop" hint="The myshopify.com domain, e.g. deodap.myshopify.com">
-                  <Input id="shop" value={shop} onChange={(e) => setShop(e.target.value)} placeholder="your-store.myshopify.com" className="font-mono text-[13px]" />
-                </Field>
+            <form onSubmit={start} className="space-y-3" data-testid="shopify-connect-form">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-[260px] flex-1">
+                  <Field label="Store" htmlFor="shop" hint="The myshopify.com domain, e.g. deodap.myshopify.com" error={shopError}>
+                    <Input id="shop" value={shop} onChange={(e) => { setShop(e.target.value); setStartError(null); }} placeholder="your-store.myshopify.com" className="font-mono text-[13px]" aria-invalid={!!shopError} />
+                  </Field>
+                </div>
+                <Button type="submit" variant="primary" loading={busy} disabled={!st.oauthConfigured || !domain} title={!st.oauthConfigured ? 'Not set up on the server — see the message below' : !domain ? 'Enter the .myshopify.com domain first' : undefined}>Connect with Shopify</Button>
               </div>
-              <Button type="submit" variant="primary" loading={busy} disabled={!st.oauthConfigured || !shop.trim()}>Connect with Shopify</Button>
+              {!st.oauthConfigured && (
+                <div data-testid="shopify-not-configured">
+                  <Notice tone="crit" title="Connect with Shopify is not available yet">
+                    {st.problems[0] ?? 'The Shopify app credentials are not set on the API server.'}
+                  </Notice>
+                </div>
+              )}
+              {startError && <Notice tone="crit" title="Could not start the connection">{startError}</Notice>}
             </form>
           )}
           {!st.connected && !manage && <p className="text-sm text-muted">Ask an administrator to connect the store.</p>}

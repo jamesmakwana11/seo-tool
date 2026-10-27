@@ -60,8 +60,8 @@ const schema = z.object({
   // Crawler
   /**
    * The primary website — the only host the primary workspace's crawler may request (a security boundary, not just a
-   * default). Must be an http(s) URL such as https://deodap.in, without credentials. Websites added under Manage
-   * websites get their own crawler bound to their own URL.
+   * default). Must be an http(s) URL such as https://deodap.in, without credentials. It does NOT limit other websites:
+   * each website added under Manage websites gets its own crawler bound to its own registered URL.
    */
   CRAWLER_BASE_URL: z.string().trim().url().refine((v) => {
     try {
@@ -72,7 +72,10 @@ const schema = z.object({
     }
   }).optional(),
   CRAWLER_USER_AGENT: z.string().optional(),
-  /** Must be explicitly true before the crawler sends requests to a live site. */
+  /**
+   * Must be explicitly true before any crawler sends requests to a live (non-loopback) site. One server-wide switch for
+   * every registered website; which hosts may be requested is decided per website (its registered URL).
+   */
   CRAWLER_ALLOW_LIVE: bool(false),
   /**
    * OPTIONAL server-wide page cap. Unset (the default) = no cap: a crawl can fetch every page the site has. Set it only
@@ -267,9 +270,10 @@ export type Env = z.infer<typeof schema>;
 
 /** How to fix a missing primary website (shown at start-up, in the Crawl Center and by the crawl API). */
 export const CRAWLER_BASE_URL_MISSING =
-  'CRAWLER_BASE_URL is not set on the API server, so live crawling has no allowed website. Set it to the primary website ' +
-  '(for example CRAWLER_BASE_URL=https://deodap.in) in the API server environment — apps/api/.env when running locally, ' +
-  'or the service\'s Environment settings on Render — and restart the API. Start URLs must be on that website.';
+  'CRAWLER_BASE_URL is not set on the API server, so the primary website has no address its crawler may request. Set it ' +
+  '(for example CRAWLER_BASE_URL=https://deodap.in) in the environment the API process reads — apps/api/.env with ' +
+  '"npm run start:api:env", the systemd EnvironmentFile, the PM2 ecosystem file, docker --env-file, or the hosting ' +
+  'dashboard — and restart the API. Websites added under Manage websites use their own URL and can be crawled without it.';
 
 /** The DeoDap group's websites, always available in the website selector in production (see SEED_WEBSITES). */
 export const DEFAULT_SEED_WEBSITES = 'DeoDap|https://deodap.in/|shopify,Grabnix|https://grabnix.in/|shopify,Oblivion|https://oblivion.co.in/|shopify,Natation|https://natation.in/|shopify';
@@ -297,11 +301,9 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
     env.ALLOW_DEV_ROLE_PREVIEW = false;
     env.DEV_EXPOSE_RESET_TOKEN = false;
   }
-  if (env.NODE_ENV === 'production' && env.CRAWLER_ALLOW_LIVE && !env.CRAWLER_BASE_URL) {
-    // Live crawling was switched on without saying which website it may crawl: fail at start-up with the fix, instead
-    // of starting a server whose Crawl Center can never run. (The crawler never falls back to a built-in website.)
-    throw new Error(CRAWLER_BASE_URL_MISSING);
-  }
+  // CRAWLER_ALLOW_LIVE=true without CRAWLER_BASE_URL is allowed: the primary website then cannot be crawled (its Crawl
+  // Center says why, and server.ts logs a warning), but every website registered under Manage websites can — each one's
+  // crawler is bound to that website's own URL. The crawler never falls back to a built-in website.
   if ((env.ADMIN_EMAIL || env.ADMIN_INITIAL_PASSWORD) && !(env.ADMIN_EMAIL && env.ADMIN_INITIAL_PASSWORD)) {
     throw new Error('ADMIN_EMAIL and ADMIN_INITIAL_PASSWORD must be set together.');
   }

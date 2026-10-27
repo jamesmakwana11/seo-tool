@@ -15,6 +15,7 @@ import { createLighthouseService } from './lighthouse/service';
 import { createShopifyService } from './shopify/service';
 import { isLocalHost } from './crawler/url';
 import { createReverifier } from './analysis/reverify';
+import { crawlerUserAgent } from './connectors/connectors';
 import { createConnectors, createDeliveryAdapters, createDeliveryService, createIntegrationRegistry, createLlmAdapter, createTaskOpsAdapter, type FetchLike, type MailTransportFactory } from './connectors';
 import type { RetryPolicy } from './notifications/delivery';
 import type { Ctx } from './services/context';
@@ -93,7 +94,7 @@ export async function createContainer(o: ContainerOptions) {
 
   const cfg0 = await repos.config.get();
   const engineOpts: CrawlEngineOptions = {
-    baseUrl: env.CRAWLER_BASE_URL, allowLive: env.CRAWLER_ALLOW_LIVE, userAgent: env.CRAWLER_USER_AGENT ?? cfg0.crawl.userAgent,
+    baseUrl: env.CRAWLER_BASE_URL, allowLive: env.CRAWLER_ALLOW_LIVE, userAgent: crawlerUserAgent(env, cfg0.crawl.userAgent),
     timeoutMs: cfg0.crawl.requestTimeoutMs, concurrency: cfg0.crawl.maxConcurrency, respectRobots: cfg0.crawl.respectRobots,
     // SSRF policy: loopback only for a local fixture site outside production; private / metadata addresses never.
     allowLoopback: !!env.CRAWLER_BASE_URL && isLocalHost(env.CRAWLER_BASE_URL) && env.NODE_ENV !== 'production',

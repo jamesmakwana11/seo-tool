@@ -59,6 +59,75 @@ node scripts/package-review.mjs <dir>
 
 ## 3. Verification
 
+### 27 Oct 2026 — Crawler default User-Agent, GSC / GA4 properties from the UI, integrations dropdown, Shopify OAuth under /seo-tool
+
+**Crawler:** the Site crawler card reported `CRAWLER_USER_AGENT` as a missing setting (and its test sent no
+User-Agent) although the engine already fell back to the configured default. Now `CRAWLER_USER_AGENT` is optional
+everywhere (`crawlerUserAgent()` → `DEFAULT_CRAWLER_USER_AGENT`), only `CRAWLER_BASE_URL` / `CRAWLER_ALLOW_LIVE` are
+reported as missing. **GSC / GA4:** the property (GSC) and property ID (GA4) can be saved per website from the card;
+they are validated (`sc-domain:` / URL-prefix; numeric ID, Measurement IDs refused), used by the connection test and by
+the data syncs (saved value first, env var as fallback), and a test passed for another property no longer counts as
+connected. Missing service-account keys, missing Google permissions and a disabled API are reported in plain words; the
+GA4 test now calls the Data API (the API the sync uses). **Integrations screen:** Site crawler, GSC and GA4 always
+shown; every other integration chosen one at a time from a dropdown (nothing shown until chosen). **Shopify:** the
+flow (start endpoint → authorize URL → callback with HMAC, single-use state, shop and timestamp checks → token
+exchange → scope check) was correct but only worked at a site root: with `APP_BASE_URL=https://apps.deodap.info/seo-tool`
+the callback under `/seo-tool` reached the SPA, and the web app could not load under a sub-path. The API now accepts
+the prefix (stripped by the proxy or not) and serves index.html with `<base href>` + the base path; the production web
+build uses relative asset URLs, the router basename and API base come from it. A missing `SHOPIFY_API_KEY` /
+`SHOPIFY_API_SECRET` / `APP_BASE_URL`, an http `APP_BASE_URL` in production or `SHOPIFY_SCOPES` without the required
+scopes now show one actionable message next to the (disabled) button, with the exact redirection URL to register; the
+store field validates the `.myshopify.com` domain. Token storage unchanged: server memory only.
+
+**Tests:** `apps/api/test/connectors/integration-properties.test.ts`, `apps/api/test/shopify/oauth-subpath.test.ts`,
+`apps/web/test/integrationsPage.test.tsx`.
+
+### 26 Oct 2026 — Self-hosted live crawling for every registered website
+
+**Findings.** Each website under Manage websites already had its own crawler bound to its own URL, and live crawling
+is switched on by `CRAWLER_ALLOW_LIVE=true` in the API process environment. What blocked or weakened it: (1) in
+production, `CRAWLER_ALLOW_LIVE=true` without `CRAWLER_BASE_URL` stopped the whole server at start-up, so a missing
+primary address blocked every registered website; (2) both engines let any loopback host through their "only this
+website" guard (test-only, but another local website could be crawled from the wrong workspace); (3) a Start URL that
+redirected to another website was followed — that website's page was requested before the crawl was refused;
+(4) a website could be registered with a private / metadata IP or internal host name (it was blocked only at request
+time); (5) error texts and docs only described Render. **Fix:** the start-up refusal is removed (warning logged; the
+primary website reports the missing setting, the others crawl); the guard compares the exact host (www-insensitive,
+port included) in both engines; the Start URL is resolved hop by hop and a redirect to another host is refused without
+requesting it (Go and Node); registration refuses private, loopback (production), link-local / metadata and internal
+addresses and credentials; start-up logs whether live crawling is on; DEPLOYMENT.md has a self-hosted section (where
+the API reads its environment, the settings, restart commands). SSRF checks per DNS answer and redirect hop, robots.txt,
+retries / back-off, adaptive throttling and per-website storage are unchanged.
+
+**Tests:** `apps/api/test/api/registered-websites-crawl.test.ts` (Go and Node engines: three local websites crawled at
+the same time, each only on its own host with its own results; Start URL of another registered or an unregistered site
+→ 400; unknown website id → 404; engine refuses another host; a cross-site start redirect fails without contacting the
+other website; production config without `CRAWLER_BASE_URL`: a registered website is ready, private / metadata /
+loopback / internal addresses cannot be registered; live crawling off → every website names the setting; DNS answers
+in private ranges blocked at crawl time), `crawler-config.test.ts` updated for the new start-up rule.
+
+### 24 Oct 2026 (second pass) — Exact details for every finding; repeated images on the same page
+
+**What was missing.** The Image Audit said "Shown more than once on the same page" without saying where, and listed
+only the first 5 pages; page-audit findings showed a label ("Same title as other pages in this crawl", "5 of 9 images
+without ALT text") with at most 5 image addresses and 10 duplicate pages; issue evidence said "duplicate of N other
+page(s)" without the pages; broken links had no status or error type; duplicate H1s were not detected crawl-wide.
+**Fix:** the crawlers (Go and Node, same rules) record each image's HTML location; page rows keep every image without
+ALT, each image repeated on the page with every copy, and each broken link with its status and error type; a new
+crawl-wide *Same H1 as other pages* finding; the page report's duplicates return the shared text and every other page
+(up to 10,000, exact total); issue evidence lists each duplicate group once with all its pages; the Image Audit counts
+pages showing an image more than once separately from reuse across pages, and a new occurrences endpoint lists every
+page and copy from the stored image references. UI: every finding expands in the drawer and page report (values,
+lengths and ranges, clickable pages, previews, locations, link table, crawl-wide count with a link); the Image Audit has
+thumbnails, a "Repeated on the same page" section and the full, paged page list. Missing data says *could not be
+identified* (crawls made before this change, until re-crawled).
+
+**Tests:** `apps/api/test/gocrawl/issue-details.test.ts` (fixture store, Go and Node engines: the repeated badge with both
+copies and locations, the badge once on other pages not flagged, duplicate title with every page and one evidence group,
+broken link 404 with error type, Image Audit `repeatedPages` / `maxPerPage`, occurrences over HTTP with paging and 404),
+`services/crawler-go/location_test.go`, `apps/api/test/gocrawl/store.test.ts` (title / meta / H1 groups in memory and on
+disk, all pages listed), `packages/shared/test/issueDetails.test.ts`, web `issueDetails.test.tsx` and `imageAudit.test.tsx`.
+
 ### 24 Oct 2026 — Fix guidance with location and time for every issue; DeoDap group websites always saved
 
 **Recommendations — what was missing.** Issues had Fix Cards with steps, but 11 checks (striking-distance queries,

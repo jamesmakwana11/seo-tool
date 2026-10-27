@@ -765,9 +765,11 @@ export function createCrawlEngine(opts: CrawlEngineOptions): CrawlEngine & { col
       if (!ready.ready) throw new Error(`Crawler not ready: ${ready.reason}`);
       // A live crawl from the Crawl Center starts at its start URL (validated to be on this website: www-insensitive).
       let base = plan.startUrl ? `${new URL(plan.startUrl).origin}/` : plan.baseUrl || opts.baseUrl!;
-      const sameConfiguredSite = (u: string) => isLocalHost(u) || hostOf(u).replace(/^www\./, '') === hostOf(opts.baseUrl!).replace(/^www\./, '');
+      // Exactly this website's host (www-insensitive; port included). A local test site is no exception: another loopback
+      // host or port is another website and is refused like any unregistered site.
+      const sameConfiguredSite = (u: string) => isSameSite(u, hostOf(opts.baseUrl!));
       if (!sameConfiguredSite(base)) {
-        throw new Error(`Refusing to crawl ${hostOf(base)}: only the configured CRAWLER_BASE_URL host (${hostOf(opts.baseUrl!)}) may be crawled.`);
+        throw new Error(`Refusing to crawl ${hostOf(base)}: only this website's own host (${hostOf(opts.baseUrl!)}) may be crawled. To crawl another site, add it under Manage websites.`);
       }
       if (!opts.fetchImpl) {
         // Fail fast with a clear message when the site itself resolves to a blocked address (every request is re-checked anyway).
@@ -794,14 +796,26 @@ export function createCrawlEngine(opts: CrawlEngineOptions): CrawlEngine & { col
       let resolvedFrom: string | undefined;
       if (plan.type === 'full') {
         const probeUrl = startUrl ?? base;
-        const r = await runCollector.http.request(probeUrl, { readBody: false });
-        if (r.finalStatus !== null && r.chain.length && r.finalUrl) {
-          if (!isLocalHost(r.finalUrl) && hostOf(r.finalUrl).replace(/^www\./, '') !== hostOf(probeUrl).replace(/^www\./, '')) {
-            throw new Error(`${probeUrl} redirects to ${r.finalUrl}, which is a different website. Add ${hostOf(r.finalUrl)} under Manage websites to crawl it.`);
+        // Hop by hop, and only while the redirects stay on this website: a redirect to another website (another host or
+        // port — local test sites included) is refused WITHOUT requesting it, so no other website's page is fetched.
+        const site = hostOf(probeUrl).replace(/^www\./, '');
+        let cur = probeUrl;
+        for (let hop = 0; hop < 10; hop++) {
+          const r = await runCollector.http.request(cur, { readBody: false, follow: false });
+          const loc = r.finalStatus !== null && r.finalStatus >= 300 && r.finalStatus < 400 ? r.headers['location'] : undefined;
+          if (!loc) break;
+          let next: string;
+          try { next = new URL(loc, cur).toString(); } catch { break; }
+          if (hostOf(next).replace(/^www\./, '') !== site) {
+            throw new Error(`${probeUrl} redirects to ${next}, which is a different website. Add ${hostOf(next)} under Manage websites to crawl it.`);
           }
+          if (next === cur) break;
+          cur = next;
+        }
+        if (cur !== probeUrl) {
           resolvedFrom = probeUrl;
-          base = `${new URL(r.finalUrl).origin}/`;
-          if (startUrl) startUrl = r.finalUrl;
+          base = `${new URL(cur).origin}/`;
+          if (startUrl) startUrl = cur;
         }
       }
       const needs = new Set<ContextNeed>(CRAWL_NEEDS);
@@ -867,6 +881,39 @@ function targetStatus(url: string, byUrl: Map<string, ParsedPage>, ctx: SiteCont
   return { status: null, known: false };
 }
 
+/** Broken internal links kept per page (a page with more lists the first ones; the count is in brokenLinks). */
+const MAX_BROKEN_PER_PAGE = 500;
+
+/** Kind of error a link answered with. */
+export function linkErrorType(status: number | null): string {
+  if (status === null) return 'No response (timeout, DNS or connection error)';
+  if (status === 404) return 'Not found (404)';
+  if (status === 410) return 'Gone (410)';
+  if (status === 401 || status === 403) return `Access denied (${status})`;
+  if (status === 429) return 'Rate limited (429)';
+  if (status >= 500) return `Server error (${status})`;
+  if (status >= 400) return `Client error (${status})`;
+  return `HTTP ${status}`;
+}
+
+/**
+ * Images shown more than once on the same page (same address, ignoring the #fragment), with every instance. An image
+ * reused on other pages is not repeated — only several copies on one page are.
+ */
+export function repeatedImagesOf(images: { src: string; alt: string | null; location?: string; inMain: boolean; loading?: string; index: number }[]) {
+  const by = new Map<string, typeof images>();
+  for (const im of images) {
+    const k = im.src.split('#')[0];
+    const list = by.get(k) ?? [];
+    list.push(im);
+    by.set(k, list);
+  }
+  return [...by.entries()].filter(([, l]) => l.length > 1).map(([src, l]) => ({
+    src: src.slice(0, 500), count: l.length,
+    instances: l.map((im) => ({ position: im.index + 1, alt: im.alt === null ? null : im.alt.slice(0, 200), ...(im.location ? { location: im.location } : {}), inMain: im.inMain, ...(im.loading ? { loading: im.loading } : {}) })),
+  }));
+}
+
 export type TargetLookup = (url: string) => { status: number | null; known: boolean; blocked?: boolean };
 
 /**
@@ -877,16 +924,17 @@ export function pageRows(pages: ParsedPage[], ctx: SiteContext, lookup?: TargetL
   const byUrl = new Map<string, ParsedPage>();
   if (!lookup) for (const p of pages) byUrl.set(normalizeUrl(p.url), p);
   // A link is broken or not for every page that carries it: work it out once per distinct link (menus repeat on every page).
-  const brokenCache = new Map<string, boolean>();
-  const isBroken = (l: string) => {
+  const brokenCache = new Map<string, { broken: boolean; status: number | null }>();
+  const linkState = (l: string) => {
     let b = brokenCache.get(l);
     if (b === undefined) {
       const t = lookup ? lookup(l) : targetStatus(l, byUrl, ctx);
-      b = t.known && !t.blocked && (t.status === null || t.status >= 400);
+      b = { broken: t.known && !t.blocked && (t.status === null || t.status >= 400), status: t.status };
       brokenCache.set(l, b);
     }
     return b;
   };
+  const isBroken = (l: string) => linkState(l).broken;
   return pages.map((p) => {
     const h = p.html;
     const finalStatus = p.finalStatus;
@@ -903,11 +951,12 @@ export function pageRows(pages: ParsedPage[], ctx: SiteContext, lookup?: TargetL
     else if (noindex) why = /noindex/i.test(xRobots ?? '') ? 'noindex in X-Robots-Tag header' : 'noindex in meta robots';
     else if (canonical && !sameUrl(canonical, p.url)) why = `Canonical points to ${canonical}`;
     else { indexable = true; why = 'Indexable'; }
+    // Every broken internal link of the page (up to MAX_BROKEN_PER_PAGE), with the status and the kind of error.
     const broken: string[] = [];
     if (h) {
       for (const l of h.internalLinks) {
         if (isBroken(l) && !broken.includes(l)) broken.push(l);
-        if (broken.length >= 20) break;
+        if (broken.length >= MAX_BROKEN_PER_PAGE) break;
       }
     }
     const noAlt = h ? h.images.filter((i) => i.alt === null || !i.alt.trim()) : [];
@@ -923,7 +972,10 @@ export function pageRows(pages: ParsedPage[], ctx: SiteContext, lookup?: TargetL
         canonical, metaRobots: h.metaRobots, xRobotsTag: xRobots, internalLinks: h.internalLinks.length, brokenLinks: broken,
         images: h.images.length, imagesMissingAlt: noAlt.length, externalLinks: h.externalLinks.length,
       });
-      if (noAlt.length) row.imagesMissingAltSrc = noAlt.slice(0, 5).map((i) => i.src.slice(0, 200));
+      if (noAlt.length) row.imagesMissingAltSrc = noAlt.map((i) => i.src.slice(0, 500));
+      if (broken.length) row.brokenLinkDetails = broken.map((l) => { const st = linkState(l).status; return { url: l, status: st, error: linkErrorType(st) }; });
+      const repeated = repeatedImagesOf(h.images);
+      if (repeated.length) row.repeatedImages = repeated;
       const nofollow = h.links.filter((l) => l.internal && /\bnofollow\b/i.test(l.rel ?? '')).length;
       if (nofollow) row.nofollowLinks = nofollow;
       if (h.titleCount > 1) row.titleCount = h.titleCount;

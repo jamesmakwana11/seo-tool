@@ -147,9 +147,12 @@ export interface Connector {
   /** Env var names this connector needs (all required unless listed in optionalVars). */
   envVars: string[];
   optionalVars?: string[];
-  isConfigured(): boolean;
+  /** Env vars a saved, non-secret integration setting may provide instead (env var name → setting key). */
+  settingVars?: Record<string, string>;
+  /** `settings`: the website's saved integration settings (non-secret, e.g. the GSC property). */
+  isConfigured(settings?: Record<string, string | number | boolean>): boolean;
   /** Makes a real, minimal API call. Never throws; never includes secrets in the result. */
-  test(): Promise<ConnectorTestResult>;
+  test(settings?: Record<string, string | number | boolean>): Promise<ConnectorTestResult>;
 }
 
 export interface IntegrationRegistry {

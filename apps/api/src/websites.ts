@@ -21,6 +21,7 @@ import { createInMemoryRepositories } from './repositories/memory/inMemory';
 import type { Repositories } from './repositories/types';
 import { badRequest, notFound } from './lib/errors';
 import { audit, need, type Actor } from './services/context';
+import { registrationBlockReason } from './crawler/netguard';
 
 /** SEED_WEBSITES entries: "Name|https://url/|platform" (name and platform optional), comma- or newline-separated. */
 export function parseSeedWebsites(raw: string | undefined): WebsiteInput[] {
@@ -40,6 +41,19 @@ export function createWorkspaces(primary: Container) {
   const websites: Website[] = [];
   let ready: Promise<void> | undefined;
   const db = primary.persistence;
+  /** Loopback test sites only outside production; private, link-local and metadata addresses never. */
+  const netPolicy = { allowLoopback: primary.env.NODE_ENV !== 'production' };
+
+  /**
+   * A registered website is what authorizes crawling its host, so its address is checked before it is added: no internal
+   * or private address, no credentials. (Each request is checked again at crawl time, including DNS answers.)
+   */
+  function assertCrawlable(raw: string | undefined, normalized: string) {
+    let given: URL | undefined;
+    try { given = raw ? new URL(/^[a-z]+:\/\//i.test(raw.trim()) ? raw.trim() : `https://${raw.trim()}`) : undefined; } catch { /* validateWebsiteInput reports it */ }
+    const why = given && (given.username || given.password) ? 'URLs with a user name or password are not accepted' : registrationBlockReason(normalized, netPolicy);
+    if (why) throw badRequest(`This website cannot be added for crawling: ${why}. Enter the public address of the website, e.g. https://example.com/.`);
+  }
 
   /**
    * The primary website mirrors the server's configured site (DEMO deodap.in, or CRAWLER_BASE_URL on a clean start).
@@ -89,7 +103,7 @@ export function createWorkspaces(primary: Container) {
   async function seedWebsites() {
     for (const input of parseSeedWebsites(primary.env.SEED_WEBSITES)) {
       let v: ReturnType<typeof validateWebsiteInput>;
-      try { v = validateWebsiteInput(input, websites); } catch (e) {
+      try { v = validateWebsiteInput(input, websites); assertCrawlable(input.url, v.url); } catch (e) {
         if ((e as { code?: string }).code !== 'DUPLICATE_DOMAIN') primary.log.warn({ url: input.url, err: (e as Error).message }, 'SEED_WEBSITES entry skipped');
         continue;
       }
@@ -166,6 +180,7 @@ export function createWorkspaces(primary: Container) {
       await init();
       await need(primary.ctx, actor, 'websites.manage');
       const v = validateWebsiteInput(input, websites);
+      assertCrawlable(input?.url, v.url);
       const at = primary.clock().toISOString();
       const w: Website = { id: `site-${v.domain.replace(/[^a-z0-9]+/g, '-')}`, ...v, createdAt: at, updatedAt: at, createdByName: actor.name, source: 'manual' };
       const c = await openSite(w, true);
@@ -184,6 +199,7 @@ export function createWorkspaces(primary: Container) {
       const w = websites.find((x) => x.id === id);
       if (!w) throw notFound(`Website ${id}`);
       const v = validateWebsiteInput(input, websites, id);
+      if (id !== DEMO_WEBSITE_ID) assertCrawlable(input?.url, v.url);
       if (v.domain !== w.domain && id === DEMO_WEBSITE_ID) throw badRequest('The primary website domain comes from server configuration (CRAWLER_BASE_URL) and cannot be changed here.');
       const c = containers.get(id)!;
       if (v.domain !== w.domain) throw badRequest('Changing a website’s domain is not supported — add a new website instead.');

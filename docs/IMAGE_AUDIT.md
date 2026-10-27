@@ -67,8 +67,15 @@ image is pending or deferred. At most `IMAGE_AUDIT_MAX_CONCURRENT` (2) audits ru
 could not be loaded, ALT missing, empty ALT (fine only for decorative images), no width / height, below the fold without
 `loading="lazy"`, heavy file (over the `imageMaxKb` threshold, 200 KB), legacy format (JPEG / PNG / GIF although
 WebP / AVIF were accepted), much larger than displayed (pixel width ≥ 2× the HTML width), redirects, the same file
-under several URLs (same host + path, different query strings), repeated on the same page. Each image lists the pages
-that show it (first 5, with a link to their page report) and the number of pages and references.
+under several URLs (same host + path, different query strings), repeated on the same page. Each image has a preview
+(Shopify CDN images at thumbnail width) and lists **every** page that shows it (50 at a time, each with how many times
+it appears there and a link to its page report).
+
+**Repeated on the same page vs reused.** Only an image shown more than once *on one page* is a problem ("Repeated on the
+same page": each such page, the number of copies, and every copy with its position among the page's images, its HTML
+location — landmark › Shopify section › theme component — its ALT, size and loading). The same image on many different
+pages (logo, app badges, banners) is reported as reuse and not flagged. Locations come from the crawl's HTML; crawls made
+before 24 Oct 2026 show "not identifiable" until the website is crawled again.
 
 Filters: result, problem, search (image URL, page URL, ALT text); sort by pages, size, URL or result. **CSV / JSON**
 export of the filtered list (streamed).
@@ -88,4 +95,6 @@ export of the filtered list (streamed).
 `GET /api/image-audits/status` · `POST /api/image-audits` (body `runId`; needs `crawls.run`) ·
 `GET /api/image-audits/:id` · `POST /api/image-audits/:id/cancel` · `POST /api/image-audits/:id/resume` (`crawls.run`) ·
 `GET /api/image-audits/:id/images?state&issue&q&sort&dir&offset&limit` ·
+`GET /api/image-audits/:id/occurrences?url=&repeated=1&offset&limit` (every page showing one image with each `<img>`
+instance; read from the crawl's stored image references, `available: false` with a reason when they are gone) ·
 `GET /api/image-audits/:id/export?format=csv|json&…filters`. All need sign-in and `crawls.view`.

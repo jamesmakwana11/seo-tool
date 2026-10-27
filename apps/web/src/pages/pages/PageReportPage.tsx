@@ -7,6 +7,7 @@ import { errorMessage, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
 import { Badge, EmptyState, LoadingBlock, Mono, Notice, PageHeader, Panel } from '@/components/ui/primitives';
 import { AuditChecks, ScoreBadge } from '@/components/crawls/PageAudit';
+import { PageList } from '@/components/crawls/CheckDetails';
 import { IssueItem } from '@/components/crawls/PageResults';
 import { HttpStatusBadge } from '@/components/crawls/crawlBadges';
 import { KindBadge } from '@/components/crawls/ChangeMonitor';
@@ -85,7 +86,7 @@ function Report({ row: u, audit, limits, runId, crawledAt, duplicates }: { row: 
             {audit.notAudited && <p className="mt-3 text-sm text-muted">{audit.notAudited}</p>}
           </Panel>
           <Panel title="Audit" subtitle="Each element of the page, what the crawler found, what to change, where, how long it takes and how to verify it.">
-            <AuditChecks audit={audit} template={u.template} />
+            <AuditChecks key={u.url} audit={audit} template={u.template} context={{ row: u, runId, limits, duplicates }} />
           </Panel>
           <Panel title={`Issues on this page (${u.issues?.length ?? 0})`} subtitle="Tracked issues of this crawl that reference this URL.">
             {u.issues?.length ? <ul className="space-y-2">{u.issues.map((i) => <IssueItem key={i.id} i={i} />)}</ul> : <p className="text-sm text-muted">No tracked issue references this URL.</p>}
@@ -119,15 +120,13 @@ function Report({ row: u, audit, limits, runId, crawledAt, duplicates }: { row: 
               <ul className="space-y-1 text-sm">{u.h1.map((h, i) => <li key={i}><span className="mr-1.5 font-mono text-xs text-faint">H1</span>{h || <em className="text-faint">empty</em>}</li>)}<li className="text-xs text-muted">{u.h2Count ?? 0} H2 headings (outline not recorded by this crawl)</li></ul>
             ) : <p className="text-sm text-muted">No headings recorded.</p>}
           </Panel>
-          {duplicates && (duplicates.title.total > 0 || duplicates.meta.total > 0) && (
+          {duplicates && (duplicates.title.total > 0 || duplicates.meta.total > 0 || (duplicates.h1?.total ?? 0) > 0) && (
             <Panel title="Same as other pages" subtitle="Pages of this crawl with exactly the same text. Each page needs its own.">
-              {(['title', 'meta'] as const).filter((k) => duplicates[k].total > 0).map((k) => (
-                <div key={k} className="mb-3 last:mb-0">
-                  <p className="mb-1 text-xs font-semibold text-muted">{k === 'title' ? 'Same title' : 'Same meta description'} · {fmtNum(duplicates[k].total)} other page{duplicates[k].total === 1 ? '' : 's'}</p>
-                  <ul className="space-y-0.5">
-                    {duplicates[k].urls.map((x) => <li key={x}><Link className="break-all font-mono text-[11.5px] text-signal hover:underline" to={`/pages/report?run=${encodeURIComponent(runId)}&url=${encodeURIComponent(x)}`}>{shortUrl(x)}</Link></li>)}
-                    {duplicates[k].total > duplicates[k].urls.length && <li className="text-xs text-muted">… and {fmtNum(duplicates[k].total - duplicates[k].urls.length)} more</li>}
-                  </ul>
+              {(['title', 'meta', 'h1'] as const).map((k) => [k, duplicates[k]] as const).filter(([, g]) => (g?.total ?? 0) > 0).map(([k, g]) => (
+                <div key={k} className="mb-3 last:mb-0" data-testid={`same-${k}`}>
+                  <p className="mb-1 text-xs font-semibold text-muted">{k === 'title' ? 'Same title' : k === 'meta' ? 'Same meta description' : 'Same H1'} · {fmtNum(g!.total)} other page{g!.total === 1 ? '' : 's'}</p>
+                  {g!.text && <p className="mb-1 break-words text-xs text-ink-soft">"{g!.text}"</p>}
+                  <PageList urls={g!.urls} runId={runId} total={g!.total} />
                 </div>
               ))}
             </Panel>

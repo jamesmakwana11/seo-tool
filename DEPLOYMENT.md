@@ -94,8 +94,8 @@ Crawling and scheduling (needed for real audits):
 
 | Variable | Value |
 | --- | --- |
-| `CRAWLER_BASE_URL` | `https://deodap.in` — the primary website. **Required for live crawling.** It is also the security boundary: the primary website's crawler only requests this host (www and non-www), and every Start URL entered in the Crawl Center must be on it. Use the full `https://` address, no quotes, no path needed |
-| `CRAWLER_ALLOW_LIVE` | `true` once you approve live crawling of that site |
+| `CRAWLER_ALLOW_LIVE` | `true` — **the switch for live crawling of every registered website** (off by default) |
+| `CRAWLER_BASE_URL` | `https://deodap.in` — the primary website. The primary website's crawler only requests this host (www and non-www), and Start URLs entered for the primary website must be on it. It does **not** limit other websites: each website added under **Manage websites** is crawled on its own registered URL. Without it the primary website cannot be crawled (the Crawl Center says why), the others still can. Use the full `https://` address, no quotes, no path needed |
 | `CRAWLER_USER_AGENT` | optional; allow-list it in Shopify bot protection |
 | `SCHEDULER_ENABLED` | `true` for the daily/weekly crawls, escalations and digest |
 | `CRAWLER_MAX_PAGES`, `CRAWLER_REQUEST_DELAY_MS`, `CRAWLER_MAX_BODY_BYTES` | crawl limits: optional page cap (unset = no limit) / 250 ms / 5 MB — see `LOCAL_CRAWLING.md` |
@@ -126,10 +126,93 @@ Shopify SEO editor (optional — `docs/SHOPIFY_SEO_EDITOR.md`):
 The OAuth token is held in memory only, so after every redeploy an admin clicks **Connect with Shopify** again
 (or use `SHOPIFY_ADMIN_TOKEN`).
 
-With `CRAWLER_ALLOW_LIVE=true` and no `CRAWLER_BASE_URL`, the production server refuses to start and says so in the
-log, rather than starting with a Crawl Center that shows "Live crawling is not available for this website". The
-crawler never falls back to a built-in website: the name and Start URL shown before configuration are display
-defaults only.
+With `CRAWLER_ALLOW_LIVE=true` and no `CRAWLER_BASE_URL`, the server starts, logs a warning, and only the primary
+website is not crawlable (its Crawl Center shows what to set); every other registered website is. The crawler never
+falls back to a built-in website: the name and Start URL shown before configuration are display defaults only.
+
+### Self-hosted server: live crawling for every registered website
+
+**Where the API reads its settings.** The API process reads **only its own process environment** (`process.env`, parsed
+by `apps/api/src/config/env.ts` once at start-up). It does not read a `.env` file by itself. Depending on how you start it:
+
+| How the API is started | Where to put the settings |
+| --- | --- |
+| `npm run start:api:env` (from the repo root) | `apps/api/.env` — this runs `node --env-file=.env dist/server.js` inside `apps/api` (copy `apps/api/.env.example`) |
+| `npm start` / `node apps/api/dist/server.js` | the shell / service environment (e.g. systemd `EnvironmentFile=`) — `.env` files are **not** read |
+| systemd | `EnvironmentFile=/etc/deodap-sentinel.env` in the unit's `[Service]` section |
+| PM2 | the `env` block of `ecosystem.config.cjs` (or `node_args: '--env-file=apps/api/.env'`) |
+| Docker | `docker run --env-file sentinel.env …` (or `env_file:` in docker compose) |
+
+**Settings for live crawling** (add to that file; values without quotes):
+
+```bash
+NODE_ENV=production
+CRAWLER_ALLOW_LIVE=true                 # the switch: live crawling of every registered website
+CRAWLER_BASE_URL=https://deodap.in      # the primary website (other websites use their own registered URL)
+SESSION_SECRET=<openssl rand -hex 32>
+DATABASE_URL=postgres://…               # keeps websites, crawls and results across restarts
+APP_BASE_URL=https://<your domain>
+WEB_DIST_DIR=/path/to/repo/apps/web/dist  # when not using the Docker image
+PORT=8080
+# Render-only settings are not needed on your own server: leave KEEP_AWAKE_URL / RENDER_EXTERNAL_URL unset.
+```
+
+**Served under a sub-path** (`https://apps.deodap.info/seo-tool`): set `APP_BASE_URL=https://apps.deodap.info/seo-tool`.
+The API then accepts every request with or without the `/seo-tool` prefix (so the reverse proxy may strip it or not),
+and the web app (built with `npm run build:prod`) loads its files, pages and API calls under that path — no rebuild per
+path. Proxy example (nginx): `location /seo-tool/ { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }`.
+
+**Shopify ("Connect with Shopify")** — one-time setup:
+1. Shopify Dev Dashboard → your app → Configuration: App URL `https://apps.deodap.info/seo-tool`, **Allowed redirection URL**
+   `https://apps.deodap.info/seo-tool/api/shopify/oauth/callback` (exactly; the Shopify page in Sentinel shows the URL it
+   uses), access scopes `read_products, write_products, read_content, write_content` (optional `read_themes, write_themes,
+   write_files`). Release the version and install the app on the store (or let the first connection install it).
+2. API environment: `SHOPIFY_API_KEY=<Client ID>`, `SHOPIFY_API_SECRET=<Client secret>`, `APP_BASE_URL` as above
+   (`https://` required in production). Do not set `SHOPIFY_SCOPES` unless you need different scopes. Restart the API.
+3. Settings → Shopify → enter `<store>.myshopify.com` → Connect with Shopify → approve. Until step 2 is done the page
+   says exactly which setting is missing. The access token stays in the API server's memory only (never in the browser,
+   logs or the database): after an API restart click Connect again, or use `SHOPIFY_STORE_DOMAIN` + `SHOPIFY_ADMIN_TOKEN`
+   (custom-app token) for the primary website.
+
+**Google Search Console / GA4** — one-time setup: create a Google Cloud service account, enable the *Search Console API*
+and the *Google Analytics Data API* in its project, download its JSON key and set it (single line) as
+`GSC_SERVICE_ACCOUNT_JSON` / `GA4_SERVICE_ACCOUNT_JSON` in the API environment (the same key may be used for both).
+Add the service-account e-mail as an **Owner** in Search Console (Settings → Users and permissions) and as **Viewer** in
+GA4 (Admin → Property access management). Then, per website, enter the property under Settings → Integrations
+(`sc-domain:deodap.in` or `https://deodap.in/`; GA4: the numeric Property ID) and press **Test connection** — the card
+shows Connected only after Google answered. `GSC_PROPERTY` / `GA4_PROPERTY_ID` in the environment remain a fallback.
+
+**Crawler User-Agent:** `CRAWLER_USER_AGENT` is optional; without it the crawler sends
+`DeoDapSEOSentinel/1.0 (+internal audit)`.
+
+**Restart / reload.** Settings are read once at start-up, so restart the API after every change (a reload of nginx or
+the browser is not enough):
+
+```bash
+sudo systemctl restart deodap-sentinel          # systemd (after editing the EnvironmentFile)
+pm2 restart sentinel --update-env               # PM2 (--update-env picks up changed variables)
+docker compose up -d --force-recreate sentinel  # docker compose (a plain "docker restart" keeps the old env)
+# started by hand: stop it (Ctrl+C) and run "npm run start:api:env" again
+```
+
+A restart is graceful: running crawls are suspended and continue after the restart (with `DATABASE_URL`).
+
+**Websites.** No code change, rebuild or restart is needed for a new website: add it under **Manage websites** (name,
+public `https://` address, platform); it is checked (public address only — private, loopback, link-local / cloud
+metadata and internal host names are refused) and can be crawled at once. The website selected in Sentinel decides
+which host is crawled: the server resolves it from the website id, the Start URL must be on that website (www-insensitive),
+results are stored under that website only, and a Start URL that redirects to another website is refused without
+requesting it. Unregistered websites cannot be crawled. Every request is still checked against private / internal
+addresses (each DNS answer and redirect hop), robots.txt, retries with back-off and adaptive throttling apply as before.
+
+**Check after the restart:**
+
+```bash
+curl -s https://<your domain>/api/health     # "crawler": {"ready": true, "baseUrl": "https://deodap.in"}
+journalctl -u deodap-sentinel -n 50          # "Live crawling is ON for every registered website …"
+```
+In the app: select each website → Crawl Center → the "Start crawl" button is enabled (if not, the reason shown names
+the setting to change).
 
 ### Render: environment settings for live crawling
 

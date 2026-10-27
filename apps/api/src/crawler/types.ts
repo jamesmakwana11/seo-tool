@@ -65,7 +65,8 @@ export interface ParsedHtml {
   externalLinks: string[];
   /** Raw number of internal <a href> elements (not unique). */
   internalLinkCount: number;
-  images: { src: string; alt: string | null; width?: string; height?: string; loading?: string; inMain: boolean; index: number }[];
+  /** location: landmark › Shopify section › component class (where on the page), when identifiable. */
+  images: { src: string; alt: string | null; width?: string; height?: string; loading?: string; inMain: boolean; index: number; location?: string }[];
   headScripts: { src: string; async: boolean; defer: boolean; module: boolean; type?: string }[];
   scriptSrcs: string[];
   stylesheets: string[];

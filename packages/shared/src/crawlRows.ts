@@ -22,7 +22,7 @@ export const CRAWL_STATUS_LABELS: Record<CrawlPageStatusGroup, string> = {
 
 export const CRAWL_PROBLEM_LABELS: Record<CrawlPageProblem, string> = {
   issues: 'Has tracked issues', broken: 'Broken internal links', 'no-title': 'Missing title', 'dup-title': 'Duplicate title', 'no-meta': 'Missing meta description',
-  'dup-meta': 'Duplicate meta description', h1: 'Missing or multiple H1', alt: 'Images without alt text', noindex: 'Not indexable',
+  'dup-meta': 'Duplicate meta description', h1: 'Missing or multiple H1', alt: 'Images without alt text', noindex: 'Not indexable', 'dup-h1': 'Duplicate H1',
 };
 
 export const CRAWL_STATE_LABELS: Record<NonNullable<CrawledUrl['crawlState']>, string> = {
@@ -40,6 +40,7 @@ export function queryCrawlRows(all: CrawledUrl[], q: CrawlPagesQuery): CrawlPage
   };
   const dupTitle = dupOf((u) => u.title);
   const dupMeta = dupOf((u) => u.metaDescription);
+  const dupH1 = dupOf((u) => (u.h1?.length === 1 ? u.h1[0] : undefined));
   const is = (u: CrawledUrl, p: CrawlPageProblem): boolean => {
     switch (p) {
       case 'issues': return !!(u.issues?.length ?? u.issueCount);
@@ -51,6 +52,7 @@ export function queryCrawlRows(all: CrawledUrl[], q: CrawlPagesQuery): CrawlPage
       case 'h1': return html(u) && (u.h1?.length ?? 0) !== 1;
       case 'alt': return (u.imagesMissingAlt ?? 0) > 0;
       case 'noindex': return u.indexable === false;
+      case 'dup-h1': return dupH1(u);
     }
   };
   const flagsOf = (u: CrawledUrl) => (Object.keys(CRAWL_PROBLEM_LABELS) as CrawlPageProblem[]).filter((p) => is(u, p));

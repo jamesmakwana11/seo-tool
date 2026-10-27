@@ -125,8 +125,9 @@ export function createGoCrawlEngine(o: GoEngineOptions): CrawlEngine & { binarie
     const ready = readiness();
     if (!ready.ready) throw new Error(`Crawler not ready: ${ready.reason}`);
     const base = plan.startUrl ? `${new URL(plan.startUrl).origin}/` : plan.baseUrl || o.baseUrl!;
-    const sameSite = (u: string) => isLocalHost(u) || hostOf(u).replace(/^www\./, '') === hostOf(o.baseUrl!).replace(/^www\./, '');
-    if (!sameSite(base)) throw new Error(`Refusing to crawl ${hostOf(base)}: only the configured CRAWLER_BASE_URL host (${hostOf(o.baseUrl!)}) may be crawled.`);
+    // Exactly this website's host (www-insensitive; port included) — another loopback host or port is another website.
+    const sameSite = (u: string) => hostOf(u).replace(/^www\./, '') === hostOf(o.baseUrl!).replace(/^www\./, '');
+    if (!sameSite(base)) throw new Error(`Refusing to crawl ${hostOf(base)}: only this website's own host (${hostOf(o.baseUrl!)}) may be crawled. To crawl another site, add it under Manage websites.`);
     const bins = binaries();
     const jobId = `${plan.runId ?? 'run'}-${crypto.randomBytes(4).toString('hex')}`.replace(/[^\w.-]/g, '_');
     const workDir = path.join(workRoot, jobId);

@@ -17,6 +17,10 @@ import './index.css';
 import { AuthProvider } from '@/auth/AuthContext';
 import { ToastProvider } from '@/components/ui/Toast';
 import { AppRoutes } from '@/routes';
+import { appBasePath } from '@/lib/basePath';
+
+// Served under a sub-path (e.g. /seo-tool): routes are relative to it (browser history only).
+const basename = Router === BrowserRouter ? appBasePath() || undefined : undefined;
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15000, refetchOnWindowFocus: false } } });
 
@@ -24,7 +28,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={qc}>
       <ToastProvider>
-        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Router basename={basename} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <AuthProvider>
             <AppRoutes />
           </AuthProvider>

@@ -183,6 +183,7 @@ export function createHttpApi(baseUrl = '/api', websiteId: () => string | undefi
     getImageAudit: (id) => get(`/image-audits/${encodeURIComponent(id)}`),
     cancelImageAudit: (id) => post(`/image-audits/${encodeURIComponent(id)}/cancel`),
     resumeImageAudit: (id) => post(`/image-audits/${encodeURIComponent(id)}/resume`),
+    getImageOccurrences: (id, url, q = {}) => get(`/image-audits/${encodeURIComponent(id)}/occurrences?${new URLSearchParams({ url, ...(q.repeated ? { repeated: '1' } : {}), offset: String(q.offset ?? 0), limit: String(q.limit ?? 100) })}`),
     listCrawlBatches: () => get('/crawl-batches'),
     startCrawlBatch: (input) => post('/crawl-batches', input),
     getCrawlBatch: (id) => get(`/crawl-batches/${encodeURIComponent(id)}`),

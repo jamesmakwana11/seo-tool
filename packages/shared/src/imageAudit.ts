@@ -46,9 +46,12 @@ export interface ImageAuditItem {
   /** Rounds in which the image was answered "rate limited" (it is tried again up to IMAGE_AUDIT_RATE_LIMIT_ROUNDS). */
   rateLimitedRounds?: number;
   // ---- from the crawled HTML (no request)
-  /** Pages showing it, and the first of them. */
+  /** Pages showing it (an image reused on several pages is normal), and the first of them — all of them: GET …/occurrences. */
   pageCount: number;
   pages: string[];
+  /** Pages that show it MORE THAN ONCE (the "repeated" problem), and the most copies on one page. */
+  repeatedPages?: number;
+  maxPerPage?: number;
   /** <img> elements referencing it (several per page possible). */
   refs: number;
   /** References without an alt attribute / with alt="". */
@@ -133,6 +136,27 @@ export interface ImageAuditQuery {
   dir?: 'asc' | 'desc';
   offset?: number;
   limit?: number;
+}
+
+/** Every page showing one image, with each <img> instance on it (read from the crawl's image references). */
+export interface ImageOccurrence {
+  page: string;
+  count: number;
+  instances: { position: number; alt: string | null; width?: string; height?: string; loading?: string; inMain: boolean; location?: string }[];
+}
+export interface ImageOccurrencesResponse {
+  url: string;
+  /** false when the crawl's image references are no longer on the server (then nothing could be identified). */
+  available: boolean;
+  reason?: string;
+  /** Pages showing the image / pages showing it more than once / total <img> instances. */
+  pages: number;
+  repeatedPages: number;
+  references: number;
+  total: number;
+  offset: number;
+  limit: number;
+  rows: ImageOccurrence[];
 }
 
 export interface ImageAuditListResponse {

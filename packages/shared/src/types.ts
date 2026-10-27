@@ -751,6 +751,12 @@ export interface CrawledUrlIssue {
   summary: string;
 }
 
+export interface RepeatedImage {
+  src: string;
+  count: number;
+  instances: { position: number; alt: string | null; location?: string; inMain: boolean; loading?: string }[];
+}
+
 export interface CrawledUrl {
   url: string;
   status: number | null;
@@ -780,6 +786,10 @@ export interface CrawledUrl {
   internalLinks?: number;
   /** Internal links on this page whose target answered ≥ 400 or not at all (first 20). */
   brokenLinks?: string[];
+  /** Each broken internal link of the page: destination, the status it answered (null = no response) and the error type. */
+  brokenLinkDetails?: { url: string; status: number | null; error: string }[];
+  /** Images shown more than once on this page: address, how many times, and every instance (position, ALT, where). */
+  repeatedImages?: RepeatedImage[];
   images?: number;
   imagesMissingAlt?: number;
   /** Sources of the first images without ALT text (≤ 5, each ≤ 200 characters). */
@@ -909,7 +919,11 @@ export interface IntegrationStatus {
   state: IntegrationState;
   stateDetail: string;
   envVars: string[];
+  /** Env vars that are not required (e.g. CRAWLER_USER_AGENT has a built-in default). */
+  optionalVars?: string[];
   configuredVars: string[]; // names only — never values
+  /** GSC / GA4: the property used for requests, where it comes from (saved on this screen, or the server env). */
+  property?: { key: string; envVar: string; value?: string; source: 'saved' | 'env' | 'none' };
   lastTestAt?: ISODate;
   lastTestResult?: string;
   lastSuccessfulSyncAt?: ISODate;

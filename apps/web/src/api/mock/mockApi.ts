@@ -12,7 +12,7 @@
  */
 import { issueFixSummary,
   crawlExportFilename, crawlResultsCsv, crawlResultsJson,
-  ApiError, CHECKS_BY_ID, DEMO_PASSWORD, INTEGRATION_CATALOG, PREVIEW_USER_BY_ROLE, TEAMS, ROLE_LABELS, buildDailyDigest,
+  ApiError, CHECKS_BY_ID, DEMO_PASSWORD, INTEGRATION_CATALOG, INTEGRATION_PROPERTY_SETTINGS, isPropertyIntegration, normalizeIntegrationProperty, PREVIEW_USER_BY_ROLE, TEAMS, ROLE_LABELS, buildDailyDigest,
   buildDashboard, buildModuleData, buildMonthlyReport, buildWeeklyReport, canTransition, computeHealthScore,
   createSeed, evaluateRule, exportReport, filterIssues, queryCrawlRows, SMART_CRAWL_PAGE_BUDGET, auditPage, DEFAULT_PAGE_AUDIT_LIMITS, generateFixCard, globalSearch, hasPermission,
   issueStatusForTask, paginate, ruleAppliesTo, seasonalPlan, setPriorityConfig, taskPriorityFromSeverity, validateRule,
@@ -225,6 +225,11 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
       ...base, state: 'not_configured',
       stateDetail: 'Mock mode: the browser cannot hold credentials or reach external APIs. Configure the environment variables on the API server (Phase 2) and test from there.',
       configuredVars: [], lastTestAt: test?.at, lastTestResult: test?.result, settings: s.integrationSettings[id] ?? {},
+      ...(isPropertyIntegration(id) ? (() => {
+        const p = INTEGRATION_PROPERTY_SETTINGS[id];
+        const v = String(s.integrationSettings[id]?.[p.key] ?? '').trim();
+        return { property: { key: p.key, envVar: p.envVar, value: v || undefined, source: v ? 'saved' as const : 'none' as const } };
+      })() : {}),
     };
   };
 
@@ -536,9 +541,9 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
       const same = (pick: (u: CrawledUrl) => string | undefined) => {
         const v = pick(row)?.trim().toLowerCase();
         const urls = v ? all.filter((u) => u.url !== row.url && u.status === 200 && pick(u)?.trim().toLowerCase() === v).map((u) => u.url) : [];
-        return { urls: urls.slice(0, 10), total: urls.length };
+        return { ...(urls.length ? { text: pick(row)?.trim() } : {}), urls, total: urls.length };
       };
-      return { runId: run.id, crawledAt: run.startedAt, row, audit: auditPage(row, DEFAULT_PAGE_AUDIT_LIMITS), limits: DEFAULT_PAGE_AUDIT_LIMITS, duplicates: { title: same((u) => u.title), meta: same((u) => u.metaDescription) } };
+      return { runId: run.id, crawledAt: run.startedAt, row, audit: auditPage(row, DEFAULT_PAGE_AUDIT_LIMITS), limits: DEFAULT_PAGE_AUDIT_LIMITS, duplicates: { title: same((u) => u.title), meta: same((u) => u.metaDescription), h1: same((u) => (u.h1?.length === 1 ? u.h1[0] : undefined)) } };
     }),
     getCrawlCoverage: (id) => call('getCrawlCoverage', () => {
       need('crawls.view');
@@ -615,6 +620,7 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
     getImageAudit: (id) => call('getImageAudit', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
     cancelImageAudit: (id) => call('cancelImageAudit', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
     resumeImageAudit: (id) => call('resumeImageAudit', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
+    getImageOccurrences: (id) => call('getImageOccurrences', () => { throw new ApiError(404, 'NOT_FOUND', `Image Audit ${id} not found.`); }),
     // Batches crawl real websites through the API server; the browser-only demo has none.
     listCrawlBatches: () => call('listCrawlBatches', () => []),
     startCrawlBatch: () => call('startCrawlBatch', () => { throw new ApiError(409, 'MOCK_MODE', 'Multi-website crawl batches run on the API server. This browser-only demo cannot crawl.'); }),
@@ -914,7 +920,16 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
     updateIntegration: (id, settings) => call('updateIntegration', () => {
       need('integrations.manage');
       for (const k of Object.keys(settings)) if (/token|secret|password|key/i.test(k)) throw new ApiError(400, 'SECRET_IN_SETTINGS', `"${k}" looks like a secret. Secrets are set as environment variables on the API server, never through the UI.`);
-      s.integrationSettings[id] = { ...(s.integrationSettings[id] ?? {}), ...settings };
+      const clean = { ...settings };
+      if (isPropertyIntegration(id)) {
+        const key = INTEGRATION_PROPERTY_SETTINGS[id].key;
+        if (key in clean && String(clean[key]).trim()) {
+          const c = normalizeIntegrationProperty(id, String(clean[key]));
+          if (!c.ok) throw new ApiError(400, 'VALIDATION', c.error, { fields: { [key]: c.error } });
+          clean[key] = c.value;
+        }
+      }
+      s.integrationSettings[id] = { ...(s.integrationSettings[id] ?? {}), ...clean };
       audit('integration.update', 'integration', id, `Updated non-secret settings for ${id}`);
       return integrationStatus(id);
     }),

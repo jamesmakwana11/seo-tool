@@ -1107,18 +1107,39 @@ func (c *Crawler) run() int {
 	}
 	// Resolve the site's real address first (http → https, www ↔ non-www).
 	if j.ResolveStart {
-		r := c.site.request(c.ctx, c.start, reqOpts{})
-		if r.FinalStatus != nil && len(r.Chain) > 0 && r.FinalURL != "" {
-			if !isSameSite(r.FinalURL, c.siteHost) && !(j.AllowLoopback && hostOf(r.FinalURL) == c.siteHost) {
-				return failed("redirect_offsite", fmt.Sprintf("%s redirects to %s, which is a different website. Add %s under Manage websites to crawl it.", c.start, r.FinalURL, hostOf(r.FinalURL)))
+		// Hop by hop, and only while the redirects stay on this website: a redirect to another website is refused
+		// WITHOUT requesting it (no page of another website is fetched or mixed into this website's results).
+		cur := c.start
+		for hop := 0; hop < 10; hop++ {
+			r := c.site.request(c.ctx, cur, reqOpts{NoFollow: true})
+			if r.Status == nil {
+				if r.Error != "" && !strings.HasPrefix(r.Error, "cancelled") {
+					c.ev.warn("start_unreachable", fmt.Sprintf("The start URL did not answer (%s); the crawl continues and records the failure.", r.Error))
+				}
+				break
 			}
+			loc := r.Headers["location"]
+			if r.FinalStatus == nil || *r.FinalStatus < 300 || *r.FinalStatus >= 400 || loc == "" {
+				break
+			}
+			next, ok := resolveURL(loc, cur)
+			if !ok {
+				break
+			}
+			if !isSameSite(next, c.siteHost) {
+				return failed("redirect_offsite", fmt.Sprintf("%s redirects to %s, which is a different website. Add %s under Manage websites to crawl it.", c.start, next, hostOf(next)))
+			}
+			if next == cur {
+				break
+			}
+			cur = next
+		}
+		if cur != c.start {
 			c.resolved = c.start
-			fu, _ := url.Parse(r.FinalURL)
+			fu, _ := url.Parse(cur)
 			c.origin = fu.Scheme + "://" + fu.Host
 			c.siteHost = strings.ToLower(fu.Host)
-			c.start = r.FinalURL
-		} else if r.Status == nil && r.Error != "" && !strings.HasPrefix(r.Error, "cancelled") {
-			c.ev.warn("start_unreachable", fmt.Sprintf("The start URL did not answer (%s); the crawl continues and records the failure.", r.Error))
+			c.start = cur
 		}
 	}
 	c.homepage = c.origin + "/"

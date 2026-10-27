@@ -7,7 +7,7 @@
  *  - never returns or logs secrets (every message is passed through `redact()` with the env's secret values);
  *  - writes an audit entry `sync.<id>`.
  */
-import { SYNCABLE_INTEGRATIONS, type DataSource, type IntegrationId, type PageTemplate, type SitePage, type SyncableIntegrationId } from '@sentinel/shared';
+import { INTEGRATION_PROPERTY_SETTINGS, normalizeIntegrationProperty, SYNCABLE_INTEGRATIONS, type DataSource, type IntegrationId, type PageTemplate, type PropertyIntegrationId, type SitePage, type SyncableIntegrationId } from '@sentinel/shared';
 import { createGoogleAuth, parseServiceAccount, tokenFailure, type GoogleAuth } from '../connectors/googleAuth';
 import { defaultFetch, errMsg, failureResult, httpRequest, is2xx, redact, secretValues, type FetchLike, type HttpResult } from '../connectors/http';
 import { isLocalhostUrl } from '../connectors/connectors';
@@ -47,6 +47,20 @@ export const GSC_SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly';
 export const GA4_SCOPE = 'https://www.googleapis.com/auth/analytics.readonly';
 
 const LABELS: Record<SyncId, string> = { ga4: 'Google Analytics 4', gsc: 'Google Search Console', psi_crux: 'Chrome UX Report (CrUX)' };
+
+/**
+ * The GSC property / GA4 property ID requests use: the value saved for this website on the Integrations screen, else
+ * the server env var — the same one the connection test checked. Validated and normalised; undefined when unset.
+ */
+export async function integrationProperty(ctx: Ctx, id: PropertyIntegrationId): Promise<string | undefined> {
+  const p = INTEGRATION_PROPERTY_SETTINGS[id];
+  const saved = String((await ctx.repos.integrationSettings.get(id))?.settings?.[p.key] ?? '').trim();
+  const raw = saved || String((ctx.env as Record<string, unknown>)[p.envVar] ?? '').trim();
+  if (!raw) return undefined;
+  const checked = normalizeIntegrationProperty(id, raw);
+  if (!checked.ok) throw new SyncError(`${LABELS[id]}: ${p.label} "${raw}" is not valid — ${checked.error}`);
+  return checked.value;
+}
 
 /** Connection check → body → recordSync / metrics.errors / audit. Never throws. */
 export async function guardedSync(

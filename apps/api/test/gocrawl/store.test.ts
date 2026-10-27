@@ -115,10 +115,38 @@ describe('crawl result stores', () => {
     for (const st of [file, mem]) {
       const d = await st.duplicatesOf(sameTitle[0]);
       expect(d.title.total).toBe(sameTitle.length - 1);
-      expect(d.title.urls).toEqual(sameTitle.slice(1, 11));
+      expect(d.title.urls).toEqual(sameTitle.slice(1)); // every other page, not a sample
       const one = await st.duplicatesOf(data[1].url);
       expect(one.title.total).toBe(0);
     }
     await file.dispose();
+  });
+});
+
+describe('duplicate groups of one page', () => {
+  it('lists every other page with the same title, meta description and H1, with the shared text and exact totals', async () => {
+    const page = (i: number, over: Partial<CrawledUrl> = {}): CrawledUrl => ({ url: `https://shop.example/pages/p${i}`, status: 200, reason: 'full', crawlState: 'fetched', template: 'page', title: `Page ${i} title`, metaDescription: `Meta ${i}`, h1: [`Heading ${i}`], ...over });
+    const data = [
+      ...Array.from({ length: 40 }, (_, i) => page(i, { title: 'Shipping policy – Oblivion', h1: ['Shipping policy'] })),
+      page(100, { metaDescription: 'Same meta' }), page(101, { metaDescription: 'Same meta' }), page(102),
+    ];
+    const dir = path.join(tmpWork(), 'dups');
+    const f = new FileResultStore(dir);
+    for (const r of data) f.add(r);
+    f.seal();
+    for (const store of [new MemoryResultStore(data), f]) {
+      const d = await store.duplicatesOf('https://shop.example/pages/p0');
+      expect(d.title).toMatchObject({ text: 'Shipping policy – Oblivion', total: 39 });
+      expect(d.title.urls).toHaveLength(39);
+      expect(d.title.urls).not.toContain('https://shop.example/pages/p0');
+      expect(d.h1).toMatchObject({ text: 'Shipping policy', total: 39 });
+      expect(d.meta.total).toBe(0);
+      const m = await store.duplicatesOf('https://shop.example/pages/p100');
+      expect(m.meta).toMatchObject({ text: 'Same meta', urls: ['https://shop.example/pages/p101'], total: 1 });
+      expect(m.h1?.total).toBe(0);
+      const res = await store.query({ problem: 'dup-h1', limit: 500 });
+      expect(res.total).toBe(40);
+      expect(res.facets.check?.['h1-duplicate']).toBe(40);
+    }
   });
 });

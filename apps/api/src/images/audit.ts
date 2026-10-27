@@ -29,7 +29,7 @@ import readline from 'node:readline';
 import { Readable } from 'node:stream';
 import {
   IMAGE_AUDIT_CSV, type CrawlRun, type ImageAuditCounts, type ImageAuditItem, type ImageAuditJob, type ImageAuditListResponse, type ImageAuditQuery,
-  type ImageAuditStatusResponse, type ImageCheckState, type ImageIssueId,
+  type ImageAuditStatusResponse, type ImageCheckState, type ImageIssueId, type ImageOccurrence, type ImageOccurrencesResponse,
 } from '@sentinel/shared';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { need, type Actor, type Ctx } from '../services/context';
@@ -152,7 +152,10 @@ export function assess(it: ImageAuditItem, heavyKb: number) {
   }
   if (it.redirects) { issues.push('redirect'); rec.push(`Reference the final address directly${it.finalUrl ? ` (${it.finalUrl})` : ''}: every load costs an extra request.`); }
   if (it.duplicateUrls) { issues.push('duplicate'); rec.push(`The same file is referenced under ${it.duplicateUrls + 1} different URLs — use one URL so browsers download and cache it once.`); }
-  if (it.refs > it.pageCount) { issues.push('repeated'); rec.push('Shown more than once on the same page — check for duplicated theme sections or galleries.'); }
+  if ((it.repeatedPages ?? (it.refs > it.pageCount ? 1 : 0)) > 0) {
+    issues.push('repeated');
+    rec.push(`Shown more than once on the same page — on ${(it.repeatedPages ?? 1).toLocaleString('en-US')} page${(it.repeatedPages ?? 1) === 1 ? '' : 's'}${it.maxPerPage ? `, up to ${it.maxPerPage} times on one page` : ''}. "Repeated on the same page" below lists each page and every copy with where it is (section / gallery) — remove the duplicate copies.`);
+  }
   it.issues = issues;
   it.recommendations = rec;
 }
@@ -283,6 +286,7 @@ export function createImageAuditService(ctx: Ctx, deps: ImageAuditDeps) {
     const items = new Map<string, ImageAuditItem>();
     const groups = new Map<string, string[]>();
     const lastPage = new Map<ImageAuditItem, string>();
+    const onPage = new Map<ImageAuditItem, number>();
     let over = 0;
     for await (const page of readImageRefs(file)) {
       job.pages++;
@@ -306,8 +310,15 @@ export function createImageAuditService(ctx: Ctx, deps: ImageAuditDeps) {
         // Each page is one line of the file, so a page is counted once per image.
         if (lastPage.get(it) !== page.p) {
           lastPage.set(it, page.p);
+          onPage.set(it, 1);
           it.pageCount++;
           if (it.pages.length < 5) it.pages.push(page.p);
+        } else {
+          // A second (third …) copy on the same page: the page counts once as "repeated".
+          const n = (onPage.get(it) ?? 1) + 1;
+          onPage.set(it, n);
+          if (n === 2) it.repeatedPages = (it.repeatedPages ?? 0) + 1;
+          it.maxPerPage = Math.max(it.maxPerPage ?? 1, n);
         }
         if (ref.a === null) it.altMissing++;
         else if (!ref.a.trim()) it.altEmpty++;
@@ -648,6 +659,45 @@ export function createImageAuditService(ctx: Ctx, deps: ImageAuditDeps) {
       const limit = Math.max(1, Math.min(500, Math.floor(Number(q.limit ?? 50)) || 50));
       const offset = Math.max(0, Math.min(Math.floor(Number(q.offset ?? 0)) || 0, all.length));
       return { job: w.job, total: all.length, offset, limit, rows: all.slice(offset, offset + limit), facets };
+    },
+
+    /**
+     * Every page showing one image, with each <img> instance (position, ALT, size attributes, loading, where on the
+     * page), read from the crawl's image references — nothing is kept in memory per image. repeated = only pages that
+     * show it more than once. When the references are gone, says so instead of listing anything.
+     */
+    async occurrences(actor: Actor, id: string, url: string, q: { repeated?: boolean; offset?: number; limit?: number }): Promise<ImageOccurrencesResponse> {
+      await need(ctx, actor, 'crawls.view');
+      await restored;
+      const w = workOf(id);
+      if (!url) throw badRequest('url is required.');
+      const key = imageKey(url);
+      if (!w.items.has(key)) throw notFound(`Image ${url} in Image Audit ${id}`);
+      const limit = Math.max(1, Math.min(500, Math.floor(Number(q.limit ?? 100)) || 100));
+      const offset = Math.max(0, Math.floor(Number(q.offset ?? 0)) || 0);
+      const res: ImageOccurrencesResponse = { url: key, available: true, pages: 0, repeatedPages: 0, references: 0, total: 0, offset, limit, rows: [] };
+      const refs = await deps.refsOf(w.job.runId);
+      if (!refs || !fs.existsSync(refs.file)) {
+        return { ...res, available: false, reason: `The image references of crawl ${w.job.runId} are no longer on this server (only the most recent crawls keep them), so the pages showing this image could not be identified. Run a new crawl and Image Audit to list them.` };
+      }
+      for await (const page of readImageRefs(refs.file)) {
+        let occ: ImageOccurrence | undefined;
+        for (const ref of page.i) {
+          const src = ref.s?.trim();
+          if (!src || /^data:/i.test(src) || imageKey(src) !== key) continue;
+          occ ??= { page: page.p, count: 0, instances: [] };
+          occ.count++;
+          occ.instances.push({ position: ref.x + 1, alt: ref.a, ...(ref.w ? { width: ref.w } : {}), ...(ref.h ? { height: ref.h } : {}), ...(ref.l ? { loading: ref.l } : {}), inMain: ref.m, ...(ref.c ? { location: ref.c } : {}) });
+        }
+        if (!occ) continue;
+        res.pages++;
+        res.references += occ.count;
+        if (occ.count > 1) res.repeatedPages++;
+        if (q.repeated && occ.count < 2) continue;
+        if (res.total >= offset && res.rows.length < limit) res.rows.push(occ);
+        res.total++;
+      }
+      return res;
     },
 
     async export(actor: Actor, id: string, format: string, q: ImageAuditQuery) {

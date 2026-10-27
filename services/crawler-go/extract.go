@@ -39,6 +39,9 @@ type Image struct {
 	Loading *string `json:"loading,omitempty"`
 	InMain  bool    `json:"inMain"`
 	Index   int     `json:"index"`
+	// Location: where on the page the <img> is — landmark (header / nav / main / aside / footer), Shopify section and a
+	// recognisable component (gallery, slider, card, logo …), e.g. `footer › section "footer" › .footer__badges`.
+	Location string `json:"location,omitempty"`
 }
 type HeadScript struct {
 	Src    string  `json:"src"`
@@ -94,31 +97,31 @@ type Features struct {
 }
 
 type ParsedHTML struct {
-	Lang                      *string          `json:"lang,omitempty"`
-	HasViewport               bool             `json:"hasViewport"`
-	Title                     *string          `json:"title,omitempty"`
-	TitleCount                int              `json:"titleCount"`
-	MetaDescription           *string          `json:"metaDescription,omitempty"`
-	MetaDescriptionCount      int              `json:"metaDescriptionCount"`
-	MetaRobots                *string          `json:"metaRobots,omitempty"`
-	Canonicals                []string         `json:"canonicals"`
-	OG                        OG               `json:"og"`
-	Twitter                   Twitter          `json:"twitter"`
-	H1s                       []string         `json:"h1s"`
-	Headings                  []Heading        `json:"headings"`
-	Links                     []Link           `json:"links"`
-	InternalLinks             []string         `json:"internalLinks"`
-	ExternalLinks             []string         `json:"externalLinks"`
-	InternalLinkCount         int              `json:"internalLinkCount"`
-	Images                    []Image          `json:"images"`
-	HeadScripts               []HeadScript     `json:"headScripts"`
-	ScriptSrcs                []string         `json:"scriptSrcs"`
-	Stylesheets               []string         `json:"stylesheets"`
-	JSONLD                    []JSONLD         `json:"jsonld"`
-	SchemaNodes               []map[string]any `json:"schemaNodes"`
-	SchemaTypes               []string         `json:"schemaTypes"`
-	VisiblePrices             []Price          `json:"visiblePrices"`
-	Breadcrumb                struct {
+	Lang                 *string          `json:"lang,omitempty"`
+	HasViewport          bool             `json:"hasViewport"`
+	Title                *string          `json:"title,omitempty"`
+	TitleCount           int              `json:"titleCount"`
+	MetaDescription      *string          `json:"metaDescription,omitempty"`
+	MetaDescriptionCount int              `json:"metaDescriptionCount"`
+	MetaRobots           *string          `json:"metaRobots,omitempty"`
+	Canonicals           []string         `json:"canonicals"`
+	OG                   OG               `json:"og"`
+	Twitter              Twitter          `json:"twitter"`
+	H1s                  []string         `json:"h1s"`
+	Headings             []Heading        `json:"headings"`
+	Links                []Link           `json:"links"`
+	InternalLinks        []string         `json:"internalLinks"`
+	ExternalLinks        []string         `json:"externalLinks"`
+	InternalLinkCount    int              `json:"internalLinkCount"`
+	Images               []Image          `json:"images"`
+	HeadScripts          []HeadScript     `json:"headScripts"`
+	ScriptSrcs           []string         `json:"scriptSrcs"`
+	Stylesheets          []string         `json:"stylesheets"`
+	JSONLD               []JSONLD         `json:"jsonld"`
+	SchemaNodes          []map[string]any `json:"schemaNodes"`
+	SchemaTypes          []string         `json:"schemaTypes"`
+	VisiblePrices        []Price          `json:"visiblePrices"`
+	Breadcrumb           struct {
 		Visible bool    `json:"visible"`
 		Text    *string `json:"text,omitempty"`
 	} `json:"breadcrumb"`
@@ -298,6 +301,33 @@ func inside(n, anc *html.Node) bool {
 		}
 	}
 	return false
+}
+
+var componentClass = regexp.MustCompile(`(?i)(gallery|slider|slideshow|carousel|swiper|thumbnail|media|card|logo|banner|badge|icon|menu|footer__|header__|collage|grid__item|image-with-text|multicolumn|testimonial)`)
+
+// imageLocation: the page landmark, the Shopify section (id="shopify-section-…", the part after "__") and the nearest
+// element whose class names a component, joined with " › " — "" when nothing identifies the place.
+func imageLocation(img *html.Node) string {
+	parts := []string{}
+	if l := closest(img.Parent, tagIs("header", "nav", "main", "aside", "footer")); l != nil {
+		parts = append(parts, l.Data)
+	}
+	if sec := closest(img.Parent, func(x *html.Node) bool { return strings.HasPrefix(attrOr(x, "id"), "shopify-section-") }); sec != nil {
+		id := strings.TrimPrefix(attrOr(sec, "id"), "shopify-section-")
+		if i := strings.LastIndex(id, "__"); i >= 0 {
+			id = id[i+2:]
+		}
+		parts = append(parts, `section "`+id+`"`)
+	}
+	if c := closest(img.Parent, func(x *html.Node) bool { return componentClass.MatchString(attrOr(x, "class")) }); c != nil {
+		for _, tok := range strings.Fields(attrOr(c, "class")) {
+			if componentClass.MatchString(tok) {
+				parts = append(parts, "."+tok)
+				break
+			}
+		}
+	}
+	return strings.Join(parts, " › ")
 }
 
 func tagIs(names ...string) func(*html.Node) bool {
@@ -620,7 +650,9 @@ func extractHTML(doc []byte, pageURL, siteHost string) *ParsedHTML {
 		}
 		return nil
 	}
-	prop := func(v string) func(*html.Node) bool { return func(n *html.Node) bool { return attrOr(n, "property") == v } }
+	prop := func(v string) func(*html.Node) bool {
+		return func(n *html.Node) bool { return attrOr(n, "property") == v }
+	}
 	nameEq := func(v string) func(*html.Node) bool { return func(n *html.Node) bool { return attrOr(n, "name") == v } }
 	p.OG.URL = metaContent(prop("og:url"))
 	p.OG.Title = metaContent(prop("og:title"))
@@ -797,7 +829,9 @@ func extractHTML(doc []byte, pageURL, siteHost string) *ParsedHTML {
 		if !(hasClass(n, "product__description", "product-description", "product-single__description", "collection-description", "collection__description", "collection-hero__description", "rte") || attrOr(n, "itemprop") == "description") {
 			return false
 		}
-		return closest(n, func(x *html.Node) bool { return hasClass(x, "product-card", "card-wrapper", "grid__item", "related-products") }) == nil
+		return closest(n, func(x *html.Node) bool {
+			return hasClass(x, "product-card", "card-wrapper", "grid__item", "related-products")
+		}) == nil
 	})
 	if descEl != nil {
 		d := textOfNode(descEl, nil)
@@ -891,6 +925,7 @@ func extractHTML(doc []byte, pageURL, siteHost string) *ParsedHTML {
 			} else {
 				im.InMain = closest(img, tagIs("header", "nav", "footer")) == nil
 			}
+			im.Location = imageLocation(img)
 			p.Images = append(p.Images, im)
 		}
 	}

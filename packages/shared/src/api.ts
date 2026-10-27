@@ -143,7 +143,7 @@ export interface CrawlDetail {
 export const CRAWL_DETAIL_ROW_LIMIT = 2000;
 
 export type CrawlPageStatusGroup = '2xx' | '3xx' | '4xx' | '5xx' | 'none' | 'robots' | 'not_fetched';
-export type CrawlPageProblem = 'issues' | 'broken' | 'no-title' | 'dup-title' | 'no-meta' | 'dup-meta' | 'h1' | 'alt' | 'noindex';
+export type CrawlPageProblem = 'issues' | 'broken' | 'no-title' | 'dup-title' | 'no-meta' | 'dup-meta' | 'h1' | 'alt' | 'noindex' | 'dup-h1';
 
 export interface CrawlPagesQuery {
   offset?: number;
@@ -353,6 +353,7 @@ export interface SentinelApi {
   getImageAudit(id: string): Promise<import('./imageAudit').ImageAuditJob>;
   cancelImageAudit(id: string): Promise<import('./imageAudit').ImageAuditJob>;
   resumeImageAudit(id: string): Promise<import('./imageAudit').ImageAuditJob>;
+  getImageOccurrences(id: string, url: string, q?: { repeated?: boolean; offset?: number; limit?: number }): Promise<import('./imageAudit').ImageOccurrencesResponse>;
   // Multi-website crawl batches (up to MAX_BATCH_WEBSITES websites; one crawl job per website).
   listCrawlBatches(): Promise<import('./batches').CrawlBatch[]>;
   startCrawlBatch(input: import('./batches').CrawlBatchInput): Promise<import('./batches').CrawlBatch>;

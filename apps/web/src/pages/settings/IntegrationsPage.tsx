@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Circle, KeyRound, PlugZap, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
-import { ApiError, SYNCABLE_INTEGRATIONS, type IntegrationStatus, type SyncableIntegrationId } from '@sentinel/shared';
+import {
+  ApiError, INTEGRATION_PROPERTY_SETTINGS, PRIMARY_INTEGRATIONS, SYNCABLE_INTEGRATIONS, isPropertyIntegration, normalizeIntegrationProperty,
+  type IntegrationStatus, type PropertyIntegrationId, type SyncableIntegrationId,
+} from '@sentinel/shared';
 import { api } from '@/api/client';
 import { errorMessage, useApiMutation, useApiQuery, useSiteKey } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Button, DemoBadge, IconButton, Input, KV, Mono, Notice, PageHeader, Panel } from '@/components/ui/primitives';
-import { FilterSelect } from '@/components/ui/filters';
+import { Async, Badge, Button, DemoBadge, Field, IconButton, Input, KV, Mono, Notice, PageHeader, Panel, Select } from '@/components/ui/primitives';
 import { IntegrationStateBadge } from '@/components/settings/ConfigSection';
 import { fmtDateTime } from '@/lib/format';
 
@@ -18,7 +20,8 @@ const CATEGORY_LABEL: Record<IntegrationStatus['category'], string> = {
 export default function IntegrationsPage() {
   // Task Ops sync belonged to the removed task-management workflow — not offered here.
   const q = useApiQuery(['integrations'], () => api.listIntegrations().then((l) => l.filter((i) => i.category !== 'tasks')));
-  const [cat, setCat] = useState('');
+  // One additional integration at a time, picked from the dropdown (nothing until one is chosen).
+  const [extra, setExtra] = useState('');
   return (
     <div>
       <PageHeader
@@ -33,17 +36,27 @@ export default function IntegrationsPage() {
         <Async q={q} rows={8}>
           {(list) => {
             const connected = list.filter((i) => i.state === 'connected').length;
-            const cats = [...new Set(list.map((i) => i.category))];
-            const shown = cat ? list.filter((i) => i.category === cat) : list;
+            const primary = PRIMARY_INTEGRATIONS.map((id) => list.find((i) => i.id === id)).filter((i): i is IntegrationStatus => !!i);
+            const others = list.filter((i) => !PRIMARY_INTEGRATIONS.includes(i.id));
+            const chosen = others.find((i) => i.id === extra);
             return (
               <>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm text-muted"><span className="font-semibold tabular-nums text-ink">{connected}</span> of {list.length} connected</p>
-                  <FilterSelect label="Category" value={cat} onChange={setCat} options={cats.map((c) => ({ value: c, label: CATEGORY_LABEL[c] }))} />
+                <p className="text-sm text-muted"><span className="font-semibold tabular-nums text-ink">{connected}</span> of {list.length} connected</p>
+                <div className="grid grid-cols-1 gap-5 xl:grid-cols-2" data-testid="primary-integrations">
+                  {primary.map((i) => <IntegrationCard key={i.id} i={i} />)}
                 </div>
-                <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-                  {shown.map((i) => <IntegrationCard key={i.id} i={i} />)}
+                <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
+                  <label htmlFor="more-integrations" className="text-sm font-medium text-ink">More integrations</label>
+                  <Select id="more-integrations" value={extra} onChange={(e) => setExtra(e.target.value)} className="w-full max-w-md" data-testid="integration-picker">
+                    <option value="">Choose an integration…</option>
+                    {others.map((i) => <option key={i.id} value={i.id}>{i.name} — {CATEGORY_LABEL[i.category]}{i.state === 'connected' ? ' (connected)' : ''}</option>)}
+                  </Select>
                 </div>
+                {chosen && (
+                  <div className="grid grid-cols-1 gap-5 xl:grid-cols-2" data-testid="selected-integration">
+                    <IntegrationCard key={chosen.id} i={chosen} />
+                  </div>
+                )}
               </>
             );
           }}
@@ -100,10 +113,14 @@ function IntegrationCard({ i }: { i: IntegrationStatus }) {
           <ul className="flex flex-wrap gap-1.5">
             {i.envVars.map((v) => {
               const set = i.configuredVars.includes(v);
+              const optional = i.optionalVars?.includes(v);
+              const saved = !set && i.property?.envVar === v && i.property.source === 'saved';
               return (
-                <li key={v} className={`inline-flex items-center gap-1 rounded-ctl border px-2 py-0.5 ${set ? 'border-ok/30 bg-ok-tint' : 'border-line bg-canvas'}`} title={set ? 'Set on the server' : 'Not set'}>
-                  {set ? <CheckCircle2 className="h-3.5 w-3.5 text-ok-ink" aria-label="set" /> : <Circle className="h-3.5 w-3.5 text-faint" aria-label="not set" />}
+                <li key={v} className={`inline-flex items-center gap-1 rounded-ctl border px-2 py-0.5 ${set || saved ? 'border-ok/30 bg-ok-tint' : 'border-line bg-canvas'}`} title={set ? 'Set on the server' : saved ? 'Not set on the server — the value saved below is used' : optional ? 'Optional — a built-in default is used' : 'Not set'}>
+                  {set || saved ? <CheckCircle2 className="h-3.5 w-3.5 text-ok-ink" aria-label="set" /> : <Circle className="h-3.5 w-3.5 text-faint" aria-label="not set" />}
                   <Mono>{v}</Mono>
+                  {optional && !set && <span className="text-[11px] text-muted">optional</span>}
+                  {saved && <span className="text-[11px] text-muted">saved below</span>}
                 </li>
               );
             })}
@@ -113,6 +130,7 @@ function IntegrationCard({ i }: { i: IntegrationStatus }) {
           <p className="mb-1.5 text-xs text-muted">Features that depend on it</p>
           <ul className="flex flex-wrap gap-1.5">{i.dependentFeatures.map((f) => <li key={f}><Badge>{f}</Badge></li>)}</ul>
         </div>
+        {isPropertyIntegration(i.id) && <PropertyField i={i} id={i.id} canManage={canManage} />}
         <SettingsEditor i={i} canManage={canManage} />
         <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
           <Button icon={<PlugZap className="h-4 w-4" />} loading={test.isPending} disabled={!canManage} title={canManage ? 'Runs a connection test from the API server' : 'Requires integrations.manage'} onClick={() => test.mutate()}>Test connection</Button>
@@ -134,12 +152,14 @@ function IntegrationCard({ i }: { i: IntegrationStatus }) {
 }
 
 type Row = { key: string; value: string };
-const toRows = (s: IntegrationStatus['settings']): Row[] => Object.entries(s).map(([key, value]) => ({ key, value: String(value) }));
+/** Settings with their own field (the GSC / GA4 property) are edited there, not in the generic list. */
+const ownField = (i: IntegrationStatus) => (isPropertyIntegration(i.id) ? INTEGRATION_PROPERTY_SETTINGS[i.id].key : undefined);
+const toRows = (i: IntegrationStatus): Row[] => Object.entries(i.settings).filter(([key]) => key !== ownField(i)).map(([key, value]) => ({ key, value: String(value) }));
 const SECRETISH = /token|secret|password|key/i;
 
 function SettingsEditor({ i, canManage }: { i: IntegrationStatus; canManage: boolean }) {
   const [rows, setRows] = useState<Row[] | null>(null);
-  const value = rows ?? toRows(i.settings);
+  const value = rows ?? toRows(i);
   const m = useApiMutation((s: Record<string, string | number | boolean>) => api.updateIntegration(i.id, s), {
     success: 'Integration settings saved',
     invalidate: [['integrations'], ['audit']],
@@ -151,6 +171,7 @@ function SettingsEditor({ i, canManage }: { i: IntegrationStatus; canManage: boo
   if (keys.some((k) => !k)) errs.push('Every setting needs a key.');
   if (new Set(keys).size !== keys.length) errs.push('Keys must be unique.');
   const secret = keys.find((k) => SECRETISH.test(k));
+  if (ownField(i) && keys.includes(ownField(i)!)) errs.push(`Use the ${INTEGRATION_PROPERTY_SETTINGS[i.id as PropertyIntegrationId].label} field above for “${ownField(i)}”.`);
   if (secret) errs.push(`“${secret}” looks like a secret. Set secrets as environment variables on the API server instead.`);
   const save = () => {
     const out: Record<string, string | number | boolean> = {};
@@ -185,6 +206,45 @@ function SettingsEditor({ i, canManage }: { i: IntegrationStatus; canManage: boo
           <Button size="sm" variant="primary" icon={<Save className="h-3.5 w-3.5" />} disabled={!dirty || errs.length > 0} loading={m.isPending} onClick={save}>Save settings</Button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * GSC_PROPERTY / GA4_PROPERTY_ID for this website: validated, saved on the server (not secret) and used by the
+ * connection test and every data sync. The service-account key is never entered here.
+ */
+function PropertyField({ i, id, canManage }: { i: IntegrationStatus; id: PropertyIntegrationId; canManage: boolean }) {
+  const p = INTEGRATION_PROPERTY_SETTINGS[id];
+  const saved = i.property?.source === 'saved' ? i.property.value ?? '' : '';
+  const [draft, setDraft] = useState<string | null>(null);
+  const value = draft ?? saved;
+  const check = value.trim() ? normalizeIntegrationProperty(id, value) : undefined;
+  const m = useApiMutation((v: string) => api.updateIntegration(i.id, { [p.key]: v }), {
+    success: (r) => (r.property?.value ? `${p.label} saved — run Test connection to check Google access` : `${p.label} cleared`),
+    invalidate: [['integrations'], ['audit']],
+    onSuccess: () => setDraft(null),
+  });
+  const dirty = draft !== null && draft.trim() !== saved;
+  const fieldId = `${i.id}-property`;
+  return (
+    <div className="space-y-2 rounded-ctl border border-line p-3" data-testid={`property-${i.id}`}>
+      <Field label={p.label} htmlFor={fieldId} error={dirty && check && !check.ok ? check.error : m.error && dirty ? errorMessage(m.error) : undefined} hint={p.hint}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input id={fieldId} value={value} placeholder={p.placeholder} disabled={!canManage} onChange={(e) => setDraft(e.target.value)} className="min-w-0 flex-1 font-mono text-[13px]" />
+          {canManage && (
+            <Button size="sm" variant="primary" icon={<Save className="h-3.5 w-3.5" />} disabled={!dirty || (!!check && !check.ok)} loading={m.isPending} onClick={() => m.mutate(value.trim())}>
+              {value.trim() || !saved ? 'Save' : 'Clear'}
+            </Button>
+          )}
+        </div>
+      </Field>
+      <p className="text-xs text-muted" data-testid={`property-source-${i.id}`}>
+        {i.property?.source === 'saved' ? <>In use: <Mono className="text-xs">{i.property.value}</Mono> (saved for this website).</>
+          : i.property?.source === 'env' ? <>In use: <Mono className="text-xs">{i.property.value}</Mono> from <Mono className="text-xs">{p.envVar}</Mono> on the server. A value saved here replaces it for this website.</>
+            : <>No property yet — save one here (or set <Mono className="text-xs">{p.envVar}</Mono> on the server).</>}
+        {' '}Google also needs the service-account key on the server; saving the property alone does not connect anything.
+      </p>
     </div>
   );
 }

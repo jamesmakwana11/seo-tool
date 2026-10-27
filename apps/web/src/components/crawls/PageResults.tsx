@@ -128,7 +128,7 @@ export function PageResults({ runId, active, check: checkProp, onCheck, scoreBan
           { key: 'ms', header: 'Response', hideOnMobile: true, className: 'tabular-nums', cell: (u) => <span className={`text-xs ${u.responseMs && u.responseMs > 2000 ? 'font-medium text-med-ink' : ''}`}>{u.responseMs !== undefined ? fmtMs(u.responseMs) : '—'}</span>, sort: () => 0 },
         ]}
       />
-      <PageDrawer page={open} runId={runId} limits={res.data?.auditLimits} onClose={() => setOpen(null)} />
+      <PageDrawer page={open} runId={runId} limits={res.data?.auditLimits} checkCounts={res.data?.facets.check} onClose={() => setOpen(null)} />
     </Panel>
   );
 }
@@ -152,7 +152,7 @@ function Row({ k, children }: { k: string; children: ReactNode }) {
 
 const len = (s?: string) => (s ? <span className="ml-1 text-xs tabular-nums text-faint">({s.length} chars)</span> : null);
 
-function PageDrawer({ page: u, runId, limits, onClose }: { page: CrawledUrl | null; runId: string; limits?: PageAuditLimits; onClose: () => void }) {
+function PageDrawer({ page: u, runId, limits, checkCounts, onClose }: { page: CrawledUrl | null; runId: string; limits?: PageAuditLimits; checkCounts?: Record<string, number>; onClose: () => void }) {
   const canEdit = useAuth().can('shopify.edit');
   const audit = u ? auditPage(u, limits) : undefined;
   const dupTitle = !!u?.flags?.includes('dup-title');
@@ -172,7 +172,7 @@ function PageDrawer({ page: u, runId, limits, onClose }: { page: CrawledUrl | nu
                 <ScoreBadge score={audit.score ?? undefined} />
                 <Link to={`/pages/report?run=${encodeURIComponent(runId)}&url=${encodeURIComponent(u.url)}`} className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-signal hover:underline">Full page report <ArrowUpRight className="h-3.5 w-3.5" /></Link>
               </div>
-              <AuditChecks audit={audit} only="problems" template={u.template} />
+              <AuditChecks key={u.url} audit={audit} only="problems" template={u.template} context={{ row: u, runId, limits, checkCounts }} />
             </section>
           )}
           <section>

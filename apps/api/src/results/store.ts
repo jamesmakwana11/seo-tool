@@ -32,7 +32,7 @@ export interface CrawlResultStore {
 }
 
 const STATUS_GROUPS: CrawlPageStatusGroup[] = ['2xx', '3xx', '4xx', '5xx', 'none', 'robots', 'not_fetched'];
-const PROBLEMS: CrawlPageProblem[] = ['issues', 'broken', 'no-title', 'dup-title', 'no-meta', 'dup-meta', 'h1', 'alt', 'noindex'];
+const PROBLEMS: CrawlPageProblem[] = ['issues', 'broken', 'no-title', 'dup-title', 'no-meta', 'dup-meta', 'h1', 'alt', 'noindex', 'dup-h1'];
 const STATES = ['fetched', 'robots', 'excluded', 'depth_limit', 'page_limit', 'not_processed'] as const;
 const SOURCES = ['start', 'link', 'sitemap', 'pagination', 'redirect', 'seed'] as const;
 const SEV_RANK: Record<Severity, number> = { critical: 3, medium: 2, low: 1 };
@@ -65,6 +65,8 @@ function ownProblems(u: CrawledUrl): number {
 class Columns {
   url: string[] = [];
   title: string[] = [];
+  /** Normalised H1 of rows with exactly one H1 ('' otherwise) — finds same-H1 pages. */
+  h1: string[] = [];
   status = new Int16Array(1024);
   group = new Uint8Array(1024);
   indexable = new Int8Array(1024);
@@ -103,6 +105,7 @@ class Columns {
     const i = this.n++;
     this.url.push(u.url);
     this.title.push(u.title ?? '');
+    this.h1.push(u.h1?.length === 1 ? u.h1[0].replace(/\s+/g, ' ').trim().toLowerCase() : '');
     const s = effStatus(u);
     this.status[i] = s === null || s === undefined ? -1 : s;
     this.group[i] = STATUS_GROUPS.indexOf(statusGroupOf(u));
@@ -139,12 +142,16 @@ class Columns {
       const m = metaOf(i)?.trim().toLowerCase();
       if (m) { mk[i] = m; metas.set(m, (metas.get(m) ?? 0) + 1); this.metaHash[i] = fnv(m) || 1; }
     }
+    const h1s = new Map<string, number>();
+    for (let i = 0; i < this.n; i++) if (this.status[i] === 200 && this.h1[i]) h1s.set(this.h1[i], (h1s.get(this.h1[i]) ?? 0) + 1);
+    const dh = 1 << PROBLEMS.indexOf('dup-h1');
     const dt = 1 << PROBLEMS.indexOf('dup-title');
     const dm = 1 << PROBLEMS.indexOf('dup-meta');
     // Duplicates are known only now: each one is a warning in the page audit, so it lowers the stored score too.
     for (let i = 0; i < this.n; i++) {
       if (tk[i] && (titles.get(tk[i]!) ?? 0) > 1) { this.problems[i] |= dt; if (this.score[i] >= 0) { this.score[i] = Math.max(0, this.score[i] - WARN_PENALTY); this.todo[i] |= 1 << todoBit('title-duplicate')!; } }
       if (mk[i] && (metas.get(mk[i]!) ?? 0) > 1) { this.problems[i] |= dm; if (this.score[i] >= 0) { this.score[i] = Math.max(0, this.score[i] - WARN_PENALTY); this.todo[i] |= 1 << todoBit('meta-duplicate')!; } }
+      if (this.status[i] === 200 && this.h1[i] && (h1s.get(this.h1[i]) ?? 0) > 1) { this.problems[i] |= dh; if (this.score[i] >= 0) { this.score[i] = Math.max(0, this.score[i] - WARN_PENALTY); this.todo[i] |= (1 << todoBit('h1-duplicate')!) >>> 0; } }
     }
   }
 
@@ -238,17 +245,20 @@ class Columns {
   }
 
   /** Rows (200 HTML) sharing row i's title, and candidates sharing its meta description hash (to be confirmed). */
-  sameAs(i: number): { title: number[]; meta: number[] } {
+  sameAs(i: number): { title: number[]; meta: number[]; h1: number[] } {
     const title: number[] = [];
     const meta: number[] = [];
+    const h1: number[] = [];
     const t = this.status[i] === 200 ? this.title[i].trim().toLowerCase() : '';
+    const hd = this.status[i] === 200 ? this.h1[i] : '';
     const h = this.metaHash[i];
     for (let j = 0; j < this.n; j++) {
       if (j === i || this.status[j] !== 200) continue;
       if (t && this.title[j].trim().toLowerCase() === t) title.push(j);
       if (h && this.metaHash[j] === h) meta.push(j);
+      if (hd && this.h1[j] === hd) h1.push(j);
     }
-    return { title, meta };
+    return { title, meta, h1 };
   }
 
   /** Problem names of row i (shown on the row: duplicates are only known over the whole crawl). */
@@ -276,22 +286,24 @@ function fnv(s: string): number {
   return h >>> 0;
 }
 
-const DUP_LIST = 10;
-/** Duplicates of row i: titles are compared in memory; meta descriptions are confirmed on the rows read back. */
+/** Other pages listed per duplicate group (all of them up to this many; the total is always exact). */
+const DUP_LIST = 10_000;
+
 async function duplicates(cols: Columns, url: string, read: (idx: number[]) => Promise<CrawledUrl[]>): Promise<NonNullable<CrawlPageReport['duplicates']>> {
-  const none = { title: { urls: [], total: 0 }, meta: { urls: [], total: 0 } };
+  const none = { title: { urls: [], total: 0 }, meta: { urls: [], total: 0 }, h1: { urls: [], total: 0 } };
   const i = cols.indexOf(url);
   if (i < 0) return none;
   const same = cols.sameAs(i);
-  let meta = { urls: [] as string[], total: 0 };
+  const [self] = await read([i]);
+  let meta: { text?: string; urls: string[]; total: number; truncated?: boolean } = { urls: [], total: 0 };
   if (same.meta.length) {
-    const [self] = await read([i]);
     const want = self.metaDescription?.trim().toLowerCase();
-    // Hash collisions are possible: confirm on the first rows, and count the rest as matches (≥ 1 in 4 billion odds).
-    const confirmed = (await read(same.meta.slice(0, DUP_LIST * 2))).filter((r) => r.metaDescription?.trim().toLowerCase() === want).map((r) => r.url);
-    meta = { urls: confirmed.slice(0, DUP_LIST), total: confirmed.length + Math.max(0, same.meta.length - DUP_LIST * 2) };
+    // The meta index is a hash: confirm every candidate against the row (no hash collision is listed as a duplicate).
+    const confirmed = (await read(same.meta.slice(0, DUP_LIST))).filter((r) => r.metaDescription?.trim().toLowerCase() === want).map((r) => r.url);
+    meta = { text: self.metaDescription?.trim(), urls: confirmed, total: confirmed.length + Math.max(0, same.meta.length - DUP_LIST), ...(same.meta.length > DUP_LIST ? { truncated: true } : {}) };
   }
-  return { title: { urls: same.title.slice(0, DUP_LIST).map((j) => cols.url[j]), total: same.title.length }, meta };
+  const group = (idx: number[], text?: string) => ({ ...(idx.length ? { text } : {}), urls: idx.slice(0, DUP_LIST).map((j) => cols.url[j]), total: idx.length, ...(idx.length > DUP_LIST ? { truncated: true } : {}) });
+  return { title: group(same.title, self.title?.trim()), meta, h1: group(same.h1, self.h1?.[0]?.trim()) };
 }
 
 const RANK_SEV: Record<number, Severity | undefined> = { 3: 'critical', 2: 'medium', 1: 'low' };

@@ -69,13 +69,17 @@ export interface FixtureOptions {
   galleryImages: number;
   /** Image path → how many times it answers 429 (Retry-After: 1) before it answers normally. */
   limitImages: Record<string, number>;
+  /** Every page shows a trust badge in the footer; these paths show the same badge a second time in a main-content section. */
+  repeatedBadge: string[];
+  /** Path → absolute URL on another website that it 302-redirects to (cross-site redirect tests). */
+  offsiteRedirects: Record<string, string>;
 }
 
 export const defaultFixtureOptions = (): FixtureOptions => ({
   noindex: [], xRobotsNoindex: [], deletedProducts: [], missingCanonical: [], duplicateTitle: [], thinCollections: [], longTitle: [], missingMeta: [],
   multipleH1: [], missingAlt: [], largeImage: [], brokenImages: [], sharedBanner: false, host: '127.0.0.1', noOffers: [], productTemplateNoOffers: false, priceMismatch: {}, reviewMarkupWithoutReviews: [],
   robotsDisallowCollections: false, robotsBlockGptBot: false, aiBoilerplate: [], ymylClaim: [], newHeadScriptOnProducts: false, linkErrorRoutes: false,
-  slowMs: 1500, ssrfRedirect: false, malformedPage: false, orphanInSitemap: false, scopedSelfCanonical: false, unavailable: [], themeVersion: 1, galleryImages: 0, limitImages: {},
+  slowMs: 1500, ssrfRedirect: false, malformedPage: false, orphanInSitemap: false, scopedSelfCanonical: false, unavailable: [], themeVersion: 1, galleryImages: 0, limitImages: {}, repeatedBadge: [], offsiteRedirects: {},
 });
 
 interface Product { handle: string; name: string; price: number; collection: string; material: string; size: string; use: string; detail: string; more: string; review: string }
@@ -216,9 +220,9 @@ ${p.jsonld.map((j) => `<script type="application/ld+json">${JSON.stringify(j)}</
 </ul></nav></header>
 <main id="MainContent">
 <h1>${esc(p.h1)}</h1>${extraH1}
-${p.body}
+${p.body}${opts.repeatedBadge.includes(path) ? '\n<div id="shopify-section-template--1__trust"><div class="trust-badge"><img src="/cdn/img/secure-badge.webp" alt="Secure checkout"></div></div>' : ''}
 </main>
-<footer class="footer"><ul>
+<footer class="footer">${opts.repeatedBadge.length ? '<div id="shopify-section-sections--1__footer"><div class="footer__payment"><img src="/cdn/img/secure-badge.webp" alt=""></div></div>' : ''}<ul>
 <li><a href="/pages/about-us">About us</a></li><li><a href="/pages/contact">Contact</a></li><li><a href="/pages/shipping-policy">Shipping policy</a></li><li><a href="/pages/return-policy">Return policy</a></li>${errorLinks}
 </ul><p>Call us: <a href="tel:+919876543210">+91 98765 43210</a></p></footer>
 </body></html>`;
@@ -433,6 +437,7 @@ ${a.sections.map(([h, t]) => `<h2>${esc(h)}</h2><p>${esc(t)}</p>`).join('\n')}
     }
     if (path === '/pages/broken') return send(res, 500, '<h1>Internal Server Error</h1>', {}, method);
     if (path === '/pages/internal') return redirect(res, 302, 'http://169.254.169.254/latest/meta-data/');
+    if (opts.offsiteRedirects[path]) return redirect(res, 302, opts.offsiteRedirects[path]);
     if (path === '/pages/malformed') return send(res, 200, '<html><head><title>Broken <b>markup<div><<<\u0000\u0001 <a href="/pages/nowhere"', {}, method);
     if (path === '/old-chopper') return redirect(res, 301, '/products/old-chopper-v2');
     if (path === '/products/old-chopper-v2') return redirect(res, 301, '/products/vegetable-chopper');

@@ -81,6 +81,12 @@ export const HEALTH_WEIGHTS: Record<ScoreModule, number> = {
  * lists, and the money-keyword set should be finalized in a kickoff workshop", p22)
  * and are editable by the SEO lead without code changes (PDF §17).
  */
+/**
+ * The crawler's User-Agent when CRAWLER_USER_AGENT is not set on the server: names the tool (so the site owner can
+ * recognise and allow-list it in bot protection) and is the product token robots.txt rules are matched against.
+ */
+export const DEFAULT_CRAWLER_USER_AGENT = 'DeoDapSEOSentinel/1.0 (+internal audit)';
+
 export function defaultConfig(now = new Date()): SentinelConfig {
   return {
     site: { baseUrl: 'https://deodap.in', canonicalHost: 'deodap.in', brand: 'DeoDap', timezone: 'Asia/Kolkata' },
@@ -140,7 +146,7 @@ export function defaultConfig(now = new Date()): SentinelConfig {
       fullCrawlCron: '0 2 * * 0', // weekly (Sunday 02:00 IST) — day/time WORKSHOP
       smartCrawlCron: '30 5 * * *', // daily 05:30 IST so the 08:00 digest is ready — WORKSHOP
       jsRenderSampleSize: 200, // WORKSHOP
-      userAgent: 'DeoDapSEOSentinel/1.0 (+internal audit)',
+      userAgent: DEFAULT_CRAWLER_USER_AGENT,
       maxConcurrency: 4,
       requestTimeoutMs: 15000,
       respectRobots: true,

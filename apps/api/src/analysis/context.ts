@@ -455,6 +455,19 @@ export function htmlEv(url: string, label: string, snippet: string): Ev {
   return { kind: 'html_snippet', label, url, content: snippet.slice(0, 1500) };
 }
 
+/** Cap on the other pages listed per duplicate-evidence item (the full total is always given). */
+export const DUP_EVIDENCE_URLS = 1000;
+
+/** A duplicate group (title / meta / H1): the shared text, every page using it (this one first) and the exact total. */
+export function dupEv(url: string, what: string, text: string, snippet: string, group: string[]): Ev {
+  const urls = [url, ...group.filter((u) => u !== url)];
+  return {
+    kind: 'html_snippet', url, content: snippet.slice(0, 1500),
+    label: `${group.length} pages share this ${what}`,
+    data: { duplicateOf: what, text, urls: urls.slice(0, DUP_EVIDENCE_URLS), total: group.length, ...(urls.length > DUP_EVIDENCE_URLS ? { truncated: true } : {}) },
+  };
+}
+
 export function textEv(url: string, label: string, passage: string, data?: Record<string, unknown>): Ev {
   return { kind: 'text_passage', label, url, content: passage.slice(0, 1200), data };
 }

@@ -10,6 +10,7 @@
  *  - backlinks: Ahrefs limits-and-usage and Semrush countapiunits are account-info calls (no paid units consumed).
  */
 import nodemailer from 'nodemailer';
+import { DEFAULT_CRAWLER_USER_AGENT, normalizeGa4PropertyId, normalizeGscProperty } from '@sentinel/shared';
 import type { Env } from '../config/env';
 import type { Connector, ConnectorTestResult } from '../services/ports';
 import { createGoogleAuth, parseServiceAccount, tokenFailure, type GoogleAuth } from './googleAuth';
@@ -32,25 +33,33 @@ export function isLocalhostUrl(url: string | undefined): boolean {
   }
 }
 
+/** The crawler's User-Agent: CRAWLER_USER_AGENT when set, otherwise the built-in default (never empty). */
+export function crawlerUserAgent(env: Pick<Env, 'CRAWLER_USER_AGENT'>, configured?: string): string {
+  return env.CRAWLER_USER_AGENT?.trim() || configured?.trim() || DEFAULT_CRAWLER_USER_AGENT;
+}
+
 export function crawlerConnector(env: Env, fetchImpl: FetchLike): HintedConnector {
   const local = () => isLocalhostUrl(env.CRAWLER_BASE_URL);
   return defineConnector({
     id: 'crawler',
     env,
-    envVars: ['CRAWLER_BASE_URL', 'CRAWLER_USER_AGENT', 'CRAWLER_ALLOW_LIVE'],
+    envVars: ['CRAWLER_BASE_URL', 'CRAWLER_ALLOW_LIVE', 'CRAWLER_USER_AGENT'],
+    // CRAWLER_USER_AGENT is optional: without it the crawler identifies itself with DEFAULT_CRAWLER_USER_AGENT.
+    optionalVars: ['CRAWLER_USER_AGENT'],
+    // Only genuinely required settings are reported as missing.
     missingVars: () => [
       ...(isSet(env.CRAWLER_BASE_URL) ? [] : ['CRAWLER_BASE_URL']),
-      ...(isSet(env.CRAWLER_USER_AGENT) ? [] : ['CRAWLER_USER_AGENT']),
       // A live (non-localhost) site may only be contacted after CRAWLER_ALLOW_LIVE=true.
       ...(env.CRAWLER_ALLOW_LIVE || local() ? [] : ['CRAWLER_ALLOW_LIVE']),
     ],
     async run() {
       const url = new URL('/robots.txt', env.CRAWLER_BASE_URL!).toString();
-      const r = await httpRequest(fetchImpl, url, { headers: { 'user-agent': env.CRAWLER_USER_AGENT!, accept: 'text/plain,*/*' } });
+      const ua = crawlerUserAgent(env);
+      const r = await httpRequest(fetchImpl, url, { headers: { 'user-agent': ua, accept: 'text/plain,*/*' } });
       const label = `Crawler (GET ${url})`;
       if (is2xx(r)) {
         const lines = r.text.split('\n').filter((l) => l.trim() && !l.trim().startsWith('#')).length;
-        return { ok: true, result: `${label}: HTTP ${r.status} — robots.txt fetched with the crawler user-agent (${r.text.length} bytes, ${lines} directives).` };
+        return { ok: true, result: `${label}: HTTP ${r.status} — robots.txt fetched with the crawler user-agent "${ua}"${isSet(env.CRAWLER_USER_AGENT) ? '' : ' (built-in default)'} (${r.text.length} bytes, ${lines} directives).` };
       }
       if (r.kind === 'response' && (r.status === 403 || r.status === 429)) {
         return {
@@ -75,27 +84,41 @@ function normalizeSite(s: string): string {
   return (t.endsWith('/') ? t : `${t}/`).toLowerCase();
 }
 
+/** Service-account key problems, worded so a saved property is never mistaken for a working connection. */
+function keyProblem(label: string, envVar: string, error: string): ConnectorTestResult {
+  return { ok: false, result: `${label}: ${error} The property alone is not enough — Google needs a service-account key in ${envVar} on the API server.` };
+}
+
 export function gscConnector(env: Env, fetchImpl: FetchLike, auth: GoogleAuth): HintedConnector {
   return defineConnector({
     id: 'gsc',
     env,
     envVars: ['GSC_SERVICE_ACCOUNT_JSON', 'GSC_PROPERTY'],
-    async run() {
+    settingVars: { GSC_PROPERTY: 'property' },
+    async run(value) {
       const label = 'Google Search Console';
+      const checked = normalizeGscProperty(value('GSC_PROPERTY') ?? '');
+      if (!checked.ok) return { ok: false, result: `${label}: invalid property — ${checked.error}` };
+      const property = checked.value;
       const sa = parseServiceAccount(env.GSC_SERVICE_ACCOUNT_JSON);
-      if ('error' in sa) return { ok: false, result: `${label}: ${sa.error}` };
+      if ('error' in sa) return keyProblem(label, 'GSC_SERVICE_ACCOUNT_JSON', sa.error);
       const tok = await auth.serviceAccountToken(sa, GSC_SCOPE);
       if (!tok.ok) return tokenFailure(label, tok);
       const url = 'https://www.googleapis.com/webmasters/v3/sites';
       const r = await httpRequest(fetchImpl, url, { headers: { authorization: `Bearer ${tok.accessToken}` } });
-      if (!is2xx(r)) return failureResult(label, url, r);
+      if (!is2xx(r)) {
+        if (r.kind === 'response' && r.status === 403) {
+          return { ok: false, result: `${label}: Google refused the request for ${sa.client_email} (HTTP 403)${providerMessage(r) ? ` — ${providerMessage(r)}` : ''}. Check that the Search Console API is enabled in the service account's Google Cloud project.` };
+        }
+        return failureResult(label, url, r);
+      }
       const entries = ((r.json as { siteEntry?: { siteUrl?: string; permissionLevel?: string }[] })?.siteEntry ?? []).filter((e) => typeof e.siteUrl === 'string');
-      const want = normalizeSite(env.GSC_PROPERTY!);
+      const want = normalizeSite(property);
       const entry = entries.find((e) => normalizeSite(e.siteUrl!) === want);
       if (!entry) {
         return {
           ok: false,
-          result: `${label}: authenticated as ${sa.client_email}, but property ${env.GSC_PROPERTY} is not visible (${entries.length} properties listed). Add the service account as an Owner of the property.`,
+          result: `${label}: authenticated as ${sa.client_email}, but property ${property} is not visible to it (${entries.length} properties listed). In Search Console → Settings → Users and permissions of ${property}, add ${sa.client_email} as an Owner — and check the property is written exactly as listed there (sc-domain:… for a Domain property).`,
         };
       }
       if (entry.permissionLevel === 'siteOwner') return { ok: true, result: `${label}: property ${entry.siteUrl} accessible with Owner permission (siteOwner).` };
@@ -116,21 +139,33 @@ export function ga4Connector(env: Env, fetchImpl: FetchLike, auth: GoogleAuth): 
     id: 'ga4',
     env,
     envVars: ['GA4_SERVICE_ACCOUNT_JSON', 'GA4_PROPERTY_ID'],
-    async run() {
+    settingVars: { GA4_PROPERTY_ID: 'propertyId' },
+    async run(value) {
       const label = 'Google Analytics 4';
+      const checked = normalizeGa4PropertyId(value('GA4_PROPERTY_ID') ?? '');
+      if (!checked.ok) return { ok: false, result: `${label}: invalid property ID — ${checked.error}` };
+      const pid = checked.value;
       const sa = parseServiceAccount(env.GA4_SERVICE_ACCOUNT_JSON);
-      if ('error' in sa) return { ok: false, result: `${label}: ${sa.error}` };
+      if ('error' in sa) return keyProblem(label, 'GA4_SERVICE_ACCOUNT_JSON', sa.error);
       const tok = await auth.serviceAccountToken(sa, GA4_SCOPE);
       if (!tok.ok) return tokenFailure(label, tok);
-      const pid = env.GA4_PROPERTY_ID!.replace(/^properties\//, '').trim();
-      const url = `https://analyticsadmin.googleapis.com/v1beta/properties/${encodeURIComponent(pid)}`;
-      const r = await httpRequest(fetchImpl, url, { headers: { authorization: `Bearer ${tok.accessToken}` } });
+      // The same API the data sync uses (Data API runReport), with the smallest possible report.
+      const url = `https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(pid)}:runReport`;
+      const r = await httpRequest(fetchImpl, url, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${tok.accessToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ dateRanges: [{ startDate: '7daysAgo', endDate: 'yesterday' }], metrics: [{ name: 'sessions' }], limit: 1 }),
+      });
       if (is2xx(r)) {
-        const name = (r.json as { displayName?: string })?.displayName;
-        return { ok: true, result: `${label}: property ${pid}${name ? ` ("${name}")` : ''} readable by ${sa.client_email}.` };
+        const rows = (r.json as { rowCount?: number })?.rowCount;
+        return { ok: true, result: `${label}: property ${pid} readable by ${sa.client_email} through the Data API${typeof rows === 'number' ? ` (${rows} row${rows === 1 ? '' : 's'} for the last 7 days)` : ''}.` };
       }
-      if (r.kind === 'response' && r.status === 404) {
-        return { ok: false, result: `${label}: property ${pid} not found or not shared with ${sa.client_email} (needs Viewer or higher).` };
+      if (r.kind === 'response' && (r.status === 403 || r.status === 404)) {
+        const msg = providerMessage(r);
+        if (/has not been used|is disabled|SERVICE_DISABLED|not been enabled/i.test(msg)) {
+          return { ok: false, result: `${label}: the Google Analytics Data API is not enabled in the service account's Google Cloud project — enable it, then test again. (${msg})` };
+        }
+        return { ok: false, result: `${label}: property ${pid} not found or not shared with ${sa.client_email} (HTTP ${r.status}). In GA4 Admin → Property access management, add ${sa.client_email} as Viewer (or higher).${msg ? ` Google said: ${msg}` : ''}` };
       }
       return failureResult(label, url, r);
     },

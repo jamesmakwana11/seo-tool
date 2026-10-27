@@ -2,6 +2,7 @@ import type { SentinelApi } from '@sentinel/shared';
 import { createMockApi } from './mock/mockApi';
 import { createHttpApi } from './http/httpApi';
 import { websiteScope } from './websiteScope';
+import { appBasePath } from '@/lib/basePath';
 
 /**
  * API mode:
@@ -10,6 +11,6 @@ import { websiteScope } from './websiteScope';
  * Selected at build time with VITE_API_MODE; VITE_API_BASE_URL overrides the default /api base.
  */
 export const API_MODE: 'mock' | 'http' = (import.meta.env.VITE_API_MODE as 'mock' | 'http' | undefined) ?? 'mock';
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? `${appBasePath()}/api`;
 
 export const api: SentinelApi = API_MODE === 'http' ? createHttpApi(API_BASE_URL, websiteScope.get) : createMockApi({ websiteId: websiteScope.get });

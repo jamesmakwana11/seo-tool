@@ -60,7 +60,7 @@ describe('page audit', () => {
     expect(ids(good({ nofollowLinks: 3 }))).toEqual(['nofollow-links']);
     expect(auditPage(good({ externalLinks: 4 })).checks.find((c) => c.id === 'external-links')?.label).toBe('4 links to other websites');
     const alt = auditPage(good({ imagesMissingAlt: 7, imagesMissingAltSrc: ['https://cdn.example/a.jpg', 'https://cdn.example/b.jpg'] })).checks.find((c) => c.id === 'alt-missing');
-    expect(alt?.items).toEqual(['https://cdn.example/a.jpg', 'https://cdn.example/b.jpg', '… and 5 more']);
+    expect(alt?.items).toEqual(['https://cdn.example/a.jpg', 'https://cdn.example/b.jpg', '… and 5 more (their addresses were not recorded by this crawl — run a new crawl to list them)']);
   });
 
   it('does not score pages it could not audit, and never invents content checks for them', () => {
@@ -92,10 +92,10 @@ describe('page audit', () => {
   });
 
   it('filters, counts and sorts the page list by score and check', () => {
-    const rows = [good(), good({ url: `${O}/products/b`, title: '', metaDescription: 'Keep dals, rice and snacks fresh in airtight jars with locking lids, stackable and BPA-free plastic, sold as a set.' }), good({ url: `${O}/products/c`, title: 'Plastic Airtight Food Storage Container Set of 6', metaDescription: '', h1: [] }), { url: `${O}/old`, status: 301, redirects: 1, reason: 'full' as const }];
+    const rows = [good(), good({ url: `${O}/products/b`, title: '', h1: ['Airtight Jar Set'], metaDescription: 'Keep dals, rice and snacks fresh in airtight jars with locking lids, stackable and BPA-free plastic, sold as a set.' }), good({ url: `${O}/products/c`, title: 'Plastic Airtight Food Storage Container Set of 6', metaDescription: '', h1: [] }), { url: `${O}/old`, status: 301, redirects: 1, reason: 'full' as const }];
     const all = queryCrawlRows(rows, { limit: 50 });
-    // Duplicate titles / descriptions are worked out over the whole crawl.
-    expect(queryCrawlRows([good(), good({ url: `${O}/products/twin` })], {}).facets.check).toEqual({ 'title-duplicate': 2, 'meta-duplicate': 2 });
+    // Duplicate titles / descriptions / H1s are worked out over the whole crawl.
+    expect(queryCrawlRows([good(), good({ url: `${O}/products/twin` })], {}).facets.check).toEqual({ 'title-duplicate': 2, 'meta-duplicate': 2, 'h1-duplicate': 2 });
     expect(all.facets.score).toEqual({ good: 2, fair: 1, none: 1 });
     expect(all.facets.check).toEqual({ 'title-missing': 1, 'meta-missing': 1, 'h1-missing': 1, redirect: 1 });
     expect(queryCrawlRows(rows, { check: 'title-missing' }).rows.map((r) => r.url)).toEqual([`${O}/products/b`]);

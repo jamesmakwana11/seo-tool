@@ -79,8 +79,13 @@ describe('All Pages and the page audit API', () => {
     // "latest" resolves to the newest finished crawl; unknown URLs are a 404, a missing url a 400.
     const latest = (await agent.get('/api/crawls/latest/page').query({ url: `${ORIGIN}/products/chopper` }).set(auth)).body as CrawlPageReport;
     expect(latest.audit.score).toBe(90);
-    expect(latest.duplicates).toEqual({ title: { urls: [`${ORIGIN}/products/chopper-2`], total: 1 }, meta: { urls: [`${ORIGIN}/products/chopper-2`], total: 1 } });
-    expect(report.duplicates).toEqual({ title: { urls: [], total: 0 }, meta: { urls: [], total: 0 } });
+    // Duplicates carry the shared text, every other page and the exact count (H1 groups too).
+    expect(latest.duplicates).toEqual({
+      title: { text: 'Kitchen chopper in stainless steel, set of three', urls: [`${ORIGIN}/products/chopper-2`], total: 1 },
+      meta: { text: 'Buy the chopper: stainless steel, easy to clean, dishwasher safe and built to last for years of everyday cooking.', urls: [`${ORIGIN}/products/chopper-2`], total: 1 },
+      h1: { urls: [], total: 0 },
+    });
+    expect(report.duplicates).toEqual({ title: { urls: [], total: 0 }, meta: { urls: [], total: 0 }, h1: { urls: [], total: 0 } });
     // The export carries the score and what to fix.
     const csv = await agent.get(`/api/crawls/${id}/export?format=csv`).set(auth);
     expect(csv.status).toBe(200);

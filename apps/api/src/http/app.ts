@@ -33,6 +33,27 @@ function sendError(res: Response, req: Request, err: unknown) {
   res.status(e.status).json({ error: { code: e.code, message: e.message, details: e.details }, requestId: req.requestId });
 }
 
+/**
+ * The path this app is served under, from APP_BASE_URL (e.g. https://apps.deodap.info/seo-tool → "/seo-tool"); "" when it
+ * is served at the root. Requests under it are accepted whether or not the reverse proxy strips it.
+ */
+export function publicBasePath(env: Pick<Container['env'], 'APP_BASE_URL'>): string {
+  if (!env.APP_BASE_URL) return '';
+  try {
+    return new URL(env.APP_BASE_URL).pathname.replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+/** The web app's index.html for this base path: <base href> for its relative assets and the path for the router / API. */
+export function indexHtmlFor(html: string, basePath: string): string {
+  const esc = basePath.replace(/[&"<>]/g, '');
+  const tags = `<base href="${esc}/"><meta name="sentinel-base-path" content="${esc}">`;
+  const without = html.replace(/<base\s+href="[^"]*"\s*\/?>/i, '');
+  return /<head[^>]*>/i.test(without) ? without.replace(/<head([^>]*)>/i, `<head$1>${tags}`) : `${tags}${without}`;
+}
+
 export function createApp(container: Container) {
   const { services, env, log, clock } = container;
   const ws = createWorkspaces(container);
@@ -50,6 +71,18 @@ export function createApp(container: Container) {
   const app = express();
   app.locals.log = log;
   app.disable('x-powered-by');
+  // Served under a sub-path (APP_BASE_URL=https://apps.deodap.info/seo-tool): accept /seo-tool/… as well as the
+  // stripped path a reverse proxy may forward, so /seo-tool/api/shopify/oauth/callback reaches the callback route.
+  const basePath = publicBasePath(env);
+  if (basePath) {
+    app.use((req, _res, next) => {
+      if (req.url === basePath || req.url.startsWith(`${basePath}/`) || req.url.startsWith(`${basePath}?`)) {
+        const rest = req.url.slice(basePath.length);
+        req.url = rest.startsWith('/') ? rest : `/${rest}`;
+      }
+      next();
+    });
+  }
   const prod = env.NODE_ENV === 'production';
   if (env.TRUST_PROXY !== undefined) app.set('trust proxy', /^\d+$/.test(env.TRUST_PROXY) ? Number(env.TRUST_PROXY) : env.TRUST_PROXY === 'true' ? true : env.TRUST_PROXY);
   else if (prod) app.set('trust proxy', 1);
@@ -151,6 +184,12 @@ export function createApp(container: Container) {
     const dist = path.resolve(env.WEB_DIST_DIR);
     const index = path.join(dist, 'index.html');
     if (!fs.existsSync(index)) throw new Error(`WEB_DIST_DIR has no index.html: ${dist}`);
+    let cached: { mtime: number; html: string } | undefined;
+    const indexHtml = () => {
+      const mtime = fs.statSync(index).mtimeMs;
+      if (!cached || cached.mtime !== mtime) cached = { mtime, html: indexHtmlFor(fs.readFileSync(index, 'utf8'), basePath) };
+      return cached.html;
+    };
     // Hashed bundles are immutable; everything else revalidates.
     app.use('/assets', express.static(path.join(dist, 'assets'), { immutable: true, maxAge: '1y', index: false }));
     app.use(express.static(dist, { index: false, maxAge: '1h' }));
@@ -159,7 +198,7 @@ export function createApp(container: Container) {
     app.get(/^(?!\/api\/|\/api$|\/healthz$).*/, (req, res, next) => {
       if (req.path.startsWith('/assets/') || /\.[a-z0-9]+$/i.test(req.path) || !req.accepts('html')) return next();
       res.setHeader('Cache-Control', 'no-cache');
-      res.sendFile(index);
+      res.type('html').send(indexHtml());
     });
   }
 
@@ -195,6 +234,7 @@ export function createApp(container: Container) {
     { method: 'post', path: '/api/crawl-batches/:id/jobs/:websiteId/cancel', permission: 'crawls.run', description: 'Cancel one website\'s crawl of the batch (the others continue)', handle: (req) => batches.cancelJob(req.actor!, String(req.params.id), String(req.params.websiteId)) },
   );
   app.locals.ready = ws.ready;
+  app.locals.workspaces = ws;
   container.diagnostics.endpoints.push(...routes.map((r) => ({ method: r.method.toUpperCase(), path: r.path, permission: r.permission, description: r.description })));
 
   for (const route of routes) {

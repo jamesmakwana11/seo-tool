@@ -101,6 +101,30 @@ export function blockedAddressReason(ip: string, policy: NetPolicy): string | un
 
 const INTERNAL_NAME = /(^|\.)(localhost|internal|local|localdomain|home\.arpa|intranet|lan)$|^metadata(\.google\.internal)?$|^instance-data$/i;
 
+/**
+ * Why a website address may not be registered for crawling (Manage websites, SEED_WEBSITES), or undefined. No DNS lookup
+ * here — a name that resolves to a blocked address is still refused on every request (assertAllowedUrl + connect-time
+ * check) — but IP literals in blocked ranges, internal host names and embedded credentials are refused up front.
+ */
+export function registrationBlockReason(raw: string, policy: NetPolicy): string | undefined {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return 'it is not a valid URL';
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'only http and https websites can be crawled';
+  if (u.username || u.password) return 'URLs with a user name or password are not accepted';
+  const host = u.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
+  if (!host) return 'the URL has no host';
+  if (net.isIP(host)) {
+    const why = blockedAddressReason(host, policy);
+    return why ? `${host} is ${why}` : undefined;
+  }
+  if (INTERNAL_NAME.test(host) && !(policy.allowLoopback && /(^|\.)localhost$/.test(host))) return `${host} is an internal host name`;
+  return undefined;
+}
+
 /** Rejects a URL that the crawler must never request. Resolves the host and checks every address. */
 export async function assertAllowedUrl(raw: string, policy: NetPolicy, resolve: (host: string) => Promise<string[]> = resolveAll): Promise<void> {
   let u: URL;

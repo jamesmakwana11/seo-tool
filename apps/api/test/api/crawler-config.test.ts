@@ -36,11 +36,11 @@ async function harness(env: Record<string, string>, engine?: CrawlEngine) {
 const options = (o: Record<string, unknown> = {}) => ({ startUrl: 'https://deodap.in', maxPages: null, maxDepth: null, timeoutMs: 15000, concurrency: 2, requestDelayMs: 250, ...o });
 
 describe('start-up validation of the crawler configuration', () => {
-  it('refuses to start in production when live crawling is on but no website is configured', () => {
-    expect(() => loadEnv({ ...PROD, CRAWLER_ALLOW_LIVE: 'true' })).toThrow(/CRAWLER_BASE_URL is not set/);
-    expect(() => loadEnv({ ...PROD, CRAWLER_ALLOW_LIVE: 'true' })).toThrow(/Render/);
+  it('starts in production with live crawling on and no CRAWLER_BASE_URL (registered websites stay crawlable)', () => {
+    // CRAWLER_BASE_URL only addresses the primary website; refusing to start would also block every website added under
+    // Manage websites, each of which has its own registered URL. The primary website reports the fix instead.
+    expect(loadEnv({ ...PROD, CRAWLER_ALLOW_LIVE: 'true' }).CRAWLER_ALLOW_LIVE).toBe(true);
     expect(loadEnv({ ...PROD, CRAWLER_ALLOW_LIVE: 'true', CRAWLER_BASE_URL: 'https://deodap.in' }).CRAWLER_BASE_URL).toBe('https://deodap.in');
-    // Live crawling off: no website needed (the Crawl Center explains why crawling is unavailable).
     expect(() => loadEnv({ ...PROD })).not.toThrow();
   });
 
@@ -54,6 +54,8 @@ describe('start-up validation of the crawler configuration', () => {
   it('explains the fix wherever the problem is reported', () => {
     expect(engineReadiness(undefined, true)).toEqual({ ready: false, reason: CRAWLER_BASE_URL_MISSING });
     expect(CRAWLER_BASE_URL_MISSING).toMatch(/CRAWLER_BASE_URL=https:\/\/deodap\.in/);
+    expect(CRAWLER_BASE_URL_MISSING).toMatch(/apps\/api\/\.env/);
+    expect(CRAWLER_BASE_URL_MISSING).toMatch(/Manage websites/);
   });
 });
 

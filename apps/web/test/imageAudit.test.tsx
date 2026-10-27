@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ImageAuditItem, ImageAuditJob, ImageAuditListResponse, ImageAuditQuery, ImageAuditStatusResponse } from '@sentinel/shared';
+import type { ImageAuditItem, ImageAuditJob, ImageAuditListResponse, ImageAuditQuery, ImageAuditStatusResponse, ImageOccurrencesResponse } from '@sentinel/shared';
 
 /** Image Audit screen against a mocked API: start, progress, cancel, state / problem filters, export, details drawer. */
 const fake = vi.hoisted(() => ({
@@ -12,6 +12,7 @@ const fake = vi.hoisted(() => ({
   resumed: [] as string[],
   exported: [] as { format: string; query: ImageAuditQuery }[],
   lastQuery: undefined as ImageAuditQuery | undefined,
+  occQueries: [] as { url: string; repeated?: boolean; offset?: number }[],
 }));
 
 const item = (url: string, over: Partial<ImageAuditItem>): ImageAuditItem => ({
@@ -22,7 +23,9 @@ const ITEMS: ImageAuditItem[] = [
   item('https://shop.test/cdn/missing.webp', { state: 'broken', status: 404, finalStatus: 404, reason: 'HTTP 404', issues: ['broken'], recommendations: ['Fix the file or its URL, or remove the <img> from the 1 page that show it (HTTP 404).'] }),
   item('https://shop.test/cdn/big.jpg', { status: 206, format: 'jpeg', bytes: 307_200, issues: ['heavy', 'legacy-format'], recommendations: ['Compress or resize: 300 KB (aim for under 200 KB).'], altMissing: 1 }),
   item('https://shop.test/cdn/later.webp', { state: 'pending' }),
+  item('https://shop.test/cdn/badge.png', { pageCount: 3, refs: 4, repeatedPages: 1, maxPerPage: 2, issues: ['repeated'], pages: ['https://shop.test/products/a', 'https://shop.test/products/b', 'https://shop.test/products/c'], recommendations: ['Shown more than once on 1 page.'] }),
 ];
+const BADGE_PAGES = ['https://shop.test/products/a', 'https://shop.test/products/b', 'https://shop.test/products/c'];
 
 vi.mock('@/api/client', () => ({
   API_MODE: 'http',
@@ -40,6 +43,17 @@ vi.mock('@/api/client', () => ({
       fake.lastQuery = q;
       const rows = ITEMS.filter((i) => (!q.state || i.state === q.state) && (!q.issue || i.issues.includes(q.issue)));
       return { job: fake.job, total: rows.length, offset: 0, limit: 50, rows, facets: { state: { ok: 2, broken: 1, pending: 1 }, issue: { broken: 1, heavy: 1, 'legacy-format': 1 } } };
+    },
+    getImageOccurrences: async (_id: string, url: string, q: { repeated?: boolean; offset?: number } = {}): Promise<ImageOccurrencesResponse> => {
+      fake.occQueries.push({ url, ...q });
+      const all = BADGE_PAGES.map((page, k) => ({
+        page, count: k === 0 ? 2 : 1,
+        instances: k === 0
+          ? [{ position: 2, alt: 'Secure checkout', inMain: true, location: 'main › section "trust" › .trust-badge' }, { position: 7, alt: '', inMain: false, location: 'footer › section "footer" › .footer__payment' }]
+          : [{ position: 3, alt: '', inMain: false }],
+      }));
+      const rows = q.repeated ? all.filter((r) => r.count > 1) : all;
+      return { url, available: true, pages: 3, repeatedPages: 1, references: 4, total: rows.length, offset: 0, limit: 50, rows };
     },
     exportImageAudit: async (_id: string, format: string, query: ImageAuditQuery) => { fake.exported.push({ format, query }); return { filename: `x.${format}`, mimeType: 'text/csv', content: 'a' }; },
   },
@@ -113,5 +127,28 @@ describe('Image Audit screen', () => {
     show();
     expect(await screen.findByText(/4 of 4 images answered \(100%\) · every image is answered/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Resume/ })).toBeNull();
+  });
+
+  it('shows the preview, each copy of an image repeated on the same page with where it is, and every page showing it', async () => {
+    fake.job = job('completed');
+    fake.occQueries = [];
+    show();
+    const table = await screen.findByRole('table');
+    const cell = await within(table).findByText('/cdn/badge.png');
+    expect(within(table).getAllByTestId('thumb').length).toBeGreaterThan(0); // thumbnail column
+    fireEvent.click(cell);
+    const rep = await screen.findByTestId('occ-repeated');
+    expect(rep.textContent).toMatch(/1 page shows? this image more than once/);
+    expect(within(rep).getByText('/products/a')).toBeTruthy();
+    expect(within(rep).getByText('2× on this page')).toBeTruthy();
+    expect(within(rep).getByText('main › section "trust" › .trust-badge')).toBeTruthy();
+    expect(within(rep).getByText('footer › section "footer" › .footer__payment')).toBeTruthy();
+    expect(within(rep).getByText('"Secure checkout"')).toBeTruthy();
+    expect(within(rep).queryByText('/products/b')).toBeNull(); // reuse on other pages is not a same-page repeat
+    const all = await screen.findByTestId('occ-pages');
+    for (const p of ['/products/a', '/products/b', '/products/c']) expect(within(all).getByText(p).closest('a')?.getAttribute('href')).toBe(`/pages/report?run=CRL-0007&url=${encodeURIComponent(`https://shop.test${p}`)}`);
+    expect(screen.getByText(/Reused on 3 pages/)).toBeTruthy();
+    expect(screen.getByText(/Shown more than once on 1 page \(up to 2× on one page\)/)).toBeTruthy();
+    expect(fake.occQueries).toEqual(expect.arrayContaining([expect.objectContaining({ url: 'https://shop.test/cdn/badge.png', repeated: true }), expect.objectContaining({ url: 'https://shop.test/cdn/badge.png', repeated: undefined })]));
   });
 });

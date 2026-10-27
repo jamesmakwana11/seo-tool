@@ -16,6 +16,7 @@ import { useToast } from '@/components/ui/Toast';
 import { saveFile } from '@/components/crawls/LiveCrawl';
 import { fmtDateTime, fmtNum, shortUrl } from '@/lib/format';
 import { useSitePlatform } from '@/websites/WebsiteContext';
+import { ImageThumb } from '@/components/crawls/ImageThumb';
 
 const PAGE_SIZE = 50;
 const STATE_TONE: Record<ImageCheckState, 'ok' | 'crit' | 'med' | 'neutral'> = { ok: 'ok', broken: 'crit', failed: 'crit', unverified: 'med', deferred: 'med', pending: 'neutral' };
@@ -230,9 +231,12 @@ function ImageList({ id, job }: { id: string; job: ImageAuditJob }) {
         columns={[
           {
             key: 'url', header: 'Image', sort: () => 0, cell: (i) => (
-              <div className="min-w-0 max-w-[360px]">
-                <p className="truncate font-mono text-xs text-ink" title={i.url}>{shortUrl(i.url)}</p>
-                {i.altText ? <p className="truncate text-xs text-muted" title={i.altText}>ALT: {i.altText}</p> : i.altMissing ? <p className="text-xs font-medium text-med-ink">No ALT text</p> : null}
+              <div className="flex min-w-0 max-w-[400px] items-center gap-2">
+                <ImageThumb src={i.url} alt="" size={36} />
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-xs text-ink" title={i.url}>{shortUrl(i.url)}</p>
+                  {i.altText ? <p className="truncate text-xs text-muted" title={i.altText}>ALT: {i.altText}</p> : i.altMissing ? <p className="text-xs font-medium text-med-ink">No ALT text</p> : null}
+                </div>
               </div>
             ),
           },
@@ -245,7 +249,7 @@ function ImageList({ id, job }: { id: string; job: ImageAuditJob }) {
           { key: 'issues', header: 'Problems', cell: (i) => (i.issues.length ? <span className="text-xs" title={i.issues.map((x) => IMAGE_ISSUE_LABELS[x]).join(', ')}>{i.issues.slice(0, 2).map((x) => IMAGE_ISSUE_LABELS[x]).join(', ')}{i.issues.length > 2 ? ` +${i.issues.length - 2}` : ''}</span> : <span className="text-xs text-faint">None</span>) },
         ]}
       />
-      <ImageDrawer item={open} runId={job.runId} onClose={() => setOpen(null)} />
+      <ImageDrawer item={open} auditId={id} runId={job.runId} onClose={() => setOpen(null)} />
     </Panel>
   );
 }
@@ -276,12 +280,90 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
   return <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-3 border-b border-line py-1.5 text-sm last:border-0"><dt className="text-muted">{k}</dt><dd className="min-w-0 break-words">{children}</dd></div>;
 }
 
-function ImageDrawer({ item: i, runId, onClose }: { item: ImageAuditItem | null; runId: string; onClose: () => void }) {
+const pageHref = (runId: string, p: string) => `/pages/report?run=${encodeURIComponent(runId)}&url=${encodeURIComponent(p)}`;
+const OCC_PAGE = 50;
+
+/**
+ * The pages showing one image, read from the crawl's image references: every page (paged), how many times the image
+ * appears on each, and — for `repeated` — every copy on the page with its position, HTML location, ALT and loading.
+ */
+function Occurrences({ auditId, runId, item, repeated }: { auditId: string; runId: string; item: ImageAuditItem; repeated?: boolean }) {
+  const [page, setPage] = useState(0);
+  const q = useApiQuery(['imageOccurrences', auditId, item.url, repeated ? 'repeated' : 'all', page], () => api.getImageOccurrences(auditId, item.url, { repeated, offset: page * OCC_PAGE, limit: OCC_PAGE }));
+  const kind = repeated ? 'repeated' : 'pages';
+  if (q.isLoading) return <LoadingBlock rows={3} />;
+  if (q.error || !q.data) {
+    return (
+      <div data-testid={`occ-${kind}-fallback`}>
+        <p className="mb-1 text-xs text-muted">The pages could not be loaded ({errorMessage(q.error)}).{repeated ? ' Which copies repeat could not be identified.' : ` The first ${item.pages.length} of ${fmtNum(item.pageCount)} pages:`}</p>
+        {!repeated && <ul className="space-y-0.5">{item.pages.map((p) => <li key={p}><Link className="break-all font-mono text-xs text-signal hover:underline" to={pageHref(runId, p)}>{shortUrl(p)}</Link></li>)}</ul>}
+      </div>
+    );
+  }
+  const d = q.data;
+  if (!d.available) {
+    return (
+      <div data-testid={`occ-${kind}-unavailable`}>
+        <p className="mb-1 text-xs text-muted">{d.reason}</p>
+        {!repeated && <ul className="space-y-0.5">{item.pages.map((p) => <li key={p}><Link className="break-all font-mono text-xs text-signal hover:underline" to={pageHref(runId, p)}>{shortUrl(p)}</Link></li>)}</ul>}
+      </div>
+    );
+  }
+  const pages = Math.max(1, Math.ceil(d.total / OCC_PAGE));
+  return (
+    <div data-testid={`occ-${kind}`}>
+      <p className="mb-1.5 text-xs text-ink-soft">
+        {repeated
+          ? <><span className="font-medium text-ink tabular-nums">{fmtNum(d.repeatedPages)}</span> {d.repeatedPages === 1 ? 'page shows' : 'pages show'} this image more than once.</>
+          : <>Shown on <span className="font-medium text-ink tabular-nums">{fmtNum(d.pages)}</span> page{d.pages === 1 ? '' : 's'} — {fmtNum(d.references)} &lt;img&gt; in total.</>}
+      </p>
+      <ul className="space-y-1.5">
+        {d.rows.map((o) => (
+          <li key={o.page} className="rounded-ctl border border-line px-2.5 py-1.5">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <Link className="min-w-0 flex-1 break-all font-mono text-xs text-signal hover:underline" to={pageHref(runId, o.page)} title={o.page}>{shortUrl(o.page)}</Link>
+              <a href={o.page} target="_blank" rel="noreferrer noopener" className="text-faint hover:text-signal" aria-label={`Open ${o.page} in a new tab`}><ExternalLink className="h-3.5 w-3.5" /></a>
+              <span className={`text-xs tabular-nums ${o.count > 1 ? 'font-medium text-med-ink' : 'text-muted'}`}>{o.count > 1 ? `${o.count}× on this page` : 'once'}</span>
+            </div>
+            {repeated && (
+              <table className="mt-1 w-full text-left text-xs">
+                <thead className="text-muted"><tr><th className="py-0.5 pr-2 font-normal">Copy</th><th className="py-0.5 pr-2 font-normal">Where in the HTML</th><th className="py-0.5 pr-2 font-normal">ALT</th><th className="py-0.5 font-normal">Size / loading</th></tr></thead>
+                <tbody>
+                  {o.instances.map((x, k) => (
+                    <tr key={k} className="border-t border-line align-top">
+                      <td className="py-1 pr-2 tabular-nums">{k + 1} <span className="text-muted">(image #{x.position})</span></td>
+                      <td className="py-1 pr-2">{x.location ? <Mono className="text-[11px]">{x.location}</Mono> : <span className="text-muted">{x.inMain ? 'Main content — section not identifiable' : 'Section not identifiable'}</span>}</td>
+                      <td className="py-1 pr-2">{x.alt === null ? <span className="text-med-ink">missing</span> : x.alt === '' ? <span className="text-muted">empty</span> : `"${x.alt}"`}</td>
+                      <td className="py-1">{x.width ? `${x.width}×${x.height ?? '?'}` : <span className="text-muted">no size</span>}{x.loading ? ` · ${x.loading}` : ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </li>
+        ))}
+      </ul>
+      {pages > 1 && (
+        <div className="mt-1.5 flex items-center gap-3 text-xs">
+          <button type="button" className="text-signal hover:underline disabled:text-faint disabled:no-underline" disabled={page === 0} onClick={() => setPage((n) => n - 1)}>Previous</button>
+          <span className="tabular-nums text-muted">{fmtNum(page * OCC_PAGE + 1)}–{fmtNum(Math.min(d.total, (page + 1) * OCC_PAGE))} of {fmtNum(d.total)}</span>
+          <button type="button" className="text-signal hover:underline disabled:text-faint disabled:no-underline" disabled={page + 1 >= pages} onClick={() => setPage((n) => n + 1)}>Next</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ImageDrawer({ item: i, auditId, runId, onClose }: { item: ImageAuditItem | null; auditId: string; runId: string; onClose: () => void }) {
+  const repeated = !!i && ((i.repeatedPages ?? 0) > 0 || i.issues.includes('repeated'));
   return (
     <Drawer open={!!i} onClose={onClose} title={i ? <span className="block truncate font-mono text-sm" title={i.url}>{shortUrl(i.url)}</span> : ''} width="lg">
       {i && (
         <div className="space-y-5">
-          <a href={i.url} target="_blank" rel="noreferrer noopener" className="inline-flex max-w-full items-center gap-1 break-all font-mono text-xs text-signal hover:underline">{i.url}<ExternalLink className="h-3 w-3 shrink-0" aria-hidden /></a>
+          <div className="flex items-start gap-3">
+            <ImageThumb src={i.url} alt={i.altText ?? ''} size={112} />
+            <a href={i.url} target="_blank" rel="noreferrer noopener" className="inline-flex min-w-0 max-w-full items-center gap-1 break-all font-mono text-xs text-signal hover:underline">{i.url}<ExternalLink className="h-3 w-3 shrink-0" aria-hidden /></a>
+          </div>
           <section>
             <h3 className="mb-1 text-sm font-semibold">Check</h3>
             <dl>
@@ -299,6 +381,8 @@ function ImageDrawer({ item: i, runId, onClose }: { item: ImageAuditItem | null;
             <h3 className="mb-1 text-sm font-semibold">In the HTML</h3>
             <dl>
               <Row k="References">{fmtNum(i.refs)} on {fmtNum(i.pageCount)} page{i.pageCount === 1 ? '' : 's'}{i.inMain ? '' : ' (outside the main content)'}</Row>
+              <Row k="Same page">{repeated ? <span className="font-medium text-med-ink">Shown more than once on {i.repeatedPages !== undefined ? `${fmtNum(i.repeatedPages)} page${i.repeatedPages === 1 ? '' : 's'}` : 'at least one page'}{i.maxPerPage ? ` (up to ${i.maxPerPage}× on one page)` : ''}</span> : 'Shown once per page'}</Row>
+              {i.pageCount > 1 && <Row k="Other pages">Reused on {fmtNum(i.pageCount)} pages <span className="text-xs text-muted">— normal for logos, badges and banners; not a problem</span></Row>}
               <Row k="ALT text">{i.altText ?? <span className="text-muted">none</span>}{i.altMissing ? <span className="ml-2 text-xs font-medium text-med-ink">missing on {fmtNum(i.altMissing)}</span> : null}{i.altEmpty ? <span className="ml-2 text-xs text-med-ink">alt="" on {fmtNum(i.altEmpty)}</span> : null}</Row>
               <Row k="width / height">{i.noDimensions ? <span className="text-med-ink">missing on {fmtNum(i.noDimensions)} reference{i.noDimensions === 1 ? '' : 's'}</span> : 'present'}</Row>
               <Row k="Lazy-loading">{fmtNum(i.lazy)} lazy{i.eagerBelowFold ? <span className="ml-2 text-med-ink">{fmtNum(i.eagerBelowFold)} below the fold without loading="lazy"</span> : null}</Row>
@@ -312,9 +396,17 @@ function ImageDrawer({ item: i, runId, onClose }: { item: ImageAuditItem | null;
             </section>
           )}
           <ImageFixes issues={i.issues} />
+          {repeated && (
+            <section data-testid="image-repeated-section">
+              <h3 className="mb-0.5 text-sm font-semibold">Repeated on the same page</h3>
+              <p className="mb-1.5 text-xs text-muted">The same image file appears more than once on one page. Each copy is listed with where it sits in the HTML, so you can remove the extra one or mark it decorative.</p>
+              <Occurrences key={`${i.url}-r`} auditId={auditId} runId={runId} item={i} repeated />
+            </section>
+          )}
           <section>
-            <h3 className="mb-1 text-sm font-semibold">Pages showing it{i.pageCount > i.pages.length ? ` (first ${i.pages.length} of ${fmtNum(i.pageCount)})` : ''}</h3>
-            <ul className="space-y-0.5">{i.pages.map((p) => <li key={p}><Link className="break-all font-mono text-xs text-signal hover:underline" to={`/pages/report?run=${encodeURIComponent(runId)}&url=${encodeURIComponent(p)}`}>{shortUrl(p)}</Link></li>)}</ul>
+            <h3 className="mb-0.5 text-sm font-semibold">Pages showing it ({fmtNum(i.pageCount)})</h3>
+            {i.pageCount > 1 && <p className="mb-1.5 text-xs text-muted">Using one image on several pages is not flagged; only extra copies on the same page are.</p>}
+            <Occurrences key={`${i.url}-a`} auditId={auditId} runId={runId} item={i} />
           </section>
         </div>
       )}

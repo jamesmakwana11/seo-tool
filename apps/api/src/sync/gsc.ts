@@ -17,7 +17,7 @@ import type { MetricsDoc } from '../repositories/types';
 import type { Ctx } from '../services/context';
 import { recomputeTiers } from './ga4';
 import {
-  addDays, googleToken, GSC_SCOPE, guardedSync, livePagesByPath, normalizePath, num, postJson, seriesIsDemo, siteOrigin, SyncError, upsertLivePage, ymd,
+  addDays, googleToken, GSC_SCOPE, guardedSync, integrationProperty, livePagesByPath, normalizePath, num, postJson, seriesIsDemo, siteOrigin, SyncError, upsertLivePage, ymd,
   type SyncDeps, type SyncResult,
 } from './common';
 
@@ -32,8 +32,8 @@ interface GscRow { keys?: string[]; clicks?: number; impressions?: number; ctr?:
 export async function gscSearch(ctx: Ctx, deps: SyncDeps = {}): Promise<SyncResult> {
   return guardedSync(ctx, 'gsc', deps, async () => {
     const label = 'Google Search Console';
-    const property = (ctx.env.GSC_PROPERTY ?? '').trim();
-    if (!property) throw new SyncError(`${label}: GSC_PROPERTY is not set`);
+    const property = await integrationProperty(ctx, 'gsc');
+    if (!property) throw new SyncError(`${label}: no property — save it under Settings → Integrations (or set GSC_PROPERTY)`);
     const token = await googleToken(ctx, deps, label, ctx.env.GSC_SERVICE_ACCOUNT_JSON, GSC_SCOPE);
     const url = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(property)}/searchAnalytics/query`;
     const auth = { authorization: `Bearer ${token}` };

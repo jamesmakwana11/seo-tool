@@ -121,7 +121,10 @@ export function auditPage(u: CrawledUrl, limits: Partial<PageAuditLimits> = {}):
   if (!h1s.length) add({ id: 'h1-missing', area: 'headings', status: 'fail', label: 'No H1 heading', recommendation: 'Add one H1 that names the page topic (product or collection name).' });
   else if (h1s.length > 1) add({ id: 'h1-multiple', area: 'headings', status: 'warn', label: `${h1s.length} H1 headings`, items: h1s.map((h) => h || '(empty)'), recommendation: 'Keep one H1; turn the others into H2s (often a theme section repeats the title as H1).' });
   else if (!h1s[0]) add({ id: 'h1-empty', area: 'headings', status: 'warn', label: 'H1 is empty', recommendation: 'Put the page topic in the H1 text (an image-only H1 has no text).' });
-  else add({ id: 'h1-ok', area: 'headings', status: 'pass', label: 'One H1', value: h1s[0] });
+  else {
+    add({ id: 'h1-ok', area: 'headings', status: 'pass', label: 'One H1', value: h1s[0] });
+    if (flags.has('dup-h1')) add({ id: 'h1-duplicate', area: 'headings', status: 'warn', label: 'Same H1 as other pages in this crawl', value: h1s[0], recommendation: 'Give each page its own H1 (product name with its variant, colour or size; collection name with its focus).' });
+  }
   const hs = u.headings ?? [];
   const h2 = hs.filter((h) => h.level === 2).length || u.h2Count || 0;
   const h3 = hs.filter((h) => h.level === 3).length;
@@ -162,7 +165,7 @@ export function auditPage(u: CrawledUrl, limits: Partial<PageAuditLimits> = {}):
 
   // ---- links
   const broken = u.brokenLinks ?? [];
-  if (broken.length) add({ id: 'broken-links', area: 'links', status: 'fail', label: `${broken.length}${broken.length >= 20 ? '+' : ''} broken internal link${broken.length === 1 ? '' : 's'}`, items: broken, recommendation: 'Update or remove these links (or redirect the targets) — they lead visitors and crawlers to errors.' });
+  if (broken.length) add({ id: 'broken-links', area: 'links', status: 'fail', label: `${broken.length}${broken.length >= 500 ? '+' : ''} broken internal link${broken.length === 1 ? '' : 's'}`, items: broken, recommendation: 'Update or remove these links (or redirect the targets) — they lead visitors and crawlers to errors.' });
   else if (u.internalLinks !== undefined) add({ id: 'links-ok', area: 'links', status: 'pass', label: 'No broken internal links found', value: `${u.internalLinks} internal links` });
   if (u.nofollowLinks) add({ id: 'nofollow-links', area: 'links', status: 'warn', label: `${u.nofollowLinks} internal link${u.nofollowLinks === 1 ? ' is' : 's are'} nofollow`, recommendation: 'Remove rel="nofollow" from links to your own pages, so they pass on ranking signals and get crawled.' });
   if (u.externalLinks !== undefined) add({ id: 'external-links', area: 'links', status: 'info', label: `${u.externalLinks} link${u.externalLinks === 1 ? '' : 's'} to other websites` });
@@ -174,9 +177,18 @@ export function auditPage(u: CrawledUrl, limits: Partial<PageAuditLimits> = {}):
   if (u.images !== undefined) {
     const missing = u.imagesMissingAlt ?? 0;
     const shown = u.imagesMissingAltSrc ?? [];
-    const altItems = shown.length ? [...shown, ...(missing > shown.length ? [`… and ${missing - shown.length} more`] : [])] : undefined;
+    const altItems = shown.length ? [...shown, ...(missing > shown.length ? [`… and ${missing - shown.length} more (their addresses were not recorded by this crawl — run a new crawl to list them)`] : [])] : undefined;
     if (missing) add({ id: 'alt-missing', area: 'images', status: missing >= 3 || missing === u.images ? 'fail' : 'warn', label: `${missing} of ${u.images} image${u.images === 1 ? '' : 's'} without ALT text`, items: altItems, recommendation: 'Describe each product image in its ALT text (product, colour, angle); decorative images can use alt="".' });
     else if (u.images) add({ id: 'alt-ok', area: 'images', status: 'pass', label: 'All images have ALT text', value: `${u.images} images` });
+  }
+  // The same image several times on this page (an image reused on other pages is not a problem and is not flagged).
+  const rep = u.repeatedImages ?? [];
+  if (rep.length) {
+    add({
+      id: 'images-repeated', area: 'images', status: 'warn', label: `${rep.length} image${rep.length === 1 ? '' : 's'} shown more than once on this page`,
+      items: rep.map((r) => `${r.src} — ${r.count}×`),
+      recommendation: 'Remove the duplicate copies (often a theme section or gallery output twice, or a header and footer showing the same badge); keep one where it is needed.',
+    });
   }
   return done(u, checks);
 }
@@ -209,8 +221,18 @@ export interface CrawlPageReport {
   row: CrawledUrl;
   audit: PageAudit;
   limits: PageAuditLimits;
-  /** Other pages of the crawl with the same title / meta description (first 10 of `total`). */
-  duplicates?: { title: { urls: string[]; total: number }; meta: { urls: string[]; total: number } };
+  /**
+   * Other pages of the crawl with the same title / meta description / H1: the shared text and every other page's URL
+   * (`total` = number of other pages; `urls` lists all of them unless `truncated`).
+   */
+  duplicates?: { title: DuplicateGroup; meta: DuplicateGroup; h1?: DuplicateGroup };
+}
+
+export interface DuplicateGroup {
+  text?: string;
+  urls: string[];
+  total: number;
+  truncated?: boolean;
 }
 
 /**
@@ -247,6 +269,8 @@ export const PAGE_AUDIT_TODO: { id: string; label: string; area: PageAuditArea }
   { id: 'canonical-multiple', label: 'Conflicting canonical tags', area: 'canonical' },
   { id: 'page-nofollow', label: 'Page is nofollow', area: 'indexability' },
   { id: 'nofollow-links', label: 'Nofollow internal links', area: 'links' },
+  { id: 'h1-duplicate', label: 'Duplicate H1', area: 'headings' },
+  { id: 'images-repeated', label: 'Image repeated on the page', area: 'images' },
 ];
 const TODO_BIT = new Map(PAGE_AUDIT_TODO.map((t, i) => [t.id, i]));
 
@@ -325,6 +349,8 @@ export function pageCheckFix(id: string, template?: string): { where: FixLocatio
     'h1-missing': { where: [theme(`sections/main-${t === 'other' ? 'page' : t.replace('blog_article', 'article')}.liquid (make the title an <h1>)`), content], time: m(15, 30, 'theme change: wrap the page title in <h1> — fixes every page of this template') },
     'h1-multiple': { where: [theme('sections/ (a section repeating the title as <h1>)'), content], time: m(15, 30, 'change the extra <h1> to <h2> in the section or description') },
     'h1-empty': { where: [theme('the section that renders the <h1>'), content], time: m(10, 20, 'put text in the H1 (an image-only H1 has none)') },
+    'h1-duplicate': { where: [content, editor], time: m(5, 10, 'make this page’s H1 unique (the other pages need the same)') },
+    'images-repeated': { where: [theme('the section / gallery that outputs the image twice (see “where” for each copy)'), content], time: m(10, 20, 'remove the duplicate block or image') },
     'h2-missing': { where: [content], time: m(10, 20, 'add sub-headings to the description') },
     'headings-skip': { where: [content, theme('sections/ heading tags')], time: m(10, 20, 'fix the heading levels in the description or section') },
     'headings-count': { where: [content], time: m(10, 20, 'structure the copy with H2 / H3 sub-headings') },

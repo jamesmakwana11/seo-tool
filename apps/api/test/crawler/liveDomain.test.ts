@@ -76,6 +76,6 @@ describe('real-domain checks (mocked network)', () => {
 
   it('refuses to crawl a host other than CRAWLER_BASE_URL', async () => {
     const engine = makeEngine('https://deodap.example', { allowLive: true, fetchImpl: mockFetch({}) });
-    await expect(engine.run({ type: 'smart', baseUrl: 'https://evil.example', maxPages: 1, tierOf: tier2 })).rejects.toThrow(/only the configured/);
+    await expect(engine.run({ type: 'smart', baseUrl: 'https://evil.example', maxPages: 1, tierOf: tier2 })).rejects.toThrow(/only this website's own host/);
   });
 });

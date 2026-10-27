@@ -23,7 +23,7 @@ export function UrlList({ urls, max = 8, title }: { urls: string[]; max?: number
       <ul className="divide-y divide-line rounded-ctl border border-line">
         {shown.map((u) => (
           <li key={u} className="flex items-center gap-2 px-2.5 py-1.5">
-            <Mono className="min-w-0 flex-1 truncate text-ink-soft">{shortUrl(u)}</Mono>
+            <a href={u} target="_blank" rel="noreferrer noopener" className="min-w-0 flex-1 truncate hover:text-signal hover:underline" title={u}><Mono className="text-ink-soft">{shortUrl(u)}</Mono></a>
             <a href={u} target="_blank" rel="noreferrer noopener" className="text-faint hover:text-signal" aria-label={`Open ${u} in a new tab`}><ExternalLink className="h-3.5 w-3.5" /></a>
           </li>
         ))}
@@ -53,11 +53,26 @@ export function EvidenceList({ evidence }: { evidence: Evidence[] }) {
               <span className="ml-auto text-xs text-muted">{fmtDateTime(e.capturedAt)}</span>
             </div>
             {e.url && <div className="mb-1.5"><a href={e.url} target="_blank" rel="noreferrer noopener" className="font-mono text-xs text-signal hover:underline">{shortUrl(e.url)}</a></div>}
+            <EvidenceUrls data={e.data} />
             {e.content && (codey ? <Code language={e.kind === 'jsonld' ? 'JSON-LD' : e.kind === 'http_response' ? 'HTTP' : e.kind === 'diff' ? 'diff' : 'HTML'}>{e.content}</Code> : e.kind === 'text_passage' ? <blockquote className="border-l-2 border-crit/60 bg-crit-tint/40 px-3 py-2 text-sm italic text-ink-soft">{e.content}</blockquote> : <p className="text-sm text-ink-soft">{e.content}</p>)}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/** Evidence that names related pages (duplicate groups): the shared text, every page and the exact total. */
+function EvidenceUrls({ data }: { data?: Record<string, unknown> }) {
+  const urls = Array.isArray(data?.urls) ? (data!.urls as unknown[]).filter((u): u is string => typeof u === 'string') : [];
+  if (!urls.length) return null;
+  const total = typeof data!.total === 'number' ? data!.total : urls.length;
+  const what = typeof data!.duplicateOf === 'string' ? data!.duplicateOf : undefined;
+  return (
+    <div className="mb-2" data-testid="evidence-urls">
+      {what && typeof data!.text === 'string' && <p className="mb-1.5 text-sm text-ink-soft">Shared {what}: <span className="font-medium text-ink">"{data!.text}"</span> <span className="text-muted">({data!.text.length} characters)</span></p>}
+      <UrlList urls={urls} max={10} title={`${total.toLocaleString('en-US')} page${total === 1 ? '' : 's'}${urls.length < total ? ` — first ${urls.length.toLocaleString('en-US')} listed here; the full list is on All pages` : ''}`} />
+    </div>
   );
 }
 

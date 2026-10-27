@@ -6,9 +6,15 @@ export default defineConfig(({ mode }) => {
   // `vite --mode http` / `vite build --mode http`: talk to the real API server (works the same on Windows, macOS and Linux).
   if (mode === 'http' && !process.env.VITE_API_MODE) process.env.VITE_API_MODE = 'http';
   return {
-  plugins: [react()],
-  // Relative asset URLs for static review hosting (VITE_ROUTER=hash); absolute by default.
-  base: process.env.VITE_ROUTER === 'hash' || process.env.VITE_ROUTER === 'memory' ? './' : '/',
+  plugins: [
+    react(),
+    // Production (http) build: resolve the relative asset URLs from the site root by default. The API server replaces
+    // this with the real base path when it serves index.html, so the same build works at / and under /seo-tool/.
+    ...(mode === 'http' && !process.env.VITE_ROUTER ? [{ name: 'sentinel-base-href', transformIndexHtml: (html: string) => html.replace('<head>', '<head>\n    <base href="/" />') }] : []),
+  ],
+  // Relative asset URLs: static review hosting (VITE_ROUTER=hash / memory), and the production (http) build, which the
+  // API server may serve under a sub-path (APP_BASE_URL=https://host/seo-tool) — it sets <base href> in index.html.
+  base: process.env.VITE_ROUTER === 'hash' || process.env.VITE_ROUTER === 'memory' || (mode === 'http' && !process.env.VITE_ROUTER) ? './' : '/',
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: { port: 5173, proxy: { '/api': 'http://localhost:4000' } },
   build: { chunkSizeWarningLimit: 900 },

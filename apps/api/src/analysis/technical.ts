@@ -562,7 +562,7 @@ export function analyzeDuplicate(prep: Prepared): AnalyzerResult {
       if (!groups.length) return;
       problems.push({
         label, urls: groups.flat(),
-        evidence: groups.slice(0, 6).map((g) => ({ kind: 'text_passage' as const, label: `${g.length} pages share: "${trunc(show(g[0]), 120)}"`, content: show(g[0]), data: { urls: g } })),
+        evidence: groups.slice(0, 15).map((g) => ({ kind: 'text_passage' as const, label: `${g.length} pages share: "${trunc(show(g[0]), 120)}"`, content: show(g[0]), data: { urls: g.slice(0, 1000), total: g.length, text: show(g[0]) } })),
       });
     };
     const byUrl = new Map(pages.map((p) => [p.url, p]));

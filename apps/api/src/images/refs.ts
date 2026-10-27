@@ -10,8 +10,8 @@ import path from 'node:path';
 import type { ParsedPage } from '../crawler/types';
 import { gzWriter, readNdjsonGz, type ReadStats } from '../gocrawl/files';
 
-/** One <img> of a page: s = src, a = alt (null = no alt attribute), w / h = width / height attributes, l = loading, m = in main content, x = position on the page. */
-export interface ImageRef { s: string; a: string | null; w?: string; h?: string; l?: string; m: boolean; x: number }
+/** One <img> of a page: s = src, a = alt (null = no alt attribute), w / h = width / height attributes, l = loading, m = in main content, x = position on the page, c = where on the page (landmark › section › component). */
+export interface ImageRef { s: string; a: string | null; w?: string; h?: string; l?: string; m: boolean; x: number; c?: string }
 /** One page: p = page URL, t = template, i = its images. */
 export interface ImageRefPage { p: string; t?: string; i: ImageRef[] }
 
@@ -31,6 +31,7 @@ export function imageRefsOf(p: ParsedPage, ok: boolean): ImageRefPage | undefine
       if (im.width) r.w = im.width;
       if (im.height) r.h = im.height;
       if (im.loading) r.l = im.loading;
+      if (im.location) r.c = im.location.slice(0, 200);
       return r;
     }),
   };

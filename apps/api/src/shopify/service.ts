@@ -81,7 +81,25 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
   const requestedScopes = () => (env.SHOPIFY_SCOPES ? env.SHOPIFY_SCOPES.split(',').map((s) => s.trim()).filter(Boolean) : [...SHOPIFY_REQUIRED_SCOPES, ...SHOPIFY_OPTIONAL_SCOPES]);
   const appUrl = () => (env.SHOPIFY_APP_URL ?? env.APP_BASE_URL)?.replace(/\/$/, '');
   const redirectUrl = () => (appUrl() ? `${appUrl()}/api/shopify/oauth/callback` : undefined);
-  const oauthConfigured = () => !!(env.SHOPIFY_API_KEY && env.SHOPIFY_API_SECRET && appUrl());
+  const oauthConfigured = () => !!(env.SHOPIFY_API_KEY && env.SHOPIFY_API_SECRET && appUrl()) && !oauthSetupProblem();
+
+  /**
+   * What stops "Connect with Shopify" from working, in words an admin can act on (names only — never values), or
+   * undefined when the server side of OAuth is complete. The Shopify Dev Dashboard side (the allowed redirection URL)
+   * can only be checked by Shopify, so the exact URL to register is part of the message.
+   */
+  function oauthSetupProblem(): string | undefined {
+    const missing = [!env.SHOPIFY_API_KEY && 'SHOPIFY_API_KEY (the app\u2019s Client ID)', !env.SHOPIFY_API_SECRET && 'SHOPIFY_API_SECRET (the app\u2019s Client secret)', !appUrl() && 'APP_BASE_URL (the public address of Sentinel, e.g. https://apps.deodap.info/seo-tool)'].filter(Boolean);
+    const register = redirectUrl() ? ` In the Shopify Dev Dashboard → your app → Configuration, the Allowed redirection URL must be exactly ${redirectUrl()}.` : '';
+    if (missing.length) {
+      return `Connect with Shopify is not set up on the server: set ${missing.join(', ')} in the API server environment and restart the API.${register}${deps.useEnvToken ? ' (Alternative for the primary website: SHOPIFY_STORE_DOMAIN + SHOPIFY_ADMIN_TOKEN from a custom app.)' : ''}`;
+    }
+    const u = appUrl()!;
+    if (env.NODE_ENV === 'production' && !/^https:\/\//i.test(u)) return `Shopify only redirects to https addresses: ${env.SHOPIFY_APP_URL ? 'SHOPIFY_APP_URL' : 'APP_BASE_URL'} must start with https:// (now ${new URL(u).protocol}).`;
+    const miss = missingScopes(SHOPIFY_REQUIRED_SCOPES, requestedScopes());
+    if (miss.length) return `SHOPIFY_SCOPES leaves out ${miss.join(', ')}, which the SEO editor needs — remove SHOPIFY_SCOPES (the defaults are correct) or add them, then restart the API.`;
+    return undefined;
+  }
 
   function client(): AdminClient {
     if (!conn) throw new ApiError(409, 'SHOPIFY_NOT_CONNECTED', 'Shopify is not connected. Connect the store in Settings → Shopify.');
@@ -135,7 +153,8 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
     await loadScopes();
     const problems: string[] = [];
     if (!conn) {
-      if (!oauthConfigured()) problems.push(`To connect with OAuth set ${[!env.SHOPIFY_API_KEY && 'SHOPIFY_API_KEY', !env.SHOPIFY_API_SECRET && 'SHOPIFY_API_SECRET', !appUrl() && 'APP_BASE_URL (or SHOPIFY_APP_URL)'].filter(Boolean).join(', ')} on the server${deps.useEnvToken ? ', or set SHOPIFY_STORE_DOMAIN + SHOPIFY_ADMIN_TOKEN' : ''}.`);
+      const setup = oauthSetupProblem();
+      if (setup) problems.push(setup);
     }
     if (conn?.scopeProblem) problems.push(conn.scopeProblem);
     const missing = conn?.scopes ? missingScopes(SHOPIFY_REQUIRED_SCOPES, conn.scopes) : [];
@@ -330,9 +349,9 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
 
     async startOAuth(actor: Actor, shopInput: string): Promise<{ authorizeUrl: string }> {
       await need(ctx, actor, 'integrations.manage');
-      if (!oauthConfigured()) throw new ApiError(409, 'SHOPIFY_OAUTH_NOT_CONFIGURED', (await status()).problems[0] ?? 'OAuth is not configured.');
+      if (!oauthConfigured()) throw new ApiError(409, 'SHOPIFY_OAUTH_NOT_CONFIGURED', oauthSetupProblem() ?? 'OAuth is not configured.');
       const shop = normalizeShop(shopInput);
-      if (!shop) throw badRequest('Enter the store’s myshopify domain, e.g. deodap.myshopify.com.');
+      if (!shop) throw badRequest('Enter the store’s .myshopify.com domain (Shopify admin → Settings → Domains), e.g. deodap.myshopify.com — not the storefront domain.');
       const st = states.issue({ shop, actorId: actor.id, actorName: actor.name, owner: ownerKey });
       await audit(ctx, actor, 'shopify.oauth_start', 'shopify', shop, `Started Shopify connection for ${shop}`);
       return { authorizeUrl: authorizeUrl({ shop, apiKey: env.SHOPIFY_API_KEY!, scopes: requestedScopes(), redirectUri: redirectUrl()!, state: st.state }) };

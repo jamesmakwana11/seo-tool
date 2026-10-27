@@ -1,7 +1,11 @@
+import { useState } from 'react';
 import clsx from 'clsx';
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight, CircleAlert, CircleCheck, Info, TriangleAlert } from 'lucide-react';
 import { PAGE_AUDIT_AREA_LABELS, localizeLocation, pageCheckFix, type PageAudit, type PageAuditArea, type PageAuditStatus } from '@sentinel/shared';
 import { useSitePlatform } from '@/websites/WebsiteContext';
+import { CheckDetails, hasDetails, type AuditContext } from './CheckDetails';
+
+export type { AuditContext } from './CheckDetails';
 
 /** Page audit score 0–100: poor under 50, fair 50–79, good 80+. */
 export function ScoreBadge({ score, large }: { score?: number | null; large?: boolean }) {
@@ -41,28 +45,49 @@ function FixHint({ id, template }: { id: string; template?: string }) {
   );
 }
 
-export function AuditChecks({ audit, only, template }: { audit: PageAudit; only?: 'problems'; template?: string }) {
+/**
+ * With `context` (the page row and its crawl) every finding is expandable: the affected page, the detected values and
+ * the related pages, images and links in full, without leaving the report.
+ */
+export function AuditChecks({ audit, only, template, context }: { audit: PageAudit; only?: 'problems'; template?: string; context?: AuditContext }) {
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
   const list = only === 'problems' ? audit.checks.filter((c) => c.status === 'fail' || c.status === 'warn') : audit.checks;
   if (audit.notAudited && !list.length) return <p className="text-sm text-muted">{audit.notAudited}</p>;
   if (!list.length) return <p className="text-sm text-ok-ink">Every checked element passes.</p>;
   const areas = AREA_ORDER.filter((a) => list.some((c) => c.area === a));
+  const expandable = context ? list.filter(hasDetails).map((c) => c.id) : [];
+  const toggle = (id: string) => setOpen((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const allOpen = expandable.length > 0 && expandable.every((id) => open.has(id));
   return (
     <div className="space-y-3">
       {audit.notAudited && <p className="text-xs text-muted">{audit.notAudited}</p>}
+      {expandable.length > 1 && (
+        <div className="flex justify-end">
+          <button type="button" className="text-xs font-medium text-signal hover:underline" onClick={() => setOpen(allOpen ? new Set() : new Set(expandable))} data-testid="details-all">{allOpen ? 'Collapse all details' : 'Expand all details'}</button>
+        </div>
+      )}
       {areas.map((a) => (
         <div key={a}>
           {only !== 'problems' && <h4 className="mb-1 text-xs font-semibold text-muted">{PAGE_AUDIT_AREA_LABELS[a]}</h4>}
           <ul className="space-y-1.5">
             {list.filter((c) => c.area === a).map((c) => {
               const I = ICON[c.status];
+              const canOpen = !!context && hasDetails(c);
+              const isOpen = canOpen && open.has(c.id);
               return (
                 <li key={c.id} className="flex gap-2 rounded-ctl border border-line px-3 py-2">
                   <I.icon className={clsx('mt-0.5 h-4 w-4 shrink-0', I.cls)} aria-label={I.label} />
                   <div className="min-w-0 flex-1 text-sm">
-                    <p className="font-medium text-ink">{c.label}</p>
+                    {canOpen ? (
+                      <button type="button" onClick={() => toggle(c.id)} aria-expanded={isOpen} className="flex w-full items-start gap-1 text-left font-medium text-ink hover:text-signal" data-testid={`details-toggle-${c.id}`}>
+                        <span className="min-w-0 flex-1">{c.label}</span>
+                        <span className="inline-flex shrink-0 items-center gap-0.5 text-xs font-normal text-signal">{isOpen ? 'Hide details' : 'Details'}{isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</span>
+                      </button>
+                    ) : <p className="font-medium text-ink">{c.label}</p>}
                     {c.value && <p className="mt-0.5 break-words text-xs text-ink-soft">{c.value}</p>}
                     {c.items?.length ? <ul className="mt-1 space-y-0.5">{c.items.map((x) => <li key={x} className="break-all font-mono text-[11.5px] text-ink-soft">{x}</li>)}</ul> : null}
                     {c.recommendation && (c.status === 'fail' || c.status === 'warn' || only !== 'problems') && <p className="mt-1 text-xs text-signal-dark">{c.recommendation}</p>}
+                    {isOpen && context && <CheckDetails check={c} ctx={context} />}
                     {(c.status === 'fail' || c.status === 'warn') && <FixHint id={c.id} template={template} />}
                   </div>
                 </li>
