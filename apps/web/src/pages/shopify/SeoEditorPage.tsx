@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Download, ExternalLink, FilePlus2, RefreshCw, RotateCcw, Search, Send, Trash2 } from 'lucide-react';
-import type { ShopifyApplyBatchResult, ShopifyApplyPreview, ShopifyDraft, ShopifyFieldDraft, ShopifyResourceKind } from '@sentinel/shared';
+import { Download, ExternalLink, FilePlus2, GitCompare, RefreshCw, RotateCcw, Search, Send, Trash2 } from 'lucide-react';
+import { ApiError, type ShopifyApplyBatchResult, type ShopifyApplyPreview, type ShopifyDraft, type ShopifyFieldDraft, type ShopifyResourceKind, type ShopifyThemeProposal } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { errorMessage, useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
@@ -10,7 +10,7 @@ import { DataTable } from '@/components/ui/DataTable';
 import { Dialog, Drawer } from '@/components/ui/overlay';
 import { useToast } from '@/components/ui/Toast';
 import { saveFile } from '@/components/crawls/LiveCrawl';
-import { ThemeWork } from '@/components/shopify/ThemeWork';
+import { ProposalDialog, ThemeWork } from '@/components/shopify/ThemeWork';
 import { fmtDateTime } from '@/lib/format';
 
 const KIND_LABEL: Record<ShopifyResourceKind, string> = { product: 'Product', collection: 'Collection', page: 'Page', article: 'Article' };
@@ -183,7 +183,7 @@ function DraftEditor({ d, onApply, onClosed }: { d: ShopifyDraft; onApply: () =>
       {d.result && <ResultView d={d} />}
       <section className="space-y-4">
         <h3 className="font-semibold">Fields</h3>
-        {d.fields.map((f) => <FieldEditor key={`${d.id}:${f.key}`} f={f} onSave={(v) => save.mutate({ [f.key]: v })} saving={save.isPending} />)}
+        {d.fields.map((f) => <FieldEditor key={`${d.id}:${f.key}`} f={f} draftId={d.id} onSave={(v) => save.mutate({ [f.key]: v })} saving={save.isPending} />)}
       </section>
       <div className="sticky bottom-0 -mx-1 flex flex-wrap gap-2 border-t border-line bg-surface px-1 py-3">
         <Button variant="primary" icon={<Send className="h-4 w-4" />} disabled={!selected.length} onClick={onApply}>Review and apply {selected.length} change{selected.length === 1 ? '' : 's'}</Button>
@@ -196,8 +196,10 @@ function DraftEditor({ d, onApply, onClosed }: { d: ShopifyDraft; onApply: () =>
   );
 }
 
-function FieldEditor({ f, onSave, saving }: { f: ShopifyFieldDraft; onSave: (v: { proposed?: string; include?: boolean }) => void; saving: boolean }) {
+function FieldEditor({ f, draftId, onSave, saving }: { f: ShopifyFieldDraft; draftId: string; onSave: (v: { proposed?: string; include?: boolean }) => void; saving: boolean }) {
+  const { can } = useAuth();
   const [v, setV] = useState(f.proposed);
+  const themeH1 = f.key === 'h1' && f.applyVia === 'theme';
   useEffect(() => setV(f.proposed), [f.proposed]);
   const isHtml = f.key === 'bodyHtml' || f.key === 'summaryHtml';
   const long = isHtml || f.key === 'seoDescription';
@@ -212,7 +214,7 @@ function FieldEditor({ f, onSave, saving }: { f: ShopifyFieldDraft; onSave: (v: 
           {f.source === 'suggested' && <Badge tone="signal">Suggested</Badge>}
           {f.source === 'manual' && <Badge>Edited</Badge>}
         </div>
-        <Checkbox label="Apply" checked={f.include} disabled={!changed || saving} onChange={(inc) => onSave({ include: inc })} />
+        {themeH1 ? <ThemeH1Button draftId={draftId} text={v} disabled={!can('shopify.theme') || !v.trim() || v === f.current} /> : <Checkbox label="Apply" checked={f.include} disabled={!changed || saving} onChange={(inc) => onSave({ include: inc })} />}
       </div>
       {f.reason && <p className="mt-1 text-xs text-ink-soft">{f.reason}</p>}
       {f.hint && (/^https?:\/\//.test(f.hint) ? <img src={f.hint} alt="" className="mt-2 h-20 w-20 rounded object-cover" loading="lazy" /> : <p className="mt-1 text-xs text-muted">{f.hint}</p>)}
@@ -238,6 +240,39 @@ function FieldEditor({ f, onSave, saving }: { f: ShopifyFieldDraft; onSave: (v: 
         </ul>
       )}
     </div>
+  );
+}
+
+/** H1 rendered by the theme: finds the file that contains it and creates a theme proposal (diff + backup + confirmation). */
+function ThemeH1Button({ draftId, text, disabled }: { draftId: string; text: string; disabled: boolean }) {
+  const toast = useToast();
+  const [files, setFiles] = useState<string[] | null>(null);
+  const [file, setFile] = useState('');
+  const [proposal, setProposal] = useState<ShopifyThemeProposal | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async (filename?: string) => {
+    setBusy(true);
+    try {
+      const p = await api.proposeShopifyH1Theme(draftId, { text, ...(filename ? { filename } : {}) });
+      setFiles(null);
+      setProposal(p);
+    } catch (e) {
+      const list = e instanceof ApiError ? (e.details as { files?: string[] } | undefined)?.files : undefined;
+      if (list?.length) { setFiles(list); setFile(list[0]); toast.error(`${errorMessage(e)} Pick the file, then choose “Change in theme” again.`); } else toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      {files && (
+        <Select aria-label="Theme file with the H1" value={file} onChange={(e) => setFile(e.target.value)} className="text-xs">
+          {files.map((x) => <option key={x} value={x}>{x}</option>)}
+        </Select>
+      )}
+      <Button size="sm" variant="primary" icon={<GitCompare className="h-4 w-4" />} disabled={disabled} loading={busy} onClick={() => void run(files ? file : undefined)}>Change in theme</Button>
+      {proposal && <ProposalDialog p={proposal} onClose={() => setProposal(null)} />}
+    </span>
   );
 }
 

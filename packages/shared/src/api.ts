@@ -312,6 +312,10 @@ export interface SentinelApi {
   /** Save the Shopify app's Client ID, Client secret (stored encrypted on the server; empty = keep) and app URL. */
   saveShopifyAppCredentials(input: { clientId: string; clientSecret?: string; appUrl?: string }): Promise<ShopifyStatus>;
   removeShopifyAppCredentials(): Promise<ShopifyStatus>;
+  /** Incremental monitoring of the selected website: last run and recent changes. */
+  getMonitor(): Promise<MonitorStatus>;
+  /** Run an incremental check now (targeted requests only). */
+  runMonitor(): Promise<MonitorStatus>;
   resolveShopifyUrl(url: string): Promise<ShopifyResolveResult>;
   listShopifyResources(input: { kind: ShopifyResourceKind; q?: string; after?: string }): Promise<ShopifyResourceList>;
   /** Builds a draft for one resource (from a crawled URL, or kind + id) with suggested changes. Nothing is written to Shopify. */
@@ -333,6 +337,8 @@ export interface SentinelApi {
   reauditShopifyDraft(id: string): Promise<ShopifyDraft>;
   listShopifyThemes(): Promise<ShopifyTheme[]>;
   getShopifyThemeFile(themeId: string, filename: string): Promise<ShopifyThemeFile>;
+  /** H1 rendered by the theme: proposes the change in the theme file that contains it (diff + backup, confirmed separately). */
+  proposeShopifyH1Theme(draftId: string, input: { text: string; filename?: string; themeId?: string }): Promise<ShopifyThemeProposal>;
   proposeShopifyThemeChange(input: { themeId: string; filename: string; content: string; reason: string }): Promise<ShopifyThemeProposal>;
   listShopifyThemeProposals(): Promise<ShopifyThemeProposal[]>;
   applyShopifyThemeProposal(id: string, confirm: string): Promise<ShopifyThemeProposal>;
@@ -461,4 +467,48 @@ export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public details?: unknown) {
     super(message);
   }
+}
+
+// ------------------------------------------------------------------ incremental monitoring
+
+/** One change found by incremental monitoring (stable id: the same change is never recorded twice). */
+export interface MonitorEvent {
+  id: string;
+  at: string;
+  url: string;
+  kind: 'new_page' | 'seo_change' | 'error' | 'resolved' | 'removed';
+  field?: 'title' | 'metaDescription' | 'canonical' | 'robots' | 'h1' | 'status';
+  before?: string;
+  after?: string;
+  status?: number | null;
+  /** Which signal led to the check. */
+  source: 'sitemap' | 'shopify' | 'webhook' | 'recheck';
+}
+
+export interface MonitorRunSummary {
+  at: string;
+  ms: number;
+  /** Sitemap files answered 304 Not Modified / downloaded. */
+  sitemapsNotModified: number;
+  sitemapsFetched: number;
+  signals: { newInSitemap: number; lastmodChanged: number; removed: number; shopify: number; webhook: number; recheck: number };
+  /** Pages requested; of those answered 304 (unchanged, not parsed). */
+  checked: number;
+  notModified: number;
+  /** Targets left for the next run (per-run cap). */
+  deferred: number;
+  events: number;
+  baseline?: boolean;
+  notes: string[];
+}
+
+export interface MonitorStatus {
+  available: boolean;
+  reason?: string;
+  running: boolean;
+  intervalMinutes: number;
+  lastRun?: MonitorRunSummary;
+  openErrors: number;
+  /** Newest first. */
+  events: MonitorEvent[];
 }

@@ -3,7 +3,12 @@
 The SEO editor turns audit findings into changes in Shopify: SEO titles, meta descriptions, product / collection /
 page / article titles, descriptions and content (H2–H3 headings, internal links), tags and product image alt text.
 Theme-level problems (an H1 written by a section, a canonical tag in `layout/theme.liquid`) are prepared as theme
-file proposals and written only to an **unpublished** theme.
+file proposals. They are written to an unpublished copy, or to the **live** theme only after the original file was
+downloaded and a separate live-theme phrase was typed. Sentinel never publishes a theme.
+
+The five main fields are kept apart: **Title** (the product/collection/page/article title), **Description** (its
+HTML content), **H1 heading** (what the live page shows as H1, written to wherever it comes from), **Image alt text**,
+and **SEO title (meta title)** (`seo.title` / the `global.title_tag` metafield).
 
 Nothing is written to Shopify until a person reviews the exact changes and types the confirmation phrase.
 
@@ -22,8 +27,11 @@ Use the Shopify **Dev Dashboard** (or a Partner app) for the store:
    | `read_products`, `write_products` | Read and change products and collections (`productUpdate`, `collectionUpdate`) |
    | `read_content`, `write_content` | Read and change pages and blog articles (`pageUpdate`, `articleUpdate`, SEO metafields via `metafieldsSet`) |
    | `read_themes` (optional) | List themes and read theme files to see where an H1 comes from |
-   | `write_themes` (optional) | Write a reviewed file to an **unpublished** theme (`themeFilesUpsert`). Sentinel never calls `themePublish` |
-   | `write_files` (optional) | Change image alt text (`fileUpdate`; `write_themes` also allows it) |
+   | `write_themes` (optional) | Write a reviewed theme file (`themeFilesUpsert`) — needed for an H1 that the theme prints. Sentinel never calls `themePublish` |
+   | `write_files` (optional) | Change **product** image alt text (`fileUpdate`; `write_themes` also allows it). Collection and article image alt text uses `write_products` / `write_content` |
+
+   Scopes are read once per connection. After adding a scope in the app, **disconnect and connect again** (or
+   reinstall the custom app and update `SHOPIFY_ADMIN_TOKEN`) so the new grant is used.
 
    A `write_*` scope includes its `read_*` scope.
 3. Copy the app's **Client ID** and **Client secret**.
@@ -82,8 +90,13 @@ token from memory; to revoke it, uninstall the app in the Shopify admin.
    `javascript:` links (refused), heading-level skips, extra H1s, internal links over `http://` or to
    collection-scoped product URLs, and **figures (numbers, sizes, quantities) that appear nowhere in the current
    content** — check those before applying.
-4. **Where the H1 comes from:** from the newest crawl's H1s — equal to the title (change the title field), inside the
-   description (edit it here), or anything else (the theme writes it: theme proposal).
+4. **H1 heading:** the live storefront page is fetched once (the newest crawl when it cannot be fetched) and the
+   first H1 is classified: equal to the title → the H1 field writes the **title** (`*Update (title)`; if you also
+   select the Title field, both must have the same value); the `<h1>` inside the description/content → the H1 field
+   replaces that heading's text in the HTML (`*Update (descriptionHtml/body)`), keeping everything else; anything
+   else → the theme prints it: **Change in theme** finds the text in the live theme's layout/templates/sections/
+   snippets files and creates a theme proposal (if it is in several files you pick one; if it is in none — an app
+   block, a translation in `locales/` or a metafield — the editor says so and nothing is changed).
 5. **Review and apply** (one draft or a batch of up to 50): Sentinel reads every value from Shopify again, lists
    exactly what will change, marks fields changed in Shopify since the draft as **conflicts** (never written), offers
    **Download original values** (JSON), and asks you to type `APPLY <n> CHANGES`.
@@ -98,20 +111,27 @@ token from memory; to revoke it, uninstall the app in the Shopify admin.
 
 **SEO editor → Theme changes** (permission `shopify.theme`; Admin and Developer by default).
 
-1. Duplicate the live theme in Shopify (Online Store → Themes → Duplicate).
-2. Choose the copy, open a file under `layout/`, `templates/`, `sections/` or `snippets/`, edit it, say why.
+1. Safest: duplicate the live theme in Shopify (Online Store → Themes → Duplicate) and work on the copy.
+2. Choose the theme, open a file under `layout/`, `templates/`, `sections/` or `snippets/`, edit it, say why (or use
+   **Change in theme** on the H1 field).
 3. **Create proposal**: a line diff; the original file is kept and downloadable. Nothing is written.
-4. **Write to <theme>**: type `APPLY TO <theme name>`. Refused for the live (MAIN) theme. If the file changed in
-   Shopify since the proposal (checksum), nothing is written (conflict). The written file is read back to verify.
-5. Preview the theme in Shopify and publish it yourself.
+4. **Write to <theme>**:
+   - unpublished theme: type `APPLY TO <theme name>`;
+   - **live theme**: first **Download original file** (the server records it; without it the write is refused with
+     `BACKUP_REQUIRED`), then type `WRITE TO LIVE THEME <theme name>`. The change is visible to customers at once.
+   If the file changed in Shopify since the proposal (checksum), nothing is written (conflict). If the theme's role
+   changed since the proposal (published / unpublished), nothing is written: make a new proposal. The written file is
+   read back to verify; for an H1 change on the live theme the storefront page is fetched and its H1s compared.
+5. For a copy: preview it in Shopify and publish it yourself. Sentinel never publishes.
 
 ## Limitations
 
 - Drafts, proposals and the OAuth token live in memory: a restart discards them (no database at this stage).
 - Clearing an existing SEO title / meta description is not offered (Shopify then falls back to the title /
   description); do that in the Shopify admin.
-- Image alt text is edited for product media (first 20 images). Images inside description HTML are edited in the
+- Image alt text is edited for product media (first 20 images) and the collection / article featured image. Images inside description HTML are edited in the
   description; images placed by the theme need a theme edit.
 - Article excerpts and page/article bodies are edited as HTML (no visual editor).
-- The H1 source needs crawl data for the page; without it the editor says so.
+- The H1 source needs the live page (or crawl data for it); without it the editor says so.
+- Only the first H1 of a page is edited by the H1 field; extra H1s are flagged (demote them in the description or theme).
 - Development and tests use a mocked Shopify only (`apps/api/test/shopify/`): no real store was read or written.

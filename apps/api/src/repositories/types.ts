@@ -51,6 +51,25 @@ export interface IntegrationSecretDoc {
   updatedAt: string;
   updatedBy?: string;
 }
+/** Incremental monitoring: validators and lastmods of the sitemap files, signal cursors, last run (one doc, id "state"). */
+export interface MonitorStateDoc {
+  id: 'state';
+  sitemaps: Record<string, { etag?: string; lastModified?: string; entries: Record<string, string> }>;
+  lastRunAt?: string;
+  lastShopifyCheck?: string;
+  lastRun?: import('@sentinel/shared').MonitorRunSummary;
+}
+/** Last observed state of one monitored page: HTTP validators and SEO fingerprint. */
+export interface MonitorPageDoc {
+  id: string /* url */;
+  url: string;
+  etag?: string;
+  lastModified?: string;
+  status: number | null;
+  fields: Record<string, string>;
+  fingerprint: string;
+  checkedAt: string;
+}
 export interface IntegrationTestDoc { id: IntegrationId; at: string; ok: boolean; result: string; lastSuccessfulSyncAt?: string; lastSyncError?: string; rateLimited?: boolean }
 export interface PageTextDoc { id: string /* url */; url: string; template: PageTemplate; tier: PageTier; collectionHandle?: string; text: string; publishedAt?: string; source: DataSource }
 /** Last observed state of a URL — used for delta detection (yesterday vs today) and robots/script diffs. */
@@ -117,6 +136,9 @@ export interface Repositories {
   integrationSettings: Repository<IntegrationSettingsDoc>;
   integrationTests: Repository<IntegrationTestDoc>;
   integrationSecrets: Repository<IntegrationSecretDoc>;
+  monitorState: Repository<MonitorStateDoc>;
+  monitorPages: Repository<MonitorPageDoc>;
+  monitorEvents: Repository<import('@sentinel/shared').MonitorEvent>;
   config: DocumentStore<SentinelConfig>;
   permissions: DocumentStore<PermissionMatrix>;
   metrics: DocumentStore<MetricsDoc>;

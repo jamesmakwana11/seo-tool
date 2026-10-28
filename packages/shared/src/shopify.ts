@@ -101,7 +101,7 @@ export interface ShopifyFieldValidation {
 }
 
 export interface ShopifyFieldDraft {
-  /** seoTitle | seoDescription | title | tags | bodyHtml | summaryHtml | imageAlt:<media id> */
+  /** seoTitle | seoDescription | title | h1 | tags | bodyHtml | summaryHtml | imageAlt:<media id> | imageAlt:featured */
   key: string;
   label: string;
   /** The value in Shopify when the draft was made. */
@@ -240,5 +240,11 @@ export interface ShopifyThemeProposal {
   createdAt: string;
   status: 'proposed' | 'applied' | 'failed' | 'conflict';
   confirmPhrase: string;
-  result?: { at: string; by: string; message: string; verified: boolean };
+  /** The theme is the published (live) one: writing changes the storefront at once. Needs the backup and its own phrase. */
+  live?: boolean;
+  /** When the original file was downloaded (a live-theme write is refused before that). */
+  backupTakenAt?: string;
+  /** Storefront page to check after writing (H1 changes). */
+  pageUrl?: string;
+  result?: { at: string; by: string; message: string; verified: boolean; liveCheck?: { url: string; expected: string; found: string[]; ok: boolean; note?: string } };
 }

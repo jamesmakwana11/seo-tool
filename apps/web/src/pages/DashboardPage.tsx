@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowUpRight, BellRing, CircleCheck, Clock, OctagonAlert, Plus, Radar, TrendingDown, Users } from 'lucide-react';
-import { MODULE_LABELS, TEAMS, TEAM_IDS, type DashboardData } from '@sentinel/shared';
+import { ArrowUpRight, BellRing, CircleCheck, Clock, FilePlus2, OctagonAlert, PenLine, Plus, Radar, TrendingDown, Users } from 'lucide-react';
+import { MODULE_LABELS, TEAMS, TEAM_IDS, type DashboardData, type MonitorEvent } from '@sentinel/shared';
 import { api } from '@/api/client';
-import { useApiQuery } from '@/api/hooks';
+import { useApiMutation, useApiQuery } from '@/api/hooks';
 import { useUser } from '@/auth/AuthContext';
 import { Async, DemoBadge, EmptyState, KpiCard, MetricTabs, Notice, PageHeader, Panel, Segmented } from '@/components/ui/primitives';
 import { ChartLegend, DonutChart, PillBars, SEVERITY_COLORS, SegmentRows, TrendChart } from '@/components/ui/charts';
@@ -152,6 +152,7 @@ function Body({ d }: { d: DashboardData }) {
               tone={c.kind === 'resolved' ? 'ok' : c.kind === 'new' ? 'crit' : 'med'} title={c.title} meta={`${c.kind === 'new' ? 'New' : c.kind === 'resolved' ? 'Resolved' : c.kind === 'worsening' ? 'Worsening' : 'Recurring'} · ${MODULE_LABELS[c.module]}`} />
           ))}
         </RailSection>
+        <MonitorRail />
         <RailSection title="Approaching SLA" empty="Nothing is approaching its SLA.">
           {d.slaWatchlist.slice(0, 5).map((w) => (
             <Link key={w.id} to={`/issues/${w.id}`} className="block rounded-xl px-2 py-1.5 transition-colors hover:bg-raised">
@@ -355,5 +356,43 @@ function TeamLoad({ load }: { load: DashboardData['openLoad'] }) {
         </Link>
       ))}
     </Panel>
+  );
+}
+
+const MONITOR_LABEL: Record<MonitorEvent['kind'], string> = { new_page: 'New page', seo_change: 'SEO change', error: 'Error', resolved: 'Resolved', removed: 'Removed from sitemap' };
+const FIELD_LABEL: Record<NonNullable<MonitorEvent['field']>, string> = { title: 'Title', metaDescription: 'Meta description', canonical: 'Canonical', robots: 'Meta robots', h1: 'H1', status: 'HTTP status' };
+const pathOf = (u: string) => { try { return new URL(u).pathname; } catch { return u; } };
+
+/** Incremental monitoring between crawls: new pages, SEO changes, errors and resolved errors (each recorded once). */
+function MonitorRail() {
+  const canRun = useUser().permissions.includes('crawls.run');
+  const q = useApiQuery(['monitor'], () => api.getMonitor());
+  const run = useApiMutation(() => api.runMonitor(), { success: (r) => (r.lastRun ? `Checked ${r.lastRun.checked} page(s) — ${r.lastRun.events} new change(s)` : 'Check finished'), invalidate: [['monitor']] });
+  const m = q.data;
+  const meta = (e: MonitorEvent) => `${fmtRelative(e.at)} · ${MONITOR_LABEL[e.kind]}${e.field && e.kind === 'seo_change' ? ` · ${FIELD_LABEL[e.field]}` : ''}${e.kind === 'error' || e.kind === 'resolved' ? ` · HTTP ${e.status ?? 'no response'}` : ''}`;
+  return (
+    <section className="rounded-panel border border-line bg-surface p-4 shadow-card" data-testid="monitor-rail">
+      <div className="mb-2 flex items-center gap-2 px-2">
+        <h2 className="text-[14px] font-semibold text-ink">Site monitoring</h2>
+        {m?.available && canRun && <button type="button" onClick={() => run.mutate()} disabled={run.isPending || m.running} className="ml-auto text-[12px] font-medium text-signal hover:underline disabled:text-faint">{run.isPending || m.running ? 'Checking…' : 'Check now'}</button>}
+      </div>
+      {!m ? <p className="px-2 text-sm text-muted">Loading…</p> : !m.available ? <p className="px-2 text-sm text-muted">{m.reason}</p> : (
+        <>
+          <p className="px-2 pb-1 text-[11.5px] text-muted">
+            {m.lastRun ? `Last check ${fmtRelative(m.lastRun.at)} · ${m.lastRun.checked} page(s) requested, ${m.lastRun.notModified} unchanged (304)` : 'Not checked yet'}
+            {m.intervalMinutes > 0 ? ` · every ${m.intervalMinutes} min` : ''}{m.openErrors ? ` · ${m.openErrors} open error(s)` : ''}
+          </p>
+          {m.events.length ? (
+            <div className="rail-timeline space-y-0.5">
+              {m.events.slice(0, 6).map((e) => (
+                <RailItem key={e.id} to={`/pages/report?url=${encodeURIComponent(e.url)}`} tone={e.kind === 'resolved' ? 'ok' : e.kind === 'error' ? 'crit' : e.kind === 'new_page' ? 'signal' : 'med'}
+                  icon={e.kind === 'resolved' ? <CircleCheck className="h-4 w-4" /> : e.kind === 'error' ? <OctagonAlert className="h-4 w-4" /> : e.kind === 'new_page' ? <FilePlus2 className="h-4 w-4" /> : <PenLine className="h-4 w-4" />}
+                  title={pathOf(e.url)} meta={meta(e)} />
+              ))}
+            </div>
+          ) : <p className="px-2 text-sm text-muted">No changes detected since the last crawl.</p>}
+        </>
+      )}
+    </section>
   );
 }

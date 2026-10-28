@@ -43,7 +43,7 @@ function issueFilter(q: Request['query']): import('@sentinel/shared').IssueFilte
 /** Register one route per SentinelApi method. Order: auth → dashboard → modules → issues → tasks → crawls → opportunities → off-page → AI → reports → notifications → people → config → audit/system/search/diagnostics. */
 export function registerRoutes(routes: ApiRoute[], c: Container) {
   const { services } = c;
-  const { auth, tasks, issues, rules, crawls, changes, captures, imageAudits, reports, insights, admin, lighthouse, shopify } = services;
+  const { auth, tasks, issues, rules, crawls, changes, captures, imageAudits, reports, insights, admin, lighthouse, shopify, monitor } = services;
   const add = (r: ApiRoute) => routes.push(r);
 
   // -------------------------------------------------------------- auth
@@ -236,6 +236,8 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
     method: 'get', path: '/api/shopify/oauth/callback', public: true, raw: true, description: 'Shopify OAuth callback (HMAC + single-use state verified; redirects to the app)',
     handle: async (req) => { const to = await handleOAuthCallback(req, c.env); req.res!.setHeader('Cache-Control', 'no-store'); req.res!.redirect(302, to); },
   });
+  add({ method: 'get', path: '/api/monitor', permission: 'crawls.view', description: 'Incremental monitoring: last run, open errors and recent changes (new pages, SEO changes, errors, resolved)', handle: (req) => monitor.get(actorOf(req)) });
+  add({ method: 'post', path: '/api/monitor/run', permission: 'crawls.run', description: 'Run an incremental check now: changed sitemap entries, Shopify updates and webhooks → conditional requests to those pages only', handle: (req) => monitor.run(actorOf(req)) });
   add({ method: 'put', path: '/api/shopify/app-credentials', permission: 'integrations.manage', description: 'Save the Shopify app Client ID, Client secret (stored encrypted, never returned) and app URL for this website', handle: (req) => shopify.saveAppCredentials(actorOf(req), (req.body ?? {}) as Record<string, unknown>) });
   add({ method: 'delete', path: '/api/shopify/app-credentials', permission: 'integrations.manage', description: 'Remove the Shopify app credentials entered in Sentinel', handle: (req) => shopify.removeAppCredentials(actorOf(req)) });
   add({ method: 'post', path: '/api/shopify/disconnect', permission: 'integrations.manage', description: 'Drop the Shopify token from server memory', handle: (req) => shopify.disconnect(actorOf(req)) });
@@ -250,6 +252,7 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
   add({ method: 'patch', path: '/api/shopify/drafts/:id', permission: 'shopify.edit', description: 'Manual edits (body: fields: { key: { proposed, include } })', handle: (req) => shopify.updateDraft(actorOf(req), prm(req, 'id'), req.body ?? {}) });
   add({ method: 'delete', path: '/api/shopify/drafts/:id', permission: 'shopify.edit', description: 'Discard a draft', handle: (req) => shopify.deleteDraft(actorOf(req), prm(req, 'id')) });
   add({ method: 'post', path: '/api/shopify/drafts/:id/refresh', permission: 'shopify.edit', description: 'Rebuild a draft from the live values', handle: (req) => shopify.refreshDraft(actorOf(req), prm(req, 'id')) });
+  add({ method: 'post', path: '/api/shopify/drafts/:id/h1-theme', permission: 'shopify.theme', description: 'Propose the H1 change in the theme file that renders it (body: text, filename?, themeId?)', handle: (req) => shopify.proposeH1Theme(actorOf(req), prm(req, 'id'), req.body ?? {}) });
   add({ method: 'post', path: '/api/shopify/drafts/:id/reaudit', permission: 'shopify.edit', description: 'Fetch the storefront page again and check the applied values', handle: (req) => shopify.reauditDraft(actorOf(req), prm(req, 'id')) });
   add({ method: 'get', path: '/api/shopify/themes', permission: 'shopify.theme', description: 'Themes and their roles', handle: (req) => shopify.themes(actorOf(req)) });
   add({ method: 'get', path: '/api/shopify/themes/file', permission: 'shopify.theme', description: 'Read a theme file (query: themeId, filename)', handle: (req) => shopify.themeFile(actorOf(req), str(req.query.themeId, 'themeId'), str(req.query.filename, 'filename')) });

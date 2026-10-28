@@ -40,9 +40,10 @@ export async function readThemeFile(client: AdminClient, themeId: string, filena
   return { themeId, filename: node.filename, checksumMd5: node.checksumMd5 ?? md5(node.body.content), size: Number(node.size) || Buffer.byteLength(node.body.content), content: node.body.content };
 }
 
-export async function writeThemeFile(client: AdminClient, theme: ShopifyTheme, filename: string, content: string): Promise<void> {
-  if (theme.role === 'MAIN') throw new ShopifyApiError('Refused: this is the live (published) theme. Duplicate it in Shopify, apply the change to the copy, preview it, then publish it yourself.', { code: 'LIVE_THEME' });
-  if (!theme.writable) throw new ShopifyApiError(`Refused: theme role ${theme.role} cannot be changed.`, { code: 'READ_ONLY_THEME' });
+export async function writeThemeFile(client: AdminClient, theme: ShopifyTheme, filename: string, content: string, opts: { allowLive?: boolean } = {}): Promise<void> {
+  // The live theme only after the caller checked the backup and the separate live-theme confirmation.
+  if (theme.role === 'MAIN' && !opts.allowLive) throw new ShopifyApiError('Refused: this is the live (published) theme. Duplicate it in Shopify, apply the change to the copy, preview it, then publish it yourself.', { code: 'LIVE_THEME' });
+  if (!theme.writable && !(theme.role === 'MAIN' && opts.allowLive)) throw new ShopifyApiError(`Refused: theme role ${theme.role} cannot be changed.`, { code: 'READ_ONLY_THEME' });
   if (!EDITABLE_FILE.test(filename)) throw new ShopifyApiError('This file cannot be changed from Sentinel.', { code: 'BAD_FILE' });
   const d = await client.request<{ themeFilesUpsert: { userErrors: { field?: string[]; message: string }[] } }>(
     'mutation SentinelThemeWrite($themeId: ID!, $files: [OnlineStoreThemeFilesUpsertFileInput!]!) { themeFilesUpsert(themeId: $themeId, files: $files) { upsertedThemeFiles { filename } userErrors { field message code } } }',

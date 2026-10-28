@@ -13,6 +13,7 @@ import { cleanStaleWork, createGoCrawlEngine, defaultWorkDir } from './gocrawl/e
 import { memoryPlan } from './gocrawl/memoryBudget';
 import { createLighthouseService } from './lighthouse/service';
 import { createShopifyService } from './shopify/service';
+import { createMonitorService } from './monitor/monitor';
 import { createSecretBox } from './security/secretBox';
 import { isLocalHost } from './crawler/url';
 import { createReverifier } from './analysis/reverify';
@@ -209,7 +210,13 @@ export async function createContainer(o: ContainerOptions) {
   const insights = createInsightService(ctx);
   let schedulerRef: { running: () => boolean } = { running: () => false };
   const admin = createAdminService(ctx, auth, diagnostics, { schedulerRunning: () => schedulerRef.running() });
-  const scheduler = createScheduler({ ctx, crawls, issues, reports });
+  const monitor = createMonitorService(ctx, {
+    collector: baseEngine.collector, userAgent: engineOpts.userAgent, latestRow: (u) => crawls.latestRow(u),
+    shopifyChangedSince: (since) => shopify.changedSince(since),
+    crawlRunning: async () => (await repos.crawls.list()).some((c) => c.status === 'running' || c.status === 'queued'),
+    maxChecks: env.MONITOR_MAX_CHECKS, intervalMinutes: env.MONITOR_INTERVAL_MINUTES,
+  });
+  const scheduler = createScheduler({ ctx, crawls, issues, reports, monitor });
   schedulerRef = scheduler;
 
   /** Keep the reverifier's tier lookup and crawl baseline fresh. */
@@ -227,7 +234,7 @@ export async function createContainer(o: ContainerOptions) {
     env, log, clock, repos, ctx, diagnostics, recent, persistence: o.persistence, scope,
     /** Injected outbound fetch (tests); undefined in production → adapters use global fetch. */
     fetchImpl,
-    services: { auth, tasks, issues, rules, crawls, changes, captures, imageAudits, reports, insights, admin, lighthouse, shopify },
+    services: { auth, tasks, issues, rules, crawls, changes, captures, imageAudits, reports, insights, admin, lighthouse, shopify, monitor },
     scheduler,
     refreshVerifierInputs,
     runEscalations: () => runEscalations(ctx, issues),

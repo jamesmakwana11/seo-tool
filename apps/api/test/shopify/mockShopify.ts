@@ -10,9 +10,9 @@ export const API_SECRET = 'mock-client-secret-abcdef987654';
 
 type Media = { id: string; alt: string | null; url: string };
 interface Product { id: string; handle: string; title: string; descriptionHtml: string; tags: string[]; seo: { title: string | null; description: string | null }; media: Media[]; updatedAt: string }
-interface Collection { id: string; handle: string; title: string; descriptionHtml: string; seo: { title: string | null; description: string | null }; updatedAt: string }
-interface Page { id: string; handle: string; title: string; body: string; meta: Record<string, string>; updatedAt: string }
-interface Article extends Page { summary: string; tags: string[]; blog: string }
+interface Collection { id: string; handle: string; title: string; descriptionHtml: string; seo: { title: string | null; description: string | null }; image: { altText: string | null; url: string } | null; updatedAt: string }
+interface Page { id: string; handle: string; title: string; body: string; meta: Record<string, string>; updatedAt: string; noTitleH1?: boolean }
+interface Article extends Page { summary: string; tags: string[]; blog: string; image: { altText: string | null; url: string } | null }
 interface Theme { id: string; name: string; role: string; files: Map<string, string> }
 
 export type Fault = { op?: string; kind: '429' | '500' | 'throttled' | 'userErrors' | 'network'; times?: number };
@@ -40,14 +40,19 @@ export function createMockShopify() {
   });
   collections.set('gid://shopify/Collection/2001', {
     id: 'gid://shopify/Collection/2001', handle: 'kitchen-tools', title: 'Kitchen Tools', descriptionHtml: '<p>Useful tools for every Indian kitchen, from choppers to graters and peelers. Delivered across India.</p>',
-    seo: { title: 'Kitchen Tools', description: 'Tools' }, updatedAt: now(),
+    seo: { title: 'Kitchen Tools', description: 'Tools' }, image: { altText: null, url: 'https://cdn.example/kitchen.jpg' }, updatedAt: now(),
   });
   pages.set('gid://shopify/Page/3001', {
     id: 'gid://shopify/Page/3001', handle: 'about-us', title: 'About Us', body: '<h1>About DeoDap</h1><p>DeoDap ships household products from Rajkot since 2015. We pack every order by hand.</p>',
     meta: {}, updatedAt: now(),
   });
+  // A page template that does not print the page title: the H1 is the one inside the page content.
+  pages.set('gid://shopify/Page/3002', {
+    id: 'gid://shopify/Page/3002', handle: 'bulk-orders', title: 'Bulk Orders', body: '<h1>Bulk orders</h1><p>Order 50 pieces or more of any DeoDap product at wholesale prices.</p>',
+    meta: {}, updatedAt: now(), noTitleH1: true,
+  });
   articles.set('gid://shopify/Article/4001', {
-    id: 'gid://shopify/Article/4001', handle: 'diwali-decor', title: 'Diwali Decor Ideas', blog: 'news', body: '<p>Light up your home with these simple decor ideas for Diwali.</p>', summary: '', tags: ['diwali'],
+    id: 'gid://shopify/Article/4001', handle: 'diwali-decor', title: 'Diwali Decor Ideas', blog: 'news', body: '<p>Light up your home with these simple decor ideas for Diwali.</p>', summary: '', tags: ['diwali'], image: { altText: 'diya', url: 'https://cdn.example/diya.jpg' },
     meta: { title_tag: 'Diwali Decor Ideas for a Bright Festive Home This Year and Every Year After That Too' }, updatedAt: now(),
   });
   themes.push(
@@ -60,9 +65,9 @@ export function createMockShopify() {
   const ue = (field: string, message: string) => ({ userErrors: [{ field: [field], message }] });
 
   const prodOut = (p: Product) => ({ id: p.id, handle: p.handle, title: p.title, descriptionHtml: p.descriptionHtml, tags: p.tags, updatedAt: p.updatedAt, seo: p.seo, media: { nodes: p.media.map((m) => ({ id: m.id, alt: m.alt, image: { url: m.url } })) } });
-  const colOut = (c: Collection) => ({ id: c.id, handle: c.handle, title: c.title, descriptionHtml: c.descriptionHtml, updatedAt: c.updatedAt, seo: c.seo });
+  const colOut = (c: Collection) => ({ id: c.id, handle: c.handle, title: c.title, descriptionHtml: c.descriptionHtml, updatedAt: c.updatedAt, seo: c.seo, image: c.image });
   const pageOut = (p: Page) => ({ id: p.id, handle: p.handle, title: p.title, body: p.body, updatedAt: p.updatedAt, titleTag: p.meta.title_tag ? { value: p.meta.title_tag } : null, descTag: p.meta.description_tag ? { value: p.meta.description_tag } : null });
-  const artOut = (a: Article) => ({ ...pageOut(a), summary: a.summary, tags: a.tags, blog: { handle: a.blog } });
+  const artOut = (a: Article) => ({ ...pageOut(a), summary: a.summary, tags: a.tags, blog: { handle: a.blog }, image: a.image });
 
   function graphql(op: string, v: Record<string, unknown>): unknown {
     switch (op) {
@@ -101,6 +106,8 @@ export function createMockShopify() {
         if (inp.title !== undefined) c.title = inp.title;
         if (inp.descriptionHtml !== undefined) c.descriptionHtml = inp.descriptionHtml;
         if (inp.seo) c.seo = { title: inp.seo.title ?? null, description: inp.seo.description ?? null };
+        if (inp.image) { if (!c.image) return { collectionUpdate: { collection: null, ...ue('image', 'Collection has no image') } }; c.image.altText = inp.image.altText; }
+        c.updatedAt = now();
         return { collectionUpdate: { collection: { id: c.id }, userErrors: [] } };
       }
       case 'SentinelPageUpdate': {
@@ -112,8 +119,9 @@ export function createMockShopify() {
       }
       case 'SentinelArticleUpdate': {
         const a = articles.get(String(v.id))!;
-        const inp = v.article as { title?: string; body?: string; summary?: string; tags?: string[] };
+        const { image, ...inp } = v.article as { title?: string; body?: string; summary?: string; tags?: string[]; image?: { altText: string } };
         Object.assign(a, Object.fromEntries(Object.entries(inp).filter(([, x]) => x !== undefined)));
+        if (image) { if (!a.image) return { articleUpdate: { article: null, ...ue('image', 'Article has no image') } }; a.image.altText = image.altText; }
         return { articleUpdate: { article: { id: a.id }, userErrors: [] } };
       }
       case 'SentinelSeoTags': {
@@ -171,9 +179,16 @@ export function createMockShopify() {
       const p = [...products.values()].find((x) => x.handle === seg[1]);
       if (p) return page(p.seo.title || p.title, p.seo.description, `<h1 class="product__title">${p.title}</h1>${p.descriptionHtml}`, p.media);
     }
+    if (seg[0] === 'collections') {
+      // The H1 is whatever the live theme's banner section renders (hard-coded text, or {{ collection.title }}).
+      const c = [...collections.values()].find((x) => x.handle === seg[1]);
+      const banner = themes.find((t) => t.role === 'MAIN')?.files.get('sections/main-collection-banner.liquid') ?? '';
+      const h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/.exec(banner)?.[1].replace('{{ collection.title }}', c?.title ?? '') ?? '';
+      if (c) return page(c.seo.title || c.title, c.seo.description, `${h1 ? `<h1 class="collection-hero__title">${h1}</h1>` : ''}${c.descriptionHtml}`, c.image ? [{ id: 'featured', alt: c.image.altText, url: c.image.url }] : []);
+    }
     if (seg[0] === 'pages') {
       const p = [...pages.values()].find((x) => x.handle === seg[1]);
-      if (p) return page(p.meta.title_tag || p.title, p.meta.description_tag ?? null, `<h1>${p.title}</h1>${p.body}`);
+      if (p) return page(p.meta.title_tag || p.title, p.meta.description_tag ?? null, `${p.noTitleH1 ? '' : `<h1>${p.title}</h1>`}${p.body}`);
     }
     return new Response('not found', { status: 404 });
   }

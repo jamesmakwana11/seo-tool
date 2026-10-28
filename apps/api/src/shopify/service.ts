@@ -11,10 +11,11 @@
  *
  * Writes: nothing is written to Shopify until a user with `shopify.edit` (content) or `shopify.theme` (theme files)
  * previews the exact changes and types the confirmation phrase. Every write is read back to verify it, then the
- * storefront page is fetched again (re-audit). Theme writes never touch the live theme and never publish.
+ * storefront page is fetched again (re-audit). Theme writes never publish a theme; the live theme is written only after
+ * its original file was downloaded and its own confirmation phrase (WRITE TO LIVE THEME …) was typed.
  */
 import type {
-  CrawledUrl, ShopifyApplyBatchResult, ShopifyApplyPreview, ShopifyApplyResult, ShopifyDraft, ShopifyFieldResult, ShopifyReaudit,
+  CrawledUrl, H1SourceReport, ShopifyApplyBatchResult, ShopifyApplyPreview, ShopifyApplyResult, ShopifyDraft, ShopifyFieldResult, ShopifyReaudit,
   ShopifyResolveResult, ShopifyResourceKind, ShopifyResourceList, ShopifyStatus, ShopifyTheme, ShopifyThemeFile, ShopifyThemeProposal,
   ThemeDiffResponse, ThemeSnapshotMeta,
 } from '@sentinel/shared';
@@ -31,10 +32,10 @@ import { SecretBoxError, type SecretBox } from '../security/secretBox';
 import { firstBasePath, registerBasePath } from '../http/basePath';
 import { audit, need, type Actor, type Ctx } from '../services/context';
 import { createAdminClient, ShopifyApiError, type AdminClient } from './client';
-import { buildFields, detectH1Sources, sourceTexts, themeNotes, validateField, type Limits } from './drafts';
+import { bodyHeadings, buildFields, detectH1Sources, sourceTexts, themeNotes, validateField, type Limits } from './drafts';
 import { authorizeUrl, createStateStore, exchangeCode, missingScopes, normalizeShop, OAuthError, verifyQueryHmac, CALLBACK_MAX_AGE_S } from './oauth';
-import { adminUrl, fetchByHandle, fetchById, fieldValue, isGid, listResources, parseStorefrontPath, sameValue, summarize, writeOps, type ShopifyResource } from './resources';
-import { getTheme, lineDiff, listThemeFiles, listThemes, md5, MAX_THEME_FILE_BYTES, readThemeFile, readThemeFiles, SNAPSHOT_FILE, writeThemeFile } from './theme';
+import { adminUrl, fetchByHandle, fetchById, fieldValue, isGid, listResources, mutationFor, parseStorefrontPath, sameValue, summarize, writeOps, type ShopifyResource } from './resources';
+import { EDITABLE_FILE, getTheme, lineDiff, listThemeFiles, listThemes, md5, MAX_THEME_FILE_BYTES, readThemeFile, readThemeFiles, SNAPSHOT_FILE, writeThemeFile } from './theme';
 import { createThemeSnapshotStore } from './themeSnapshots';
 
 export interface ShopifyDeps {
@@ -68,7 +69,7 @@ interface Connection {
   scopeProblem?: string;
 }
 
-interface ThemeProposalInternal extends ShopifyThemeProposal { original: string; proposed: string }
+interface ThemeProposalInternal extends ShopifyThemeProposal { original: string; proposed: string; expectH1?: string }
 
 /** OAuth states are shared by all website workspaces: the public callback has no website header, so the state says which one started it. */
 const states = createStateStore();
@@ -306,18 +307,84 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
 
   // ------------------------------------------------------------------------------------------ drafts
 
+  /** H1 texts of the live storefront page (undefined when it cannot be fetched: crawling off, other host, error). */
+  async function storefrontH1s(url: string): Promise<string[] | undefined> {
+    const base = await siteBase();
+    if (!ctx.engine.readiness().ready || !base || hostOf(url).replace(/^www\./, '') !== hostOf(base).replace(/^www\./, '')) return undefined;
+    const r = await deps.collector.http.request(url, { readBody: true }).catch(() => undefined);
+    if (!r || r.finalStatus !== 200 || !r.body) return undefined;
+    return parseHtml(r.body, r.finalUrl, hostOf(url)).h1s.map((h) => h.replace(/\s+/g, ' ').trim());
+  }
+
+  const h1Source = (d: ShopifyDraft) => d.h1.sources[0]?.source;
+  /** A field's value in Shopify; for the H1, read from where it comes from (the title, or the first <h1> of the body). */
+  function liveField(d: ShopifyDraft, live: ShopifyResource, key: string): string {
+    if (key !== 'h1') return fieldValue(live, key);
+    const src = h1Source(d);
+    if (src === 'title') return live.title;
+    if (src === 'body') return bodyHeadings(live.bodyHtml).find((h) => h.level === 1)?.text ?? '';
+    return d.fields.find((f) => f.key === 'h1')?.current ?? '';
+  }
+
+  /** H1 rules across fields: a theme-rendered H1 is changed in the theme; an H1 printed from the title cannot differ from it. */
+  function checkH1(d: ShopifyDraft) {
+    const f = d.fields.find((x) => x.key === 'h1');
+    if (!f) return;
+    const errs = f.validation.errors.filter((e) => !e.startsWith('[H1] '));
+    if (f.include && f.applyVia === 'theme') errs.push('[H1] This H1 is printed by the theme — use “Change in theme” (diff, backup and confirmation); it is not written through the Admin API.');
+    const title = d.fields.find((x) => x.key === 'title');
+    if (f.include && h1Source(d) === 'title' && title?.include && title.proposed.replace(/\s+/g, ' ').trim() !== f.proposed.replace(/\s+/g, ' ').trim()) {
+      errs.push('[H1] The theme prints the title as the H1, so both come from the same Shopify field: give them the same value, or select only one of them. A different H1 needs a theme change.');
+    }
+    f.validation = { ...f.validation, ok: errs.length === 0, errors: errs };
+  }
+
+  /** Changes to write, with the H1 turned into the field it comes from (title, or the <h1> in the description). */
+  function translateH1(d: ShopifyDraft, live: ShopifyResource, changes: Record<string, string>): Record<string, string> {
+    if (!('h1' in changes)) return changes;
+    const { h1, ...rest } = changes;
+    const src = h1Source(d);
+    if (src === 'title') return { ...rest, title: rest.title ?? h1 };
+    if (src === 'body') {
+      const body = rest.bodyHtml ?? live.bodyHtml;
+      let done = false;
+      const esc = h1.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const next = body.replace(/(<h1(?:\s[^>]*)?>)([\s\S]*?)(<\/h1\s*>)/i, (_m, a, _t, b) => { done = true; return `${a}${esc}${b}`; });
+      return done ? { ...rest, bodyHtml: next } : rest;
+    }
+    return rest;
+  }
+
   async function buildDraft(actor: Actor, res: ShopifyResource, url: string | undefined, existing?: ShopifyDraft): Promise<ShopifyDraft> {
     const base = await siteBase();
     const pageUrl = url ?? (base ? `${base}${res.path}` : undefined);
     const found = pageUrl ? await deps.latestRow(pageUrl).catch(() => undefined) : undefined;
-    const pageH1s = found?.row.h1 ?? [];
-    const basis = found ? 'crawl' : 'none';
-    const dctx = { res, shopName: conn?.shopName, siteHost: base ? hostOf(base) : '', row: found?.row, pageH1s, h1Basis: basis as 'crawl' | 'none', observedAt: found?.at, limits: await limits() };
-    const h1 = detectH1Sources(res, pageH1s, basis, found?.at);
+    // The H1 as the live storefront shows it now (one request); the latest crawl only when the page cannot be fetched.
+    const liveH1s = pageUrl ? await storefrontH1s(pageUrl) : undefined;
+    const pageH1s = liveH1s ?? found?.row.h1 ?? [];
+    const basis: H1SourceReport['basis'] = liveH1s ? 'storefront' : found ? 'crawl' : 'none';
+    const observedAt = liveH1s ? iso() : found?.at;
+    const dctx = { res, shopName: conn?.shopName, siteHost: base ? hostOf(base) : '', row: found?.row, pageH1s, h1Basis: basis, observedAt, limits: await limits() };
+    const h1 = detectH1Sources(res, pageH1s, basis, observedAt);
     const fields = buildFields(dctx);
+    // ---- H1 heading: its own field, written to wherever the live H1 comes from.
+    {
+      const src = h1.sources[0];
+      const cur = src?.text ?? '';
+      const via: 'admin_api' | 'theme' = src && src.source !== 'theme' ? 'admin_api' : 'theme';
+      const where = src?.source === 'title' ? `${mutationFor(res.kind, 'title')} — the theme prints the ${res.kind} title as the H1`
+        : src?.source === 'body' ? `${mutationFor(res.kind, 'bodyHtml')} — the <h1> inside the ${res.kind === 'product' || res.kind === 'collection' ? 'description' : 'content'}`
+          : 'Theme file — change in theme (diff, backup and confirmation)';
+      const at = fields.findIndex((f) => f.key === 'title') + 1;
+      fields.splice(at > 0 ? at : fields.length, 0, {
+        key: 'h1', label: 'H1 heading', current: cur, proposed: cur, reason: '', source: 'unchanged', applyVia: via, mutation: where, include: false,
+        validation: validateField('h1', cur, { res, siteHost: base ? hostOf(base) : '', limits: dctx.limits, current: cur, sources: sourceTexts(res, conn?.shopName), source: 'unchanged' }),
+        hint: src ? `${src.explanation}${h1.pageH1s.length > 1 ? ` The page has ${h1.pageH1s.length} H1s; this field is the first.` : ''}` : basis === 'none' ? 'The live page could not be read, so its H1 is unknown.' : 'The live page has no H1 — the theme template needs one (change in theme).',
+      });
+    }
     const altOk = hasScope('write_files') || hasScope('write_themes');
     for (const f of fields) {
-      if (f.key.startsWith('imageAlt:') && !altOk) {
+      if (f.key.startsWith('imageAlt:') && f.key !== 'imageAlt:featured' && !altOk) {
         f.include = false;
         f.validation = { ...f.validation, ok: false, errors: [...f.validation.errors, 'Needs the write_files (or write_themes) access scope — reconnect and approve it.'] };
       }
@@ -351,7 +418,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
     const changes = [];
     for (const f of d.fields.filter((x) => x.include)) {
       if (!f.validation.ok) { problems.push(`${f.label}: ${f.validation.errors.join(' ')}`); continue; }
-      const lv = fieldValue(live, f.key);
+      const lv = liveField(d, live, f.key);
       if (sameValue(f.key, f.proposed, lv)) continue;
       changes.push({ key: f.key, label: f.label, live: lv, proposed: f.proposed, conflict: !sameValue(f.key, f.current, lv), mutation: f.mutation });
     }
@@ -394,6 +461,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
       if (key === 'seoDescription') checks.push({ field: 'Meta description', expected: live.seoDescription, found: html.metaDescription ?? '', ok: n(html.metaDescription) === n(live.seoDescription) });
       if (key === 'title' && d.h1.sources.some((s) => s.source === 'title')) checks.push({ field: 'H1', expected: live.title, found: html.h1s.join(' | '), ok: html.h1s.some((h) => n(h) === n(live.title)) });
       if (key === 'bodyHtml') checks.push({ field: 'H1 count', expected: '1', found: String(html.h1s.length), ok: html.h1s.length === 1 });
+      if (key === 'h1') { const exp = liveField(d, live, 'h1'); checks.push({ field: 'H1', expected: exp, found: html.h1s.join(' | '), ok: html.h1s.some((h) => n(h) === n(exp)) }); }
       if (key.startsWith('imageAlt:')) {
         const alt = fieldValue(live, key);
         checks.push({ field: 'Image alt', expected: alt, found: html.images.some((i) => n(i.alt) === n(alt)) ? alt : '(not on the page)', ok: html.images.some((i) => n(i.alt) === n(alt)) });
@@ -413,24 +481,27 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
       return d;
     }
     const live = plan.live;
-    for (const f of d.fields.filter((x) => x.include && !x.validation.ok)) fields.push({ key: f.key, label: f.label, status: 'skipped', before: fieldValue(live, f.key), message: f.validation.errors.join(' ') });
+    for (const f of d.fields.filter((x) => x.include && !x.validation.ok)) fields.push({ key: f.key, label: f.label, status: 'skipped', before: liveField(d, live, f.key), message: f.validation.errors.map((e) => e.replace(/^\[H1\] /, '')).join(' ') });
     for (const ch of plan.changes.filter((x) => x.conflict)) fields.push({ key: ch.key, label: ch.label, status: 'conflict', before: ch.live, message: 'Changed in Shopify after this draft was made — refresh the draft and review it again.' });
     const todo = plan.changes.filter((x) => !x.conflict);
-    const changes = Object.fromEntries(todo.map((x) => [x.key, x.proposed]));
+    const changes = translateH1(d, live, Object.fromEntries(todo.map((x) => [x.key, x.proposed])));
+    const h1Via = h1Source(d) === 'title' ? 'title' : 'bodyHtml';
     const ran = new Set<string>();
     for (const op of writeOps(live, changes)) {
       try {
         await op.run(c);
         op.keys.forEach((k) => ran.add(k));
+        if (todo.some((x) => x.key === 'h1') && op.keys.includes(h1Via)) ran.add('h1');
       } catch (e) {
-        for (const k of op.keys) { const ch = todo.find((x) => x.key === k)!; fields.push({ key: k, label: ch.label, status: 'failed', before: ch.live, message: (e as Error).message }); }
+        const failedKeys = [...op.keys, ...(todo.some((x) => x.key === 'h1') && op.keys.includes(h1Via) ? ['h1'] : [])];
+        for (const k of failedKeys) { const ch = todo.find((x) => x.key === k); if (ch) fields.push({ key: k, label: ch.label, status: 'failed', before: ch.live, message: (e as Error).message }); }
         if (e instanceof ShopifyApiError && e.info.status === 401) throw e;
       }
     }
     let after: ShopifyResource | undefined;
     if (ran.size) after = await fetchById(c, d.kind, d.resourceId).catch(() => undefined);
     for (const ch of todo.filter((x) => ran.has(x.key))) {
-      const back = after ? fieldValue(after, ch.key) : undefined;
+      const back = after ? liveField(d, after, ch.key) : undefined;
       const ok = back !== undefined && sameValue(ch.key, ch.proposed, back);
       fields.push({ key: ch.key, label: ch.label, status: ok ? 'verified' : 'applied_unverified', before: ch.live, after: back, message: ok ? undefined : back === undefined ? 'Written, but reading it back failed.' : 'Shopify stored a different value than sent (it may have re-formatted it).' });
     }
@@ -444,7 +515,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
     if (after) {
       for (const f of d.fields) {
         const r = fields.find((x) => x.key === f.key);
-        if (r?.status === 'verified' || r?.status === 'applied_unverified') { f.current = fieldValue(after, f.key); f.proposed = f.current; f.include = false; f.source = 'unchanged'; f.reason = ''; }
+        if (r?.status === 'verified' || r?.status === 'applied_unverified') { f.current = liveField(d, after, f.key); f.proposed = f.current; f.include = false; f.source = 'unchanged'; f.reason = ''; }
       }
     }
     d.updatedAt = iso();
@@ -501,6 +572,28 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
       proposals.clear();
       if (shop) await audit(ctx, actor, 'shopify.disconnect', 'shopify', shop, `Disconnected Shopify store ${shop} (token dropped from memory; uninstall the app in Shopify to revoke it)`);
       return status();
+    },
+
+    /**
+     * Change signal for incremental monitoring (as in the Shopify Optimizer: the Admin API's updated_at, newest first):
+     * storefront URLs of active products and published collections updated after `since`. One GraphQL call (≤ 100 of
+     * each) through the rate-limited client; nothing when Shopify is not connected or lacks read_products.
+     */
+    async changedSince(since: string): Promise<{ urls: string[]; capped: boolean; problem?: string }> {
+      await load();
+      if (!conn || (conn.scopes && !hasScope('read_products'))) return { urls: [], capped: false, problem: conn ? 'missing read_products scope' : undefined };
+      const q = `updated_at:>'${new Date(since).toISOString()}'`;
+      try {
+        const d = await client().request<{ products: { nodes: { handle: string }[] }; collections: { nodes: { handle: string }[] } }>(
+          'query SentinelChanged($p: String!, $c: String!) { products(first: 100, sortKey: UPDATED_AT, reverse: true, query: $p) { nodes { handle } } collections(first: 100, sortKey: UPDATED_AT, reverse: true, query: $c) { nodes { handle } } }',
+          { p: `${q} AND status:active`, c: `${q} AND published_status:published` },
+        );
+        const base = await siteBase();
+        const urls = [...d.products.nodes.map((n) => `${base}/products/${n.handle}`), ...d.collections.nodes.map((n) => `${base}/collections/${n.handle}`)];
+        return { urls, capped: d.products.nodes.length >= 100 || d.collections.nodes.length >= 100 };
+      } catch (e) {
+        return { urls: [], capped: false, problem: (e as Error).message };
+      }
     },
 
     /** Loads stored credentials / token at start-up (and registers the app URL's sub-path). */
@@ -624,12 +717,13 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
           if (changed) { f.source = ch.proposed === f.current ? 'unchanged' : 'manual'; if (f.source === 'manual') f.reason = f.reason || 'Edited by hand.'; }
           const res = { kind: d.kind, id: d.resourceId, handle: d.handle, title: f.key === 'title' ? f.proposed : d.resourceTitle, seoTitle: '', seoDescription: '', bodyHtml: '', path: '' } as ShopifyResource;
           const v = validateField(key, f.proposed, { res, siteHost: base ? hostOf(base) : '', limits: L, current: f.current, sources, source: f.source });
-          if (key.startsWith('imageAlt:') && !(hasScope('write_files') || hasScope('write_themes'))) { v.ok = false; v.errors.push('Needs the write_files (or write_themes) access scope.'); }
+          if (key.startsWith('imageAlt:') && key !== 'imageAlt:featured' && !(hasScope('write_files') || hasScope('write_themes'))) { v.ok = false; v.errors.push('Needs the write_files (or write_themes) access scope — reconnect and approve it.'); }
           f.validation = v;
           if (ch.include === undefined) f.include = f.proposed !== f.current;
         }
         if (ch.include !== undefined) f.include = !!ch.include;
       }
+      checkH1(d);
       d.updatedAt = iso();
       return d;
     },
@@ -667,7 +761,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
         const out = [];
         for (const d of list) {
           const live = await fetchById(c, d.kind, d.resourceId);
-          out.push({ draftId: d.id, kind: d.kind, id: d.resourceId, handle: d.handle, exists: !!live, values: live ? Object.fromEntries(d.fields.map((f) => [f.key, fieldValue(live, f.key)])) : {} });
+          out.push({ draftId: d.id, kind: d.kind, id: d.resourceId, handle: d.handle, exists: !!live, values: live ? Object.fromEntries(d.fields.map((f) => [f.key, liveField(d, live, f.key)])) : {} });
         }
         return out;
       });
@@ -786,12 +880,54 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
       const p: ThemeProposalInternal = {
         id: `THP-${randomToken(6)}`, themeId, themeName: theme.name, themeRole: theme.role, filename, reason: input.reason.trim().slice(0, 500),
         originalChecksum: file.checksumMd5, originalSize: file.size, diff: diff.lines, added: diff.added, removed: diff.removed,
-        createdBy: actor.name, createdAt: iso(), status: 'proposed', confirmPhrase: `APPLY TO ${theme.name}`, original: file.content, proposed: content,
+        createdBy: actor.name, createdAt: iso(), status: 'proposed', confirmPhrase: theme.role === 'MAIN' ? `WRITE TO LIVE THEME ${theme.name}` : `APPLY TO ${theme.name}`,
+        ...(theme.role === 'MAIN' ? { live: true } : {}), original: file.content, proposed: content,
       };
       proposals.set(p.id, p);
       if (proposals.size > 30) proposals.delete(proposals.keys().next().value as string);
       await audit(ctx, actor, 'shopify.theme_propose', 'shopify', p.id, `Proposed a change to ${filename} in theme “${theme.name}” (${theme.role}): +${diff.added} −${diff.removed} lines`);
       return publicProposal(p);
+    },
+
+    /**
+     * H1 rendered by the theme: finds the live H1 text in the theme's files and proposes replacing it there (diff +
+     * backup; nothing is written until the proposal is confirmed). Default theme: the live one; `themeId` for a copy.
+     */
+    async proposeH1Theme(actor: Actor, draftId: string, input: { text?: unknown; themeId?: unknown; filename?: unknown }): Promise<ShopifyThemeProposal> {
+      await need(ctx, actor, 'shopify.theme');
+      const d = getDraft(draftId);
+      const st = await status();
+      if (!st.capabilities.themes) throw new ApiError(409, 'SHOPIFY_SCOPES', st.connected ? 'The connection lacks the read_themes scope. Reconnect and approve it.' : 'Shopify is not connected.');
+      const f = d.fields.find((x) => x.key === 'h1');
+      const cur = f?.current.trim() ?? '';
+      const text = typeof input.text === 'string' ? input.text.replace(/\s+/g, ' ').trim() : '';
+      if (h1Source(d) === 'title' || h1Source(d) === 'body') throw badRequest('This H1 comes from Shopify content (the title or the description) — change it in the H1 field and apply it there.');
+      if (!cur) throw new ApiError(409, 'NO_H1_TEXT', 'The live page shows no H1 text to find in the theme. Add the heading to the template yourself (Themes tab).');
+      const v = validateField('h1', text, { res: { kind: d.kind, id: d.resourceId, handle: d.handle, title: d.resourceTitle, seoTitle: '', seoDescription: '', bodyHtml: '', path: '' }, siteHost: '', current: cur, sources: [], source: 'manual' });
+      if (!v.ok) throw badRequest(v.errors.join(' '));
+      if (text === cur) throw badRequest('The new H1 is the same as the current one.');
+      const found = await call(async (c) => {
+        const themes = await listThemes(c);
+        const theme = typeof input.themeId === 'string' ? themes.find((t) => t.id === input.themeId) : themes.find((t) => t.role === 'MAIN');
+        if (!theme) throw notFound('Theme');
+        const names = (await listThemeFiles(c, theme.id)).filter((x) => EDITABLE_FILE.test(x.filename) && x.size <= MAX_THEME_FILE_BYTES).map((x) => x.filename).slice(0, 600);
+        const files = await readThemeFiles(c, theme.id, typeof input.filename === 'string' ? names.filter((n) => n === input.filename) : names);
+        const jsonCur = JSON.stringify(cur).slice(1, -1);
+        const hits = [...files].filter(([, body]) => body.includes(cur) || body.includes(jsonCur)).map(([name]) => name);
+        return { theme, files, hits, jsonCur };
+      });
+      if (!found.hits.length) throw new ApiError(409, 'H1_NOT_IN_THEME', `“${cur}” was not found in the files of “${found.theme.name}” (layout, templates, sections, snippets). It may come from an app block, a translation (locales/) or a metafield — change it there.`);
+      if (found.hits.length > 1) throw new ApiError(409, 'H1_IN_SEVERAL_FILES', `“${cur}” is in ${found.hits.length} theme files: ${found.hits.join(', ')}. Choose the file to change.`, { files: found.hits });
+      const filename = found.hits[0];
+      const body = found.files.get(filename)!;
+      const content = filename.endsWith('.json')
+        ? body.split(found.jsonCur).join(JSON.stringify(text).slice(1, -1))
+        : body.split(cur).join(text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+      const p = await service.propose(actor, { themeId: found.theme.id, filename, content, reason: `H1 on ${d.url ?? d.resourceTitle}: “${cur}” → “${text}”` });
+      const internal = proposals.get(p.id)!;
+      internal.pageUrl = d.url;
+      internal.expectH1 = text;
+      return publicProposal(internal);
     },
 
     async proposalsList(actor: Actor): Promise<ShopifyThemeProposal[]> {
@@ -807,12 +943,19 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
       const st = await status();
       if (!st.capabilities.themeWrite) throw new ApiError(409, 'SHOPIFY_SCOPES', 'The connection lacks the write_themes scope.');
       if (typeof confirm !== 'string' || confirm.trim() !== p.confirmPhrase) throw new ApiError(400, 'CONFIRMATION_REQUIRED', `Nothing was written. Type “${p.confirmPhrase}” to apply.`);
+      // The live theme changes the storefront at once: only with its own phrase, after the original file was downloaded.
+      if (p.live && !p.backupTakenAt) throw new ApiError(409, 'BACKUP_REQUIRED', 'Nothing was written. Download the original file (backup) first — this proposal changes the live theme.');
       return call(async (c) => {
         const theme = await getTheme(c, p.themeId);
-        if (theme.role === 'MAIN') {
+        if (theme.role === 'MAIN' && !p.live) {
           p.status = 'failed';
-          p.result = { at: iso(), by: actor.name, message: 'Refused: the theme is now the live theme. Apply changes to an unpublished copy.', verified: false };
+          p.result = { at: iso(), by: actor.name, message: 'Refused: this theme became the live theme after the proposal was made. Make a new proposal (it asks for the live-theme confirmation).', verified: false };
           throw new ApiError(409, 'LIVE_THEME', p.result.message);
+        }
+        if (p.live && theme.role !== 'MAIN') {
+          p.status = 'failed';
+          p.result = { at: iso(), by: actor.name, message: 'Refused: this theme is no longer the live theme. Make a new proposal.', verified: false };
+          throw new ApiError(409, 'THEME_ROLE_CHANGED', p.result.message);
         }
         const now = await readThemeFile(c, p.themeId, p.filename);
         if ((p.originalChecksum && now.checksumMd5 !== p.originalChecksum) || (!p.originalChecksum && now.content !== p.original)) {
@@ -821,7 +964,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
           return publicProposal(p);
         }
         try {
-          await writeThemeFile(c, theme, p.filename, p.proposed);
+          await writeThemeFile(c, theme, p.filename, p.proposed, { allowLive: !!p.live });
         } catch (e) {
           p.status = 'failed';
           p.result = { at: iso(), by: actor.name, message: (e as Error).message, verified: false };
@@ -830,8 +973,20 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
         const back = await readThemeFile(c, p.themeId, p.filename).catch(() => undefined);
         const verified = !!back && (back.content === p.proposed || back.checksumMd5 === md5(p.proposed));
         p.status = 'applied';
-        p.result = { at: iso(), by: actor.name, verified, message: verified ? `Written to “${theme.name}” (not published). Preview the theme in Shopify, then publish it yourself.` : 'Written, but reading the file back returned different content.' };
-        await audit(ctx, actor, 'shopify.theme_apply', 'shopify', p.id, `Wrote ${p.filename} in unpublished theme “${theme.name}” (verified: ${verified}); theme not published`);
+        p.result = {
+          at: iso(), by: actor.name, verified,
+          message: !verified ? 'Written, but reading the file back returned different content.'
+            : p.live ? `Written to the live theme “${theme.name}”: the storefront uses it now. Restore the downloaded backup if needed.` : `Written to “${theme.name}” (not published). Preview the theme in Shopify, then publish it yourself.`,
+        };
+        // Live theme + H1: check the storefront page shows the new H1.
+        if (verified && p.live && p.pageUrl && p.expectH1) {
+          const h1s = await storefrontH1s(p.pageUrl);
+          const n = (x: string) => x.replace(/\s+/g, ' ').trim().toLowerCase();
+          p.result.liveCheck = h1s
+            ? { url: p.pageUrl, expected: p.expectH1, found: h1s, ok: h1s.some((h) => n(h) === n(p.expectH1!)), ...(h1s.some((h) => n(h) === n(p.expectH1!)) ? {} : { note: 'Not visible on the storefront yet (Shopify’s cache) — check again in a few minutes.' }) }
+            : { url: p.pageUrl, expected: p.expectH1, found: [], ok: false, note: 'The storefront page could not be fetched from this server.' };
+        }
+        await audit(ctx, actor, 'shopify.theme_apply', 'shopify', p.id, p.live ? `Wrote ${p.filename} in the LIVE theme “${theme.name}” (verified: ${verified}; backup downloaded ${p.backupTakenAt})` : `Wrote ${p.filename} in unpublished theme “${theme.name}” (verified: ${verified}); theme not published`);
         return publicProposal(p);
       });
     },
@@ -840,6 +995,8 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
       await need(ctx, actor, 'shopify.theme');
       const p = proposals.get(id);
       if (!p) throw notFound(`Theme proposal ${id}`);
+      p.backupTakenAt ??= iso();
+      await audit(ctx, actor, 'shopify.theme_backup', 'shopify', p.id, `Downloaded the original ${p.filename} of “${p.themeName}” before applying`);
       return { filename: `${p.filename.replace(/[^\w.-]+/g, '_')}.original-${p.createdAt.replace(/[:.]/g, '-')}.txt`, mimeType: 'text/plain; charset=utf-8', content: p.original };
     },
 
@@ -852,7 +1009,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
 export type ShopifyService = ReturnType<typeof createShopifyService>;
 
 function publicProposal(p: ThemeProposalInternal): ShopifyThemeProposal {
-  const { original: _o, proposed: _p, ...rest } = p;
+  const { original: _o, proposed: _p, expectH1: _e, ...rest } = p;
   return rest;
 }
 

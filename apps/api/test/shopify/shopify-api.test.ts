@@ -1,7 +1,8 @@
 /**
  * Shopify connection + SEO editor end to end through the HTTP API, against an in-memory mock Shopify (no real store,
  * no network): OAuth with HMAC/state checks, drafts, confirmation, apply with rate limits, conflicts and partial failures,
- * read-back verification, storefront re-audit, theme proposals (live theme refused, never published), permissions,
+ * read-back verification, storefront re-audit, the five editable fields (title, description, H1, image alt, SEO title),
+ * theme proposals (live theme only after backup + its own confirmation, never published), permissions,
  * and that the access token / app secret never appear in responses or logs.
  */
 import { Writable } from 'node:stream';
@@ -157,7 +158,14 @@ describe('SEO editor: drafts, apply, verify, re-audit', () => {
     expect(f['imageAlt:gid://shopify/MediaImage/501'].proposed).toMatch(/^3 in 1 Multipurpose/);
     expect(f.title.mutation).toBe('productUpdate (title)');
     expect(f.seoTitle.mutation).toBe('productUpdate (seo.title)');
-    expect(product.h1.basis).toBe('none');
+    // The H1 is read from the live storefront page: the theme prints the product title (first H1).
+    expect(product.h1.basis).toBe('storefront');
+    expect(product.h1.sources.map((s) => s.source)).toEqual(['title', 'body']);
+    expect(f.h1).toMatchObject({ label: 'H1 heading', current: f.title.current, applyVia: 'admin_api', include: false });
+    expect(f.h1.mutation).toMatch(/^productUpdate \(title\)/);
+    expect(f.title.label).toBe('Title');
+    expect(f.seoTitle.label).toBe('SEO title (meta title)');
+    expect(product.fields.findIndex((x) => x.key === 'h1')).toBe(product.fields.findIndex((x) => x.key === 'title') + 1);
     expect(m.mutations()).toEqual([]);
   });
 
@@ -221,7 +229,8 @@ describe('SEO editor: drafts, apply, verify, re-audit', () => {
     m.collections.get('gid://shopify/Collection/2001')!.seo.title = 'Kitchen Tools Edited By Merchant';
     const pv = (await h.seo.post('/api/shopify/drafts/preview', { ids: [d.id] })).body as ShopifyApplyPreview;
     expect(pv.conflicts).toBe(1);
-    expect(pv.total).toBe(1);
+    expect(pv.total).toBe(2); // SEO description + the collection image alt (the SEO title is the conflict)
+    expect(d.fields.find((f) => f.key === 'imageAlt:featured')).toMatchObject({ label: 'Image alt text (collection image)', current: '', proposed: 'Kitchen Tools', include: true, mutation: 'collectionUpdate (image.altText)' });
     const r = (await h.seo.post('/api/shopify/drafts/apply', { ids: [d.id], confirm: pv.confirmPhrase })).body as ShopifyApplyBatchResult;
     const out = r.drafts[0];
     expect(out.status).toBe('partial');
@@ -230,6 +239,10 @@ describe('SEO editor: drafts, apply, verify, re-audit', () => {
     const c = m.collections.get('gid://shopify/Collection/2001')!;
     expect(c.seo.title).toBe('Kitchen Tools Edited By Merchant');
     expect(c.seo.description).toMatch(/^Useful tools/);
+    // Image alt text on the collection image: written with collectionUpdate, read back, and seen on the storefront.
+    expect(out.result!.fields.find((f) => f.key === 'imageAlt:featured')!.status).toBe('verified');
+    expect(c.image!.altText).toBe('Kitchen Tools');
+    expect(out.result!.reaudit!.checks.find((x) => x.field === 'Image alt')).toMatchObject({ ok: true });
   });
 
   it('reports partial failures per field (Shopify userErrors) and continues with the batch', async () => {
@@ -260,11 +273,14 @@ describe('SEO editor: drafts, apply, verify, re-audit', () => {
     expect((await h.dev.get(`/api/shopify/themes/file?themeId=${encodeURIComponent(copy.id)}&filename=config/settings_data.json`)).status).toBe(400);
     const next = file.body.content.replace('<h1 class="product__title">', '<h1 class="product__title" data-seo="h1">');
 
+    // The live theme: its own confirmation phrase, and the original file must be downloaded first.
     const onLive = (await h.dev.post('/api/shopify/theme-proposals', { themeId: live.id, filename: 'sections/main-product.liquid', content: next, reason: 'mark H1' })).body as ShopifyThemeProposal;
-    expect(onLive.added).toBe(1);
+    expect(onLive).toMatchObject({ added: 1, live: true, confirmPhrase: 'WRITE TO LIVE THEME Dawn (live)' });
+    expect((await h.dev.post(`/api/shopify/theme-proposals/${onLive.id}/apply`, { confirm: 'APPLY TO Dawn (live)' })).status).toBe(400);
     const refused = await h.dev.post(`/api/shopify/theme-proposals/${onLive.id}/apply`, { confirm: onLive.confirmPhrase });
     expect(refused.status).toBe(409);
-    expect(refused.body.error.code).toBe('LIVE_THEME');
+    expect(refused.body.error.code).toBe('BACKUP_REQUIRED');
+    expect(m.mutations().filter((x) => x.startsWith('SentinelThemeWrite'))).toEqual([]);
 
     const prop = (await h.dev.post('/api/shopify/theme-proposals', { themeId: copy.id, filename: 'sections/main-product.liquid', content: next, reason: 'mark H1' })).body as ShopifyThemeProposal;
     expect(prop.diff.some((l) => l.op === '+' && l.text.includes('data-seo'))).toBe(true);
@@ -285,6 +301,82 @@ describe('SEO editor: drafts, apply, verify, re-audit', () => {
     expect(c2.status).toBe('conflict');
     expect(m.themes[1].files.get('layout/theme.liquid')).toBe('<html>changed by someone</html>');
     expect(m.requests.some((r) => /themePublish/.test(r.body))).toBe(false);
+  });
+
+  it('H1 from the title: its own field, written as the title, verified by read-back and on the storefront', async () => {
+    const d = (await h.seo.post(`/api/shopify/drafts/${product.id}/refresh`)).body as ShopifyDraft;
+    const h1 = d.fields.find((f) => f.key === 'h1')!;
+    expect(h1.current).toBe(m.products.get('gid://shopify/Product/1001')!.title);
+    // Title and H1 are the same Shopify value here: two different new values are refused.
+    let r = (await h.seo.patch(`/api/shopify/drafts/${d.id}`, { fields: { h1: { proposed: 'Vegetable Chopper and Slicer 3 in 1', include: true }, title: { proposed: 'Another Title', include: true } } })).body as ShopifyDraft;
+    expect(r.fields.find((f) => f.key === 'h1')!.validation.errors.join(' ')).toMatch(/\[H1\].*title/i);
+    r = (await h.seo.patch(`/api/shopify/drafts/${d.id}`, { fields: { title: { proposed: r.fields.find((f) => f.key === 'title')!.current, include: false } } })).body as ShopifyDraft;
+    expect(r.fields.find((f) => f.key === 'h1')!.validation.ok).toBe(true);
+    const pv = (await h.seo.post('/api/shopify/drafts/preview', { ids: [d.id] })).body as ShopifyApplyPreview;
+    expect(pv.total).toBe(1); // only the selected field
+    const before = m.mutations().length;
+    const out = ((await h.seo.post('/api/shopify/drafts/apply', { ids: [d.id], confirm: pv.confirmPhrase })).body as ShopifyApplyBatchResult).drafts[0];
+    expect(m.mutations().slice(before)).toEqual(['SentinelProductUpdate']);
+    expect(m.products.get('gid://shopify/Product/1001')!.title).toBe('Vegetable Chopper and Slicer 3 in 1');
+    expect(out.result!.fields.map((f) => [f.key, f.status])).toEqual([['h1', 'verified']]);
+    expect(out.result!.reaudit!.checks.find((c) => c.field === 'H1')).toMatchObject({ expected: 'Vegetable Chopper and Slicer 3 in 1', ok: true });
+  });
+
+  it('H1 inside the content: written into the body, other content kept, verified on the storefront', async () => {
+    const d = (await h.seo.post('/api/shopify/drafts', { url: `${STOREFRONT}/pages/bulk-orders` })).body as ShopifyDraft;
+    expect(d.h1.sources.map((s) => s.source)).toEqual(['body']);
+    const f = d.fields.find((x) => x.key === 'h1')!;
+    expect(f).toMatchObject({ current: 'Bulk orders', applyVia: 'admin_api' });
+    expect(f.mutation).toMatch(/^pageUpdate/);
+    await h.seo.patch(`/api/shopify/drafts/${d.id}`, { fields: Object.fromEntries(d.fields.map((x) => [x.key, { include: x.key === 'h1' }])) });
+    await h.seo.patch(`/api/shopify/drafts/${d.id}`, { fields: { h1: { proposed: 'Bulk & wholesale orders', include: true } } });
+    const pv = (await h.seo.post('/api/shopify/drafts/preview', { ids: [d.id] })).body as ShopifyApplyPreview;
+    expect(pv.total).toBe(1);
+    const out = ((await h.seo.post('/api/shopify/drafts/apply', { ids: [d.id], confirm: pv.confirmPhrase })).body as ShopifyApplyBatchResult).drafts[0];
+    const page = m.pages.get('gid://shopify/Page/3002')!;
+    expect(page.body).toBe('<h1>Bulk &amp; wholesale orders</h1><p>Order 50 pieces or more of any DeoDap product at wholesale prices.</p>');
+    expect(page.title).toBe('Bulk Orders');
+    expect(out.result!.fields.map((x) => [x.key, x.status])).toEqual([['h1', 'verified']]);
+    expect(out.result!.reaudit!.checks.find((c) => c.field === 'H1')).toMatchObject({ ok: true });
+  });
+
+  it('H1 from the theme: proposed in the live theme file, written only after backup + live confirmation, checked on the storefront', async () => {
+    const live = m.themes[0];
+    live.files.set('sections/main-collection-banner.liquid', '<div class="collection-hero">\n  <h1 class="collection-hero__title">Shop Our Range</h1>\n</div>\n');
+    live.files.set('snippets/promo.liquid', '<p>Shop Our Range</p>\n');
+    const d = (await h.seo.post('/api/shopify/drafts', { url: `${STOREFRONT}/collections/kitchen-tools` })).body as ShopifyDraft;
+    const f = d.fields.find((x) => x.key === 'h1')!;
+    expect(f).toMatchObject({ current: 'Shop Our Range', applyVia: 'theme' });
+    // Not applied through the content editor.
+    const inc = (await h.seo.patch(`/api/shopify/drafts/${d.id}`, { fields: { h1: { proposed: 'Kitchen Tools', include: true } } })).body as ShopifyDraft;
+    expect(inc.fields.find((x) => x.key === 'h1')!.validation.errors.join(' ')).toMatch(/Change in theme/);
+    await h.seo.patch(`/api/shopify/drafts/${d.id}`, { fields: { h1: { include: false } } });
+    expect((await h.seo.post(`/api/shopify/drafts/${d.id}/h1-theme`, { text: 'Kitchen Tools' })).status).toBe(403); // theme permission
+    // The text is in two files: the user picks the file.
+    const several = await h.dev.post(`/api/shopify/drafts/${d.id}/h1-theme`, { text: 'Kitchen Tools' });
+    expect(several.status).toBe(409);
+    expect(several.body.error.details.files.sort()).toEqual(['sections/main-collection-banner.liquid', 'snippets/promo.liquid']);
+    const p = (await h.dev.post(`/api/shopify/drafts/${d.id}/h1-theme`, { text: 'Kitchen Tools', filename: 'sections/main-collection-banner.liquid' })).body as ShopifyThemeProposal;
+    expect(p).toMatchObject({ live: true, themeRole: 'MAIN', filename: 'sections/main-collection-banner.liquid', confirmPhrase: 'WRITE TO LIVE THEME Dawn (live)', added: 1, removed: 1 });
+    expect(p.diff.find((l) => l.op === '+')!.text).toContain('>Kitchen Tools</h1>');
+    const writes = () => m.mutations().filter((x) => x.startsWith('SentinelThemeWrite'));
+    const w0 = writes().length;
+    expect((await h.dev.post(`/api/shopify/theme-proposals/${p.id}/apply`, { confirm: p.confirmPhrase })).body.error.code).toBe('BACKUP_REQUIRED');
+    expect(writes().length).toBe(w0);
+    const backup = await h.dev.get(`/api/shopify/theme-proposals/${p.id}/backup`);
+    expect(backup.text).toContain('Shop Our Range');
+    expect((await h.dev.post(`/api/shopify/theme-proposals/${p.id}/apply`, { confirm: 'APPLY TO Dawn (live)' })).status).toBe(400);
+    const done = (await h.dev.post(`/api/shopify/theme-proposals/${p.id}/apply`, { confirm: 'WRITE TO LIVE THEME Dawn (live)' })).body as ShopifyThemeProposal;
+    expect(done.status).toBe('applied');
+    expect(done.backupTakenAt).toBeTruthy();
+    expect(done.result).toMatchObject({ verified: true, liveCheck: { expected: 'Kitchen Tools', ok: true } });
+    expect(done.result!.liveCheck!.found).toContain('Kitchen Tools');
+    expect(live.files.get('sections/main-collection-banner.liquid')).toContain('>Kitchen Tools</h1>');
+    expect(live.files.get('snippets/promo.liquid')).toContain('Shop Our Range'); // only the chosen file
+    expect(m.requests.some((r) => /themePublish/.test(r.body))).toBe(false);
+    const again = (await h.seo.post(`/api/shopify/drafts/${d.id}/refresh`)).body as ShopifyDraft;
+    expect(again.fields.find((x) => x.key === 'h1')!.current).toBe('Kitchen Tools');
+    live.files.delete('snippets/promo.liquid');
   });
 
   it('re-audit can be run again on request', async () => {
@@ -319,5 +411,24 @@ describe('missing scopes', () => {
     const r = await h.seo.post('/api/shopify/drafts', { url: `${STOREFRONT}/products/vegetable-chopper` });
     expect(r.status).toBe(409);
     expect(r.body.error.message).toMatch(/write_content/);
+  });
+});
+
+describe('SEO editor: access scopes', () => {
+  it('explains which scope is missing per field, and keeps the fields that work', async () => {
+    const h = await setup({ SHOPIFY_STORE_DOMAIN: SHOP, SHOPIFY_ADMIN_TOKEN: TOKEN });
+    h.mock.setScopes(['read_products', 'write_products', 'read_content', 'write_content']); // no write_files, no themes
+    const st = (await h.admin.get('/api/shopify/status')).body as ShopifyStatus;
+    expect(st.capabilities).toEqual({ edit: true, themes: false, themeWrite: false, imageAlt: false });
+    const d = (await h.seo.post('/api/shopify/drafts', { url: `${STOREFRONT}/products/vegetable-chopper` })).body as ShopifyDraft;
+    const alt = d.fields.find((f) => f.key === 'imageAlt:gid://shopify/MediaImage/501')!;
+    expect(alt.include).toBe(false);
+    expect(alt.validation.errors.join(' ')).toMatch(/write_files.*reconnect/);
+    expect(d.fields.find((f) => f.key === 'seoTitle')!.validation.ok).toBe(true);
+    const c = (await h.seo.post('/api/shopify/drafts', { url: `${STOREFRONT}/collections/kitchen-tools` })).body as ShopifyDraft;
+    expect(c.fields.find((f) => f.key === 'imageAlt:featured')!.validation.ok).toBe(true); // collectionUpdate needs write_products only
+    const r = await h.admin.post(`/api/shopify/drafts/${c.id}/h1-theme`, { text: 'Kitchen Tools' });
+    expect(r.status).toBe(409);
+    expect(r.body.error.message).toMatch(/read_themes.*Reconnect/);
   });
 });

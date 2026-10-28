@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /**
  * Shopify-like fixture store served by node:http on a random loopback port. Templates mirror a Dawn-style theme:
  * home, 3 collections, 8 products, blog index + 2 articles, about/contact/shipping/returns pages, robots.txt, sitemap.xml.
@@ -152,6 +153,8 @@ export interface FixtureSite {
   origin: string;
   opts: FixtureOptions;
   requests: { method: string; path: string; ua: string }[];
+  /** Paths answered 304 Not Modified (conditional requests). */
+  notModified: string[];
   close(): Promise<void>;
   productUrls(): string[];
   collectionUrls(): string[];
@@ -164,6 +167,8 @@ export async function startFixtureSite(initial?: Partial<FixtureOptions>): Promi
   const server = http.createServer((req, res) => {
     const u = new URL(req.url ?? '/', 'http://x');
     requests.push({ method: req.method ?? 'GET', path: `${u.pathname}${u.search}`, ua: String(req.headers['user-agent'] ?? '') });
+    ifNoneMatch = typeof req.headers['if-none-match'] === 'string' ? req.headers['if-none-match'] : undefined;
+    currentPath = `${u.pathname}${u.search}`;
     try {
       route(req, res, u);
     } catch (e) {
@@ -173,10 +178,20 @@ export async function startFixtureSite(initial?: Partial<FixtureOptions>): Promi
   });
   server.keepAliveTimeout = 1000;
 
+  /** Last request's If-None-Match (conditional requests: a matching ETag answers 304 without a body). */
+  let ifNoneMatch: string | undefined;
   const send = (res: http.ServerResponse, status: number, body: string, headers: Record<string, string> = {}, method = 'GET') => {
-    res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'content-length': String(Buffer.byteLength(body)), ...headers });
+    const etag = status === 200 ? `"${createHash('sha1').update(body).digest('hex').slice(0, 20)}"` : undefined;
+    if (etag && ifNoneMatch === etag) {
+      notModified.push(currentPath);
+      res.writeHead(304, { etag });
+      return res.end();
+    }
+    res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'content-length': String(Buffer.byteLength(body)), ...(etag ? { etag } : {}), ...headers });
     res.end(method === 'HEAD' ? undefined : body);
   };
+  let currentPath = '';
+  const notModified: string[] = [];
   const redirect = (res: http.ServerResponse, status: number, to: string) => {
     res.writeHead(status, { location: to, 'content-length': '0' });
     res.end();
@@ -485,7 +500,7 @@ ${a.sections.map(([h, t]) => `<h2>${esc(h)}</h2><p>${esc(t)}</p>`).join('\n')}
   const port = (server.address() as AddressInfo).port;
   origin = `http://${opts.host}:${port}`;
   return {
-    url: `${origin}/`, origin, opts, requests,
+    url: `${origin}/`, origin, opts, requests, notModified,
     async close() {
       server.closeAllConnections();
       await new Promise<void>((r) => server.close(() => r()));

@@ -60,10 +60,10 @@ export const isGid = (id: string, type?: string) => GID.test(id) && (!type || id
 // ---------------------------------------------------------------------------------------------- reading
 
 const PRODUCT_FIELDS = 'id handle title descriptionHtml tags updatedAt seo { title description } media(first: 50) { nodes { ... on MediaImage { id alt image { url } } } }';
-const COLLECTION_FIELDS = 'id handle title descriptionHtml updatedAt seo { title description }';
+const COLLECTION_FIELDS = 'id handle title descriptionHtml updatedAt seo { title description } image { altText url }';
 const SEO_TAGS = 'titleTag: metafield(namespace: "global", key: "title_tag") { value } descTag: metafield(namespace: "global", key: "description_tag") { value }';
 const PAGE_FIELDS = `id handle title body updatedAt ${SEO_TAGS}`;
-const ARTICLE_FIELDS = `id handle title body summary tags updatedAt blog { handle } ${SEO_TAGS}`;
+const ARTICLE_FIELDS = `id handle title body summary tags updatedAt blog { handle } image { altText url } ${SEO_TAGS}`;
 
 type Raw = Record<string, unknown> & { id: string; handle: string; title: string };
 const s = (v: unknown) => (typeof v === 'string' ? v : '');
@@ -72,16 +72,19 @@ function toResource(kind: ShopifyResourceKind, n: Raw): ShopifyResource {
   const seo = (n.seo ?? {}) as { title?: string | null; description?: string | null };
   const tag = (k: string) => s((n[k] as { value?: string } | null)?.value);
   const base = { kind, id: n.id, handle: n.handle, title: n.title, updatedAt: s(n.updatedAt) || undefined };
+  // Collections and articles have one featured image; its alt text is written with collectionUpdate / articleUpdate.
+  const img = n.image as { altText?: string | null; url?: string } | null | undefined;
+  const featured = img?.url ? [{ id: 'featured', alt: img.altText ?? '', url: img.url }] : undefined;
   let r: ShopifyResource;
   if (kind === 'product') {
     const media = ((n.media as { nodes?: { id?: string; alt?: string | null; image?: { url?: string } | null }[] } | undefined)?.nodes ?? []).filter((m) => m.id && isGid(m.id, 'MediaImage'));
     r = { ...base, seoTitle: s(seo.title), seoDescription: s(seo.description), bodyHtml: s(n.descriptionHtml), tags: (n.tags as string[]) ?? [], images: media.map((m) => ({ id: m.id!, alt: m.alt ?? '', url: m.image?.url })), path: '' };
   } else if (kind === 'collection') {
-    r = { ...base, seoTitle: s(seo.title), seoDescription: s(seo.description), bodyHtml: s(n.descriptionHtml), path: '' };
+    r = { ...base, seoTitle: s(seo.title), seoDescription: s(seo.description), bodyHtml: s(n.descriptionHtml), ...(featured ? { images: featured } : {}), path: '' };
   } else if (kind === 'page') {
     r = { ...base, seoTitle: tag('titleTag'), seoDescription: tag('descTag'), bodyHtml: s(n.body), path: '' };
   } else {
-    r = { ...base, seoTitle: tag('titleTag'), seoDescription: tag('descTag'), bodyHtml: s(n.body), summaryHtml: s(n.summary), tags: (n.tags as string[]) ?? [], blogHandle: s((n.blog as { handle?: string } | null)?.handle) || undefined, path: '' };
+    r = { ...base, seoTitle: tag('titleTag'), seoDescription: tag('descTag'), bodyHtml: s(n.body), summaryHtml: s(n.summary), tags: (n.tags as string[]) ?? [], blogHandle: s((n.blog as { handle?: string } | null)?.handle) || undefined, ...(featured ? { images: featured } : {}), path: '' };
   }
   r.path = storefrontPath(r);
   return r;
@@ -153,6 +156,7 @@ const MUTATION: Record<ShopifyResourceKind, string> = { product: 'productUpdate'
 
 /** Which mutation writes a field (shown in the editor before anything is written). */
 export function mutationFor(kind: ShopifyResourceKind, key: string): string {
+  if (key === 'imageAlt:featured') return `${MUTATION[kind]} (image.altText)`;
   if (key.startsWith('imageAlt:')) return 'fileUpdate (alt)';
   if (key === 'seoTitle' || key === 'seoDescription') {
     if (kind === 'page' || kind === 'article') return `metafieldsSet (global.${key === 'seoTitle' ? 'title_tag' : 'description_tag'})`;
@@ -222,7 +226,19 @@ export function writeOps(live: ShopifyResource, changes: Record<string, string>)
       checkUserErrors(d.metafieldsSet, 'metafieldsSet');
     } });
   }
-  const alts = keys.filter((k) => k.startsWith('imageAlt:'));
+  if (has('imageAlt:featured') && (live.kind === 'collection' || live.kind === 'article')) {
+    const altText = changes['imageAlt:featured'];
+    ops.push(live.kind === 'collection'
+      ? { name: 'collectionUpdate', keys: ['imageAlt:featured'], run: async (c) => {
+        const d = await c.request<{ collectionUpdate: { userErrors: { field?: string[]; message: string }[] } }>('mutation SentinelCollectionUpdate($input: CollectionInput!) { collectionUpdate(input: $input) { collection { id } userErrors { field message } } }', { input: { id: live.id, image: { altText } } });
+        checkUserErrors(d.collectionUpdate, 'collectionUpdate');
+      } }
+      : { name: 'articleUpdate', keys: ['imageAlt:featured'], run: async (c) => {
+        const d = await c.request<{ articleUpdate: { userErrors: { field?: string[]; message: string }[] } }>('mutation SentinelArticleUpdate($id: ID!, $article: ArticleUpdateInput!) { articleUpdate(id: $id, article: $article) { article { id } userErrors { field message code } } }', { id: live.id, article: { image: { altText } } });
+        checkUserErrors(d.articleUpdate, 'articleUpdate');
+      } });
+  }
+  const alts = keys.filter((k) => k.startsWith('imageAlt:') && k !== 'imageAlt:featured');
   if (alts.length) {
     const files = alts.map((k) => ({ id: k.slice(9), alt: changes[k] }));
     ops.push({ name: 'fileUpdate', keys: alts, run: async (c) => {

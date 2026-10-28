@@ -43,7 +43,7 @@ export function nextRun(expr: string, from: Date): Date | undefined {
   return undefined;
 }
 
-export interface SchedulerDeps { ctx: Ctx; crawls: CrawlService; issues: IssueService; reports: ReportService }
+export interface SchedulerDeps { ctx: Ctx; crawls: CrawlService; issues: IssueService; reports: ReportService; monitor?: { tick(): Promise<void> } }
 
 /**
  * In-process scheduler (enabled with SCHEDULER_ENABLED=true). Jobs:
@@ -52,6 +52,7 @@ export interface SchedulerDeps { ctx: Ctx; crawls: CrawlService; issues: IssueSe
  *  - connector data syncs (GA4 → tiers, GSC, CrUX) at 01:00 IST (PDF §3.1 tiers computed nightly, §15)
  *  - daily digest at config.reporting.dailyDigestTime IST (08:00, PDF §12.1)
  *  - weekly rollup Monday, monthly report on config.reporting.monthlyDay (PDF §13)
+ *  - incremental monitoring (sitemap / Shopify / webhook signals → conditional requests) every MONITOR_INTERVAL_MINUTES
  * Each job runs at most once per matching minute; failures are logged and recorded, never retried silently.
  */
 export function createScheduler(d: SchedulerDeps) {
@@ -84,6 +85,8 @@ export function createScheduler(d: SchedulerDeps) {
         });
       }
     }
+    // Incremental monitoring: targeted checks between crawls (interval MONITOR_INTERVAL_MINUTES; runs itself decides).
+    if (d.monitor) await once(`monitor:${stamp}`, () => d.monitor!.tick());
     if (cronMatches('30 0 * * *', now)) await once(`escalation:${stamp}`, () => runEscalations(ctx, d.issues));
     if (cronMatches('0 1 * * *', now)) await once(`sync:${stamp}`, () => runAllSyncs(ctx, { ingest: d.issues.ingestFindings }));
     const [hh, mm] = cfg.reporting.dailyDigestTime.split(':').map(Number);

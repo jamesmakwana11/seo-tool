@@ -182,6 +182,10 @@ const schema = z.object({
   CRAWLER_KEEP_RESULTS: z.coerce.number().int().min(1).max(50).default(3),
   /** Change Monitor: compare every crawl with the last valid crawl (snapshots on disk, no database). */
   CHANGE_MONITOR_ENABLED: bool(true),
+  /** Incremental monitoring (sitemap / Shopify / webhook signals → targeted conditional requests): minutes between runs; 0 = off. */
+  MONITOR_INTERVAL_MINUTES: z.coerce.number().int().min(0).max(1440).default(60),
+  /** Most pages one incremental run requests; the rest wait for the next run. */
+  MONITOR_MAX_CHECKS: z.coerce.number().int().min(1).max(2000).default(200),
   /**
    * Folder for Change Monitor snapshots (default: the system temp folder /sentinel-changes). On Render the filesystem is
    * EPHEMERAL: history is lost on every restart / deploy unless this points at a mounted persistent disk.

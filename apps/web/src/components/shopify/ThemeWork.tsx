@@ -11,8 +11,9 @@ import { fmtDateTime } from '@/lib/format';
 
 /**
  * Theme changes for SEO problems the Admin API cannot fix (an H1 hard-coded in a section, a canonical tag in the layout…):
- * open a file of a theme, edit it, and create a proposal (diff + original kept). A proposal is only ever written to an
- * unpublished theme, after typing the confirmation; Sentinel never publishes a theme.
+ * open a file of a theme, edit it, and create a proposal (diff + original kept). An unpublished copy is written after
+ * typing the confirmation; the live theme only after the original file was downloaded and its own live-theme phrase was
+ * typed. Sentinel never publishes a theme.
  */
 export function ThemeWork() {
   const toast = useToast();
@@ -45,7 +46,7 @@ export function ThemeWork() {
   return (
     <div className="space-y-5">
       <Notice tone="signal" title="How theme changes work">
-        Make the change on an unpublished copy of the theme (duplicate the live theme in Shopify first). Sentinel shows the diff, keeps the original file, and writes only after you type the confirmation. It never writes to the live theme and never publishes — preview the copy in Shopify and publish it yourself.
+        Safest: make the change on an unpublished copy of the theme (duplicate the live theme in Shopify first), preview it, and publish it yourself. Sentinel shows the diff, keeps the original file, and writes only after you type the confirmation. A change to the live theme is shown on the storefront at once, so it also requires downloading the original file first and typing a separate live-theme confirmation. Sentinel never publishes a theme.
       </Notice>
       <Panel title="Edit a theme file">
         {themes.error instanceof ApiError && themes.error.status === 409 ? (
@@ -69,7 +70,7 @@ export function ThemeWork() {
               </div>
               {file && (
                 <>
-                  {list.find((t) => t.id === themeId)?.role === 'MAIN' && <Notice tone="med">This is the live theme. You can prepare a proposal, but it can only be written to an unpublished copy.</Notice>}
+                  {list.find((t) => t.id === themeId)?.role === 'MAIN' && <Notice tone="med">This is the live theme: a written change is visible on the storefront at once. Writing it requires downloading the original file and typing a separate live-theme confirmation.</Notice>}
                   <Textarea value={content} onChange={(e) => setContent(e.target.value)} rows={16} className="font-mono text-xs" aria-label="File content" spellCheck={false} />
                   <Field label="Why (shown with the proposal)" htmlFor="th-reason"><Input id="th-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Product title rendered as a second H1 by the theme" /></Field>
                   <Button variant="primary" icon={<GitCompare className="h-4 w-4" />} disabled={content === file.content || !reason.trim()} loading={propose.isPending} onClick={() => propose.mutate()}>Create proposal</Button>
@@ -98,17 +99,19 @@ export function ThemeWork() {
   );
 }
 
-function ProposalDialog({ p, onClose }: { p: ShopifyThemeProposal; onClose: () => void }) {
+export function ProposalDialog({ p, onClose }: { p: ShopifyThemeProposal; onClose: () => void }) {
   const toast = useToast();
   const [phrase, setPhrase] = useState('');
   const [cur, setCur] = useState(p);
   const apply = useApiMutation(() => api.applyShopifyThemeProposal(p.id, phrase), {
     invalidate: [['shopify', 'theme-proposals']],
-    success: (r) => (r.status === 'applied' ? 'Written to the unpublished theme' : `Not written: ${r.status}`),
+    success: (r) => (r.status === 'applied' ? (r.live ? 'Written to the live theme' : 'Written to the unpublished theme') : `Not written: ${r.status}`),
     onSuccess: (r) => setCur(r),
   });
-  const backup = async () => { try { saveFile(await api.downloadShopifyThemeBackup(p.id)); } catch (e) { toast.error(errorMessage(e)); } };
-  const live = cur.themeRole === 'MAIN';
+  const [backedUp, setBackedUp] = useState(!!p.backupTakenAt);
+  const backup = async () => { try { saveFile(await api.downloadShopifyThemeBackup(p.id)); setBackedUp(true); } catch (e) { toast.error(errorMessage(e)); } };
+  const live = !!cur.live;
+  const lc = cur.result?.liveCheck;
   return (
     <Dialog
       open
@@ -118,17 +121,29 @@ function ProposalDialog({ p, onClose }: { p: ShopifyThemeProposal; onClose: () =
       footer={(
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button icon={<Download className="h-4 w-4" />} onClick={backup}>Download original file</Button>
-          {cur.status === 'proposed' && <Button variant="primary" disabled={live || phrase.trim() !== cur.confirmPhrase} loading={apply.isPending} onClick={() => apply.mutate()}>Write to {cur.themeName}</Button>}
+          {cur.status === 'proposed' && <Button variant="primary" disabled={(live && !backedUp) || phrase.trim() !== cur.confirmPhrase} loading={apply.isPending} onClick={() => apply.mutate()}>Write to {cur.themeName}</Button>}
         </div>
       )}
     >
       <div className="space-y-3 text-sm">
         <p className="text-ink-soft">{cur.reason}</p>
         <DiffView lines={cur.diff} />
-        {cur.result && <Notice tone={cur.status === 'applied' ? 'signal' : 'crit'}>{cur.result.message}</Notice>}
-        {cur.status === 'proposed' && (live
-          ? <Notice tone="med">This proposal targets the live theme, so it cannot be written. Duplicate the theme in Shopify and prepare the change on the copy.</Notice>
-          : <Field label={<>Type <Mono>{cur.confirmPhrase}</Mono> to write the file (the theme is not published)</>} htmlFor="th-confirm"><Input id="th-confirm" value={phrase} onChange={(e) => setPhrase(e.target.value)} autoComplete="off" /></Field>)}
+        {cur.result && <Notice tone={cur.status === 'applied' && cur.result.verified ? 'signal' : 'crit'}>{cur.result.message}</Notice>}
+        {lc && (
+          <Notice tone={lc.ok ? 'signal' : 'med'} title={lc.ok ? 'Storefront shows the new H1' : 'Storefront not confirmed'}>
+            Expected “{lc.expected}” on {lc.url}; found {lc.found.length ? lc.found.map((h) => `“${h}”`).join(', ') : 'no H1'}.{lc.note ? ` ${lc.note}` : ''}
+          </Notice>
+        )}
+        {cur.status === 'proposed' && live && (
+          <Notice tone="crit" title="Live theme">
+            This writes to the published theme: customers see the change immediately. {backedUp ? 'Original file downloaded.' : 'Download the original file first — it is your way back.'}
+          </Notice>
+        )}
+        {cur.status === 'proposed' && (
+          <Field label={<>Type <Mono>{cur.confirmPhrase}</Mono> to write the file{live ? '' : ' (the theme is not published)'}</>} htmlFor="th-confirm">
+            <Input id="th-confirm" value={phrase} onChange={(e) => setPhrase(e.target.value)} autoComplete="off" disabled={live && !backedUp} />
+          </Field>
+        )}
       </div>
     </Dialog>
   );

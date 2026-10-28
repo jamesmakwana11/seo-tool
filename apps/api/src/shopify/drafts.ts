@@ -98,7 +98,9 @@ export function detectH1Sources(res: ShopifyResource, pageH1s: string[], basis: 
   const title = lc(res.title);
   const sources = pageH1s.map((h): H1SourceReport['sources'][number] => {
     const t = lc(h);
-    if (t && t === title) return { text: h, source: 'title', applyVia: 'admin_api', explanation: `The theme prints the ${res.kind} title as the H1. Change the title field (Admin API) to change it.` };
+    // Same text in the title and in a body <h1> (ignoring case): the exact spelling on the page decides.
+    const exactBody = bodyHeadings(res.bodyHtml).some((b) => b.level === 1 && b.text === norm(h)) && norm(res.title) !== norm(h);
+    if (t && t === title && !exactBody) return { text: h, source: 'title', applyVia: 'admin_api', explanation: `The theme prints the ${res.kind} title as the H1. Change the title field (Admin API) to change it.` };
     if (t && bodyH1s.includes(t)) return { text: h, source: 'body', applyVia: 'admin_api', explanation: `This H1 is inside the ${res.kind === 'product' || res.kind === 'collection' ? 'description' : 'content'} HTML. Edit or demote it there (Admin API).` };
     if (!t) return { text: h, source: 'theme', applyVia: 'theme', explanation: 'An empty H1 (often a logo or icon heading) comes from the theme. Fix it in the theme code.' };
     return { text: h, source: 'theme', applyVia: 'theme', explanation: 'This text is not the title and not in the description, so the theme (a section, snippet or app block) outputs it. Fix it with a theme edit.' };
@@ -145,11 +147,12 @@ export function validateField(key: string, value: string, ctx: { res: ShopifyRes
       if (/<[a-z/][^>]*>/i.test(t)) errors.push('HTML tags are not allowed here.');
       if (t.length > (isTitle ? 255 : 320)) errors.push(`Too long for Shopify (${t.length} characters).`);
     }
-  } else if (key === 'title') {
+  } else if (key === 'title' || key === 'h1') {
     const t = norm(v);
-    if (!t) errors.push('The title cannot be empty.');
-    if (t.length > 255) errors.push('Shopify titles are at most 255 characters.');
-    if (/<[a-z/][^>]*>/i.test(t)) errors.push('HTML tags are not allowed in the title.');
+    const what = key === 'h1' ? 'H1' : 'title';
+    if (!t) errors.push(`The ${what} cannot be empty.`);
+    if (t.length > 255) errors.push(`The ${what} is at most 255 characters.`);
+    if (/<[a-z/][^>]*>/i.test(t)) errors.push(`HTML tags are not allowed in the ${what}.`);
   } else if (key === 'tags') {
     const tags = v.split(',').map((x) => x.trim()).filter(Boolean);
     if (tags.some((x) => x.length > 255)) errors.push('A tag is longer than 255 characters.');
@@ -208,7 +211,7 @@ function validateHtml(html: string, siteHost: string, errors: string[], warnings
 
 // ---------------------------------------------------------------------------------------------- suggestions
 
-const LABEL: Record<string, string> = { seoTitle: 'SEO title (title tag)', seoDescription: 'Meta description', title: 'Title (usually the H1)', tags: 'Tags', bodyHtml: 'Description / content (H2–H3 headings, internal links)', summaryHtml: 'Excerpt' };
+const LABEL: Record<string, string> = { seoTitle: 'SEO title (meta title)', seoDescription: 'Meta description', title: 'Title', h1: 'H1 heading', tags: 'Tags', bodyHtml: 'Description / content (H2–H3 headings, internal links)', summaryHtml: 'Excerpt' };
 
 /** Every source of existing text a suggestion may reuse. */
 export function sourceTexts(res: ShopifyResource, shopName?: string): string[] {
@@ -226,7 +229,7 @@ export function buildFields(c: DraftContext): ShopifyFieldDraft[] {
     const changed = proposed !== undefined && norm(proposed) !== norm(current);
     const value = changed ? proposed! : current;
     fields.push({
-      key, label: key.startsWith('imageAlt:') ? `Image alt text #${fields.filter((f) => f.key.startsWith('imageAlt:')).length + 1}` : LABEL[key],
+      key, label: key === 'imageAlt:featured' ? `Image alt text (${res.kind} image)` : key.startsWith('imageAlt:') ? `Image alt text #${fields.filter((f) => f.key.startsWith('imageAlt:')).length + 1}` : LABEL[key],
       current, proposed: value, reason: changed ? reason : '', source: changed ? 'suggested' : 'unchanged', applyVia: 'admin_api', mutation: mutationFor(res.kind, key),
       validation: validateField(key, value, { res, siteHost: c.siteHost, limits: L, current, sources, source: changed ? 'suggested' : 'unchanged' }),
       include: changed, hint,
@@ -285,7 +288,13 @@ export function buildFields(c: DraftContext): ShopifyFieldDraft[] {
       'Edit headings (H2/H3) and add internal links (<a href="/collections/…">) here. Only links to this site are expected.');
   }
   if (res.kind === 'article') push('summaryHtml', res.summaryHtml ?? '', undefined, '');
-  // ---- image alt text (products)
+  // ---- image alt text (product media; the featured image of a collection or article)
+  if (res.kind !== 'product') {
+    for (const img of res.images ?? []) {
+      const proposed = norm(img.alt) ? undefined : shorten(res.title, ALT_MAX);
+      push('imageAlt:featured', img.alt, proposed, `No alt text on the ${res.kind}’s image. Uses the ${res.kind} title (describe what the image shows if it differs).`, img.url);
+    }
+  }
   if (res.kind === 'product') {
     (res.images ?? []).slice(0, 20).forEach((img, i) => {
       const cur = img.alt;
