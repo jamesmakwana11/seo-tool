@@ -126,7 +126,10 @@ describe('SEO editor drafts', () => {
     const res = product();
     const fields = buildFields({ res, shopName: 'DeoDap', siteHost: 'deodap.test', pageH1s: [res.title, 'Vegetable Chopper'], h1Basis: 'crawl' });
     const suggested = fields.filter((f) => f.source === 'suggested');
-    expect(suggested.map((f) => f.key).sort()).toEqual(['bodyHtml', 'imageAlt:gid://shopify/MediaImage/5', 'seoDescription', 'seoTitle', 'tags'].sort());
+    expect(suggested.map((f) => f.key).sort()).toEqual(['bodyHtml', 'imageAlt:gid://shopify/MediaImage/5', 'seoDescription', 'seoTitle', 'tags', 'title'].sort());
+    // The 90-character product title gets a shortened suggestion for review — never pre-selected (wording is a human call).
+    expect(fields.find((f) => f.key === 'title')!).toMatchObject({ include: false, suggestion: { confidence: 'review', keep: false } });
+    expect(suggested.filter((f) => f.include).map((f) => f.key).sort()).toEqual(['bodyHtml', 'imageAlt:gid://shopify/MediaImage/5', 'seoDescription', 'seoTitle', 'tags'].sort());
     const sources = sourceTexts(res, 'DeoDap');
     for (const f of suggested) expect(newWords(f.key === 'bodyHtml' ? f.proposed.replace(/<[^>]+>/g, ' ') : f.proposed, [...sources, 'image']), f.key).toEqual([]);
     const title = fields.find((f) => f.key === 'seoTitle')!;

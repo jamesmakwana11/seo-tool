@@ -190,20 +190,25 @@ describe('SEO editor: drafts, apply, verify, re-audit', () => {
     expect(j.resources[0].values.bodyHtml).toContain('<h1>Vegetable Chopper</h1>');
   });
 
-  it('requires the exact confirmation phrase; a wrong phrase writes nothing', async () => {
+  let reviewId = '';
+  it('needs the review step (no typed phrase): without its token nothing is written', async () => {
     const pv = (await h.seo.post('/api/shopify/drafts/preview', { ids: [product.id] })).body as ShopifyApplyPreview;
     expect(pv.total).toBe(5);
-    expect(pv.confirmPhrase).toBe('APPLY 5 CHANGES');
+    expect(pv.previewId).toMatch(/^PV-/);
+    expect((pv as unknown as Record<string, unknown>).confirmPhrase).toBeUndefined();
     expect(pv.conflicts).toBe(0);
-    const bad = await h.seo.post('/api/shopify/drafts/apply', { ids: [product.id], confirm: 'yes' });
+    const bad = await h.seo.post('/api/shopify/drafts/apply', { ids: [product.id], confirm: 'APPLY 5 CHANGES' });
     expect(bad.status).toBe(400);
-    expect(bad.body.error.message).toMatch(/APPLY 5 CHANGES/);
+    expect(bad.body.error.code).toBe('REVIEW_REQUIRED');
+    const other = await h.seo.post('/api/shopify/drafts/apply', { ids: [product.id], previewId: 'PV-made-up' });
+    expect(other.status).toBe(400);
     expect(m.mutations()).toEqual([]);
+    reviewId = pv.previewId;
   });
 
   it('applies through a rate limit, verifies by reading back, and re-audits the storefront', async () => {
     m.faults.push({ op: 'SentinelProductUpdate', kind: '429' });
-    const r = await h.seo.post('/api/shopify/drafts/apply', { ids: [product.id], confirm: 'APPLY 5 CHANGES' });
+    const r = await h.seo.post('/api/shopify/drafts/apply', { ids: [product.id], previewId: reviewId });
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     const res = r.body as ShopifyApplyBatchResult;
     expect(res).toMatchObject({ applied: 5, failed: 0, skipped: 0 });
@@ -221,6 +226,12 @@ describe('SEO editor: drafts, apply, verify, re-audit', () => {
     expect(ra.status).toBe(200);
     expect(ra.checks.map((c) => [c.field, c.ok])).toEqual(expect.arrayContaining([['Title tag', true], ['Meta description', true], ['H1 count', true], ['Image alt', true]]));
     expect(d.fields.find((f) => f.key === 'seoTitle')!.current).toBe('Vegetable Chopper and Slicer – DeoDap Test');
+    // A repeated submission of the same review (double click, retry) returns the first result and writes nothing.
+    const n = m.mutations().length;
+    const again = await h.seo.post('/api/shopify/drafts/apply', { ids: [product.id], previewId: reviewId });
+    expect(again.status).toBe(200);
+    expect((again.body as ShopifyApplyBatchResult).applied).toBe(5);
+    expect(m.mutations().length).toBe(n);
   });
 
   it('skips fields changed in Shopify since the draft (conflict) and keeps the merchant’s value', async () => {
@@ -231,7 +242,7 @@ describe('SEO editor: drafts, apply, verify, re-audit', () => {
     expect(pv.conflicts).toBe(1);
     expect(pv.total).toBe(2); // SEO description + the collection image alt (the SEO title is the conflict)
     expect(d.fields.find((f) => f.key === 'imageAlt:featured')).toMatchObject({ label: 'Image alt text (collection image)', current: '', proposed: 'Kitchen Tools', include: true, mutation: 'collectionUpdate (image.altText)' });
-    const r = (await h.seo.post('/api/shopify/drafts/apply', { ids: [d.id], confirm: pv.confirmPhrase })).body as ShopifyApplyBatchResult;
+    const r = (await h.seo.post('/api/shopify/drafts/apply', { ids: [d.id], previewId: pv.previewId })).body as ShopifyApplyBatchResult;
     const out = r.drafts[0];
     expect(out.status).toBe('partial');
     expect(out.result!.fields.find((f) => f.key === 'seoTitle')!.status).toBe('conflict');
@@ -249,18 +260,21 @@ describe('SEO editor: drafts, apply, verify, re-audit', () => {
     const page = (await h.seo.post('/api/shopify/drafts', { url: `${STOREFRONT}/pages/about-us` })).body as ShopifyDraft;
     const article = (await h.seo.post('/api/shopify/drafts', { url: `${STOREFRONT}/blogs/news/diwali-decor` })).body as ShopifyDraft;
     expect(page.fields.find((f) => f.key === 'seoTitle')!.mutation).toBe('metafieldsSet (global.title_tag)');
+    // “About Us” is short, but normal for a simple page: no change proposed, keep it.
+    expect(page.fields.find((f) => f.key === 'seoTitle')!).toMatchObject({ include: false, suggestion: { keep: true }, assessment: { verdict: 'good' } });
     expect(article.fields.find((f) => f.key === 'seoTitle')!.proposed.length).toBeLessThanOrEqual(60);
     m.faults.push({ op: 'SentinelSeoTags', kind: 'userErrors' });
     const pv = (await h.seo.post('/api/shopify/drafts/preview', { ids: [page.id, article.id] })).body as ShopifyApplyPreview;
-    const r = (await h.seo.post('/api/shopify/drafts/apply', { ids: [page.id, article.id], confirm: pv.confirmPhrase })).body as ShopifyApplyBatchResult;
+    const r = (await h.seo.post('/api/shopify/drafts/apply', { ids: [page.id, article.id], previewId: pv.previewId })).body as ShopifyApplyBatchResult;
     const [p, a] = r.drafts;
     expect(p.status).toBe('partial');
-    expect(p.result!.fields.find((f) => f.key === 'seoTitle')!.status).toBe('failed');
-    expect(p.result!.fields.find((f) => f.key === 'seoTitle')!.message).toMatch(/Simulated validation error/);
+    expect(p.result!.fields.find((f) => f.key === 'seoDescription')!.status).toBe('failed');
+    expect(p.result!.fields.find((f) => f.key === 'seoDescription')!.message).toMatch(/Simulated validation error/);
     expect(p.result!.fields.find((f) => f.key === 'bodyHtml')!.status).toBe('verified');
     expect(a.status).toBe('applied');
     expect(m.articles.get('gid://shopify/Article/4001')!.meta.title_tag.length).toBeLessThanOrEqual(60);
-    expect(r.failed).toBe(2);
+    expect(r.failed).toBe(1);
+    expect(r.applied).toBeGreaterThan(0); // successful changes are kept and reported
   });
 
   it('theme work: separate permission, live theme refused, never published, conflicts detected, backup kept', async () => {
@@ -315,7 +329,7 @@ describe('SEO editor: drafts, apply, verify, re-audit', () => {
     const pv = (await h.seo.post('/api/shopify/drafts/preview', { ids: [d.id] })).body as ShopifyApplyPreview;
     expect(pv.total).toBe(1); // only the selected field
     const before = m.mutations().length;
-    const out = ((await h.seo.post('/api/shopify/drafts/apply', { ids: [d.id], confirm: pv.confirmPhrase })).body as ShopifyApplyBatchResult).drafts[0];
+    const out = ((await h.seo.post('/api/shopify/drafts/apply', { ids: [d.id], previewId: pv.previewId })).body as ShopifyApplyBatchResult).drafts[0];
     expect(m.mutations().slice(before)).toEqual(['SentinelProductUpdate']);
     expect(m.products.get('gid://shopify/Product/1001')!.title).toBe('Vegetable Chopper and Slicer 3 in 1');
     expect(out.result!.fields.map((f) => [f.key, f.status])).toEqual([['h1', 'verified']]);
@@ -332,7 +346,7 @@ describe('SEO editor: drafts, apply, verify, re-audit', () => {
     await h.seo.patch(`/api/shopify/drafts/${d.id}`, { fields: { h1: { proposed: 'Bulk & wholesale orders', include: true } } });
     const pv = (await h.seo.post('/api/shopify/drafts/preview', { ids: [d.id] })).body as ShopifyApplyPreview;
     expect(pv.total).toBe(1);
-    const out = ((await h.seo.post('/api/shopify/drafts/apply', { ids: [d.id], confirm: pv.confirmPhrase })).body as ShopifyApplyBatchResult).drafts[0];
+    const out = ((await h.seo.post('/api/shopify/drafts/apply', { ids: [d.id], previewId: pv.previewId })).body as ShopifyApplyBatchResult).drafts[0];
     const page = m.pages.get('gid://shopify/Page/3002')!;
     expect(page.body).toBe('<h1>Bulk &amp; wholesale orders</h1><p>Order 50 pieces or more of any DeoDap product at wholesale prices.</p>');
     expect(page.title).toBe('Bulk Orders');

@@ -122,6 +122,8 @@ export function defaultConfig(now = new Date()): SentinelConfig {
       freshnessDays: 180, // PDF 5
       titleMaxChars: 60, titleMinChars: 30, // PDF 6.1
       metaMaxChars: 160, metaMinChars: 70, // PDF 6.1
+      h1MinChars: 10, h1MaxChars: 70, altMaxChars: 125, // SEO editor suggestions — WORKSHOP
+      lengthTolerancePct: 10, keywordRepeatMax: 2, tagsMax: 50, // SEO editor: a little outside a range is only noted — WORKSHOP
       homepageMaxInternalLinks: 500, // PDF 6.2
       collectionDescMinWords: 200, collectionDescMaxWords: 400, // PDF 6.2
       strikingMinPosition: 5, strikingMaxPosition: 20, strikingMinImpressions: 100, // PDF 6.3 (min impressions WORKSHOP)

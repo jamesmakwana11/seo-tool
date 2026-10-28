@@ -1,16 +1,18 @@
 /**
- * SEO editor drafts: deterministic suggestions built only from text that already exists on the resource (its title,
- * description, the shop name) — never invented facts — plus validation of every value, suggested or typed by hand,
- * and where the page's H1 comes from.
+ * SEO editor drafts: every field is assessed (missing, too short / long, duplicated, keyword-stuffed, unclear — against
+ * the configurable guidelines) and gets a suggestion built only from text that already exists on the resource (its
+ * title, description, the shop name) — never invented facts. A good value is recommended to be kept. Plus validation
+ * of every value, suggested or typed by hand, and where the page's H1 comes from.
  *
  * Nothing here talks to Shopify; the service reads the resource, calls these, and writes only after confirmation.
  */
 import { load } from 'cheerio';
-import type { CrawledUrl, H1SourceReport, ShopifyFieldDraft, ShopifyFieldValidation, ShopifyResourceKind } from '@sentinel/shared';
+import { assessSeoField, DEFAULT_SEO_GUIDELINES, isAllCaps, type CrawledUrl, type FieldAssessment, type H1SourceReport, type SeoFieldType, type SeoGuidelines, type ShopifyFieldDraft, type ShopifyFieldSuggestion, type ShopifyFieldValidation, type ShopifyResourceKind } from '@sentinel/shared';
 import { mutationFor, type ShopifyResource } from './resources';
 
-export interface Limits { titleMinChars: number; titleMaxChars: number; metaMinChars: number; metaMaxChars: number }
-export const DEFAULT_LIMITS: Limits = { titleMinChars: 30, titleMaxChars: 60, metaMinChars: 70, metaMaxChars: 160 };
+/** Length and wording guidelines (Settings → Thresholds & scoring). */
+export type Limits = SeoGuidelines;
+export const DEFAULT_LIMITS: Limits = DEFAULT_SEO_GUIDELINES;
 export const ALT_MAX = 125;
 
 export interface DraftContext {
@@ -23,6 +25,8 @@ export interface DraftContext {
   h1Basis: H1SourceReport['basis'];
   observedAt?: string;
   limits?: Limits;
+  /** Important keywords of the store (Settings): a suggestion never drops one that is in the current value. */
+  keywords?: string[];
 }
 
 // ---------------------------------------------------------------------------------------------- text helpers
@@ -30,14 +34,27 @@ export interface DraftContext {
 export function htmlToText(html: string, o: { skipHeadings?: boolean } = {}): string {
   if (!html) return '';
   const $ = load(`<div id="r">${html}</div>`);
-  $('script,style,noscript').remove();
+  $('script,style,noscript,template,svg').remove();
   if (o.skipHeadings) $('h1,h2,h3,h4,h5,h6').remove();
   $('br').replaceWith(' ');
   $('p,div,li,h1,h2,h3,h4,h5,h6,tr').each((_, el) => { $(el).append(' '); });
   return $('#r').text().replace(/\s+/g, ' ').trim();
 }
 
-const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+const norm = (s: string) => (s ?? '').replace(/\s+/g, ' ').trim();
+
+/**
+ * Readable description text for a meta description: paragraphs and list items, without forms, buttons, labels and
+ * headings (a tracking form's "Select option: Tracking id" is not a description).
+ */
+export function descriptionText(html: string): string {
+  if (!html) return '';
+  const $ = load(`<div id="r">${html}</div>`);
+  $('script,style,noscript,template,svg,form,label,input,select,option,button,textarea,iframe,h1,h2,h3,h4,h5,h6,nav,table').remove();
+  const blocks = $('#r').find('p,li,blockquote').toArray().map((el) => norm($(el).text())).filter((t) => t.split(' ').length >= 5);
+  const text = blocks.length ? blocks.join(' ') : htmlToText($('#r').html() ?? '');
+  return norm(text.replace(/\s+([.,;:!?])/g, '$1'));
+}
 const lc = (s: string) => norm(s).toLowerCase();
 
 /** Shortens at a word boundary to at most `max` characters (never cuts a word; drops a dangling separator). */
@@ -128,7 +145,7 @@ export function demoteBodyH1(html: string): string {
 
 const CTRL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
 
-export function validateField(key: string, value: string, ctx: { res: ShopifyResource; siteHost: string; limits?: Limits; current: string; sources: string[]; source: ShopifyFieldDraft['source'] }): ShopifyFieldValidation {
+export function validateField(key: string, value: string, ctx: { res: ShopifyResource; siteHost: string; limits?: Limits; current: string; sources: string[]; source: ShopifyFieldDraft['source']; keywords?: string[] }): ShopifyFieldValidation {
   const L = ctx.limits ?? DEFAULT_LIMITS;
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -172,6 +189,8 @@ export function validateField(key: string, value: string, ctx: { res: ShopifyRes
   if (norm(v) !== norm(ctx.current)) {
     const figs = unsupportedFigures(key === 'bodyHtml' || key === 'summaryHtml' ? htmlToText(v) : v, ctx.sources);
     if (figs.length) warnings.push(`New figures not found in the current content: ${figs.slice(0, 5).join(', ')}. Check they are accurate before applying.`);
+    const dropped = droppedKeywords(ctx.current, v, ctx.keywords);
+    if (dropped.length && key !== 'bodyHtml' && key !== 'summaryHtml' && key !== 'tags') warnings.push(`Drops the keyword “${dropped[0]}” that the current value has.`);
   }
   return { ok: errors.length === 0, errors, warnings };
 }
@@ -218,65 +237,178 @@ export function sourceTexts(res: ShopifyResource, shopName?: string): string[] {
   return [res.title, res.seoTitle, res.seoDescription, htmlToText(res.bodyHtml), htmlToText(res.summaryHtml ?? ''), (res.tags ?? []).join(' '), shopName ?? ''].filter(Boolean);
 }
 
+/** Store keywords present in `before` but missing from `after`. */
+export function droppedKeywords(before: string, after: string, keywords?: string[]): string[] {
+  const b = norm(before).toLowerCase();
+  const a = norm(after).toLowerCase();
+  return (keywords ?? []).map((k) => k.toLowerCase().trim()).filter((k) => k && b.includes(k) && !a.includes(k));
+}
+
+const UNITS = new Set(['ML', 'L', 'KG', 'G', 'GM', 'MM', 'CM', 'M', 'LTR', 'PCS', 'INCH', 'FT']);
+/** ALL CAPS → Title Case, keeping short acronyms (USB, LED), figures as written (5W) and units in lower case (750 ml). */
+export function readableCase(s: string): string {
+  return norm(s).split(' ').map((w) => {
+    const letters = w.replace(/[^\p{L}]/gu, '');
+    if (UNITS.has(letters.toUpperCase()) && !/\d/.test(w)) return w.toLowerCase();
+    if (/\d/.test(w)) return w;
+    if (letters.length <= 3 && /^[\p{Lu}]+$/u.test(letters)) return w;
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  }).join(' ');
+}
+
+/** Removes repeated segments (“Kitchen Tools | Kitchen Tools | Shop”) and doubled words (“Steel Steel”). */
+export function dedupeText(s: string): string {
+  const t = norm(s);
+  const sep = / \| /.test(t) || /\|/.test(t) ? ' | ' : / – /.test(t) ? ' – ' : / - /.test(t) ? ' - ' : ', ';
+  const parts = t.split(/\s[|–—-]\s|\s*\|\s*|,\s+/);
+  const seen = new Set<string>();
+  const kept = parts.filter((p) => { const k = p.trim().toLowerCase(); if (!k || seen.has(k)) return false; seen.add(k); return true; });
+  return kept.join(sep).replace(/\b(\p{L}+)(\s+\1\b)+/giu, '$1');
+}
+
+/** Shortens to `max`, keeping a trailing “| Brand” / “– Brand” when there is one. */
+export function shortenKeepingBrand(s: string, max: number, brand?: string): string {
+  const t = norm(s);
+  if (t.length <= max) return t;
+  const m = brand ? new RegExp(`\\s*[|–—-]\\s*${brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i').exec(t) : null;
+  if (m && m.index > 0) {
+    const suffix = t.slice(m.index);
+    const head = shorten(t.slice(0, m.index), max - suffix.length);
+    if (head.length >= 10) return `${head}${suffix}`;
+  }
+  return shorten(t, max);
+}
+
+const withBrand = (base: string, max: number, brand?: string) => (brand && !norm(base).toLowerCase().includes(brand.toLowerCase()) && `${norm(base)} – ${brand}`.length <= max ? `${norm(base)} – ${brand}` : norm(base));
+const KEEP = (cur: string, why: string): ShopifyFieldSuggestion => ({ value: cur, reason: why, keep: true, confidence: 'high' });
+const NEEDS_PERSON = (cur: string, why: string): ShopifyFieldSuggestion => ({ value: cur, reason: why, keep: false, confidence: 'review' });
+const has = (a: FieldAssessment, ...codes: string[]) => a.problems.some((p) => codes.includes(p.code) && p.severity !== 'note');
+
+/** Suggestion for a short text field from its assessment. Never invents facts: reuses the resource's own text. */
+export function suggestText(type: SeoFieldType, cur: string, a: FieldAssessment, c: { res: ShopifyResource; shopName?: string; limits: Limits; descText: string; keywords?: string[]; index?: number }): ShopifyFieldSuggestion {
+  const L = c.limits;
+  const title = norm(c.res.title);
+  const kindWord = c.res.kind === 'article' ? 'article' : c.res.kind;
+  if (a.verdict === 'good') return KEEP(cur, a.problems.length ? `Fine as it is (${a.problems.map((p) => p.message).join(' ')}) — keep it.` : 'Already good — keep it.');
+  let v = norm(cur);
+  const why: string[] = [];
+  let confidence: ShopifyFieldSuggestion['confidence'] = 'high';
+  if (type === 'seoTitle') {
+    if (!v || has(a, 'unclear')) { v = withBrand(title, L.titleMaxChars, c.shopName); why.push(!norm(cur) ? `No SEO title; built from the ${kindWord} title${v !== title ? ' and the shop name' : ''}.` : `“${norm(cur)}” is not specific; built from the ${kindWord} title.`); }
+    if (has(a, 'duplicate') && norm(cur) && norm(cur).toLowerCase() !== title.toLowerCase()) { v = withBrand(title, L.titleMaxChars, c.shopName); why.push(`Other pages use the same title tag; built from this ${kindWord}’s own title.`); }
+    if (has(a, 'keyword_stuffed')) { v = dedupeText(v); why.push('Removed repeated words.'); }
+    if (has(a, 'all_caps') || isAllCaps(v)) { v = readableCase(v); why.push('Changed from all capitals.'); confidence = 'review'; }
+    if (v.length > L.titleMaxChars) {
+      v = shortenKeepingBrand(v, L.titleMaxChars, c.shopName);
+      why.push(`Shortened to ${v.length} characters at a word boundary${c.shopName && v.endsWith(c.shopName) ? ', keeping the shop name' : ''}.`);
+      if (v.length < L.titleMaxChars * 0.6) confidence = 'review';
+    }
+    // The shop name: themes usually append it to the title tag anyway; set here it is counted in the length.
+    if (why.length || v.length < L.titleMinChars) { const b = withBrand(v, L.titleMaxChars, c.shopName); if (b !== v) { v = b; why.push('Added the shop name.'); } }
+  } else if (type === 'seoDescription') {
+    const text = c.descText;
+    const fromText = (max: number) => leadSentences(text, max);
+    if (!v || has(a, 'too_short', 'unclear', 'same_as_title', 'duplicate', 'keyword_stuffed', 'missing')) {
+      if (text.length >= 50) {
+        let d = fromText(L.metaMaxChars - 5);
+        if (d.length < L.metaMinChars && `${title} – ${d}`.length <= L.metaMaxChars) d = `${title} – ${d}`;
+        v = d;
+        why.push(!norm(cur) ? 'No meta description. Taken from the first sentences of the existing description (nothing added).' : `${a.problems.filter((p) => p.severity !== 'note').map((p) => p.message).join(' ')} Replaced by the first sentences of the existing description.`);
+      } else {
+        const brand = c.shopName ? ` at ${c.shopName}` : '';
+        const lead = c.res.kind === 'product' ? `Buy ${title} online${brand}.` : c.res.kind === 'collection' ? `Shop ${title} online${brand}.` : `${title}${c.shopName ? ` – ${c.shopName}` : ''}.`;
+        v = norm(`${lead} ${text}`);
+        if (v.length > L.metaMaxChars) v = leadSentences(v, L.metaMaxChars - 5);
+        why.push(`The ${kindWord} has almost no description text, so this is built from the title${c.shopName ? ' and shop name' : ''}${text ? ' plus the little text there is' : ''}. Better: write a sentence about what the page offers.`);
+        confidence = 'review';
+      }
+    }
+    if (v.length > L.metaMaxChars) { v = leadSentences(v, L.metaMaxChars - 5); why.push(`Shortened to ${v.length} characters at a sentence or word boundary.`); }
+    if (isAllCaps(v)) { v = readableCase(v); why.push('Changed from all capitals.'); confidence = 'review'; }
+  } else if (type === 'title' || type === 'h1') {
+    if (has(a, 'missing', 'unclear')) return NEEDS_PERSON(cur, `${a.problems.filter((p) => p.severity !== 'note').map((p) => p.message).join(' ')} Write a heading that names what the page is about.`);
+    if (has(a, 'whitespace') || has(a, 'html')) { v = norm(v.replace(/<[^>]+>/g, ' ')); why.push('Cleaned up spaces / tags.'); }
+    if (has(a, 'keyword_stuffed')) { v = dedupeText(v); why.push('Removed repeated words.'); confidence = 'review'; }
+    if (has(a, 'all_caps')) { v = readableCase(v); why.push('Changed from all capitals.'); confidence = 'review'; }
+    if (has(a, 'too_long')) { v = shorten(v, L.h1MaxChars); why.push(`Shortened to ${v.length} characters — check the product name still reads well.`); confidence = 'review'; }
+    if (has(a, 'multiple') && why.length === 0) return KEEP(cur, 'The text is fine; the extra H1s are removed in the description field (demoted to H2).');
+  } else if (type === 'imageAlt') {
+    const alt = (c.index ?? 0) > 0 ? `${title} – view ${(c.index ?? 0) + 1}` : title;
+    if (has(a, 'missing', 'filename', 'unclear')) { v = shorten(alt, L.altMaxChars); why.push(!norm(cur) ? `No alt text. Uses the ${kindWord} title (describe what the image shows if it differs).` : `“${norm(cur)}” does not describe the image. Uses the ${kindWord} title.`); }
+    if (has(a, 'keyword_stuffed')) { v = dedupeText(v); why.push('Removed repeated words.'); confidence = 'review'; }
+    if (has(a, 'all_caps')) { v = readableCase(v); why.push('Changed from all capitals.'); confidence = 'review'; }
+    if (v.length > L.altMaxChars) { v = shorten(v, L.altMaxChars); why.push(`Shortened to ${v.length} characters.`); }
+  }
+  if (!why.length || norm(v) === norm(cur)) return NEEDS_PERSON(cur, `${a.problems.filter((p) => p.severity !== 'note').map((p) => p.message).join(' ')} No safe automatic rewrite — needs a person.`);
+  const dropped = droppedKeywords(cur, v, c.keywords);
+  if (dropped.length) { confidence = 'review'; why.push(`Check: the keyword “${dropped[0]}” is no longer in it.`); }
+  return { value: v, reason: why.join(' '), keep: false, confidence };
+}
+
+export function suggestTags(cur: string[], a: FieldAssessment): ShopifyFieldSuggestion {
+  const joined = cur.join(', ');
+  if (a.verdict === 'good') return KEEP(joined, a.problems.length ? `Fine as it is (${a.problems.map((p) => p.message).join(' ')}) — keep it.` : 'Already good — keep it.');
+  const seen = new Set<string>();
+  const dedup = cur.map((t) => t.trim()).filter((t) => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase()));
+  const v = dedup.join(', ');
+  if (v === joined) return NEEDS_PERSON(joined, 'Nothing to clean up automatically.');
+  return { value: v, reason: `${cur.length - dedup.length} duplicate or blank tag(s) removed; no tag added.`, keep: false, confidence: 'high' };
+}
+
 export function buildFields(c: DraftContext): ShopifyFieldDraft[] {
   const { res } = c;
-  const L = c.limits ?? DEFAULT_LIMITS;
+  const L = { ...DEFAULT_LIMITS, ...(c.limits ?? {}) };
   const sources = sourceTexts(res, c.shopName);
-  const issues = new Set((c.row?.issues ?? []).map((i) => i.checkId));
   const flags = new Set(c.row?.flags ?? []);
+  const descText = descriptionText(res.bodyHtml) || descriptionText(res.summaryHtml ?? '');
   const fields: ShopifyFieldDraft[] = [];
-  const push = (key: string, current: string, proposed: string | undefined, reason: string, hint?: string) => {
-    const changed = proposed !== undefined && norm(proposed) !== norm(current);
-    const value = changed ? proposed! : current;
+  /** A field with its assessment and suggestion; high-confidence suggestions are pre-selected, others shown for review. */
+  const push = (key: string, current: string, sug: ShopifyFieldSuggestion | undefined, assessment: FieldAssessment | undefined, hint?: string) => {
+    const changed = !!sug && !sug.keep && norm(sug.value) !== norm(current);
+    const value = changed ? sug!.value : current;
     fields.push({
       key, label: key === 'imageAlt:featured' ? `Image alt text (${res.kind} image)` : key.startsWith('imageAlt:') ? `Image alt text #${fields.filter((f) => f.key.startsWith('imageAlt:')).length + 1}` : LABEL[key],
-      current, proposed: value, reason: changed ? reason : '', source: changed ? 'suggested' : 'unchanged', applyVia: 'admin_api', mutation: mutationFor(res.kind, key),
-      validation: validateField(key, value, { res, siteHost: c.siteHost, limits: L, current, sources, source: changed ? 'suggested' : 'unchanged' }),
-      include: changed, hint,
+      current, proposed: value, reason: changed ? sug!.reason : '', source: changed ? 'suggested' : 'unchanged', applyVia: 'admin_api', mutation: mutationFor(res.kind, key),
+      validation: validateField(key, value, { res, siteHost: c.siteHost, limits: L, current, sources, source: changed ? 'suggested' : 'unchanged', keywords: c.keywords }),
+      include: changed && sug!.confidence === 'high', hint,
+      ...(assessment ? { assessment } : {}), ...(sug ? { suggestion: sug } : {}),
     });
   };
-  const shopSuffix = (base: string, max: number) => (c.shopName && !lc(base).includes(lc(c.shopName)) && `${base} – ${c.shopName}`.length <= max ? `${base} – ${c.shopName}` : base);
+  const sctx = { res, shopName: c.shopName, limits: L, descText, keywords: c.keywords };
 
-  // ---- SEO title (title tag)
+  // ---- SEO title (title tag). Empty → the storefront shows the title, so that is what is judged. Many themes append
+  // “ – Shop name” to the title tag: when the crawl shows such a suffix, it counts in the length and is not added again.
   {
     const cur = res.seoTitle;
-    const effective = norm(cur || res.title);
-    let proposed: string | undefined;
-    let reason = '';
-    if (!norm(cur) && effective.length > L.titleMaxChars) { proposed = shorten(effective, L.titleMaxChars); reason = `No SEO title, so the ${effective.length}-character title is used and search results cut it. Shortened to ${L.titleMaxChars} at a word boundary.`; }
-    else if (norm(cur).length > L.titleMaxChars) { proposed = shorten(cur, L.titleMaxChars); reason = `${norm(cur).length} characters; search results show about ${L.titleMaxChars}. Shortened at a word boundary — review the wording.`; }
-    else if (effective.length < L.titleMinChars) {
-      const p = shopSuffix(effective, L.titleMaxChars);
-      if (p !== effective) { proposed = p; reason = `Only ${effective.length} characters. Added the shop name.`; }
-    } else if (flags.has('dup-title') || issues.has('ONP-TITLE')) {
-      if (!norm(cur)) { /* duplicate titles need distinct wording: left for a manual edit, never invented */ }
-    }
-    push('seoTitle', cur, proposed, reason, !norm(cur) ? `Empty — the storefront uses the title “${shorten(res.title, 70)}”.` : undefined);
+    const effective = norm(cur) || norm(res.title);
+    const tag = norm(c.row?.title ?? '');
+    const suffix = tag && tag !== effective && tag.toLowerCase().startsWith(effective.toLowerCase()) && tag.length - effective.length <= 40 ? tag.slice(effective.length) : '';
+    const a = assessSeoField('seoTitle', effective + suffix, { guidelines: L, pageType: res.kind, duplicate: flags.has('dup-title') });
+    const tctx = suffix ? { ...sctx, shopName: undefined, limits: { ...L, titleMaxChars: L.titleMaxChars - suffix.length, titleMinChars: Math.max(0, L.titleMinChars - suffix.length) } } : sctx;
+    let sug = suggestText('seoTitle', cur, norm(cur) ? a : { ...a, problems: [...a.problems, { code: 'missing', severity: 'note', message: 'No SEO title.' }] }, tctx);
+    if (suffix && !sug.keep && sug.value !== cur) sug = { ...sug, reason: `${sug.reason} The theme adds “${suffix.trim()}”, so the title tag will read “${sug.value}${suffix}” (${sug.value.length + suffix.length} characters).` };
+    if (!norm(cur) && sug.keep) sug = KEEP('', `No SEO title, so the title “${shorten(res.title, 70)}” is used — it is fine. Keep it empty or set one to control the search result.`);
+    push('seoTitle', cur, sug, a, !norm(cur) ? `Empty — the storefront uses the title “${shorten(res.title, 70)}”.` : undefined);
   }
   // ---- meta description
   {
     const cur = res.seoDescription;
-    const text = htmlToText(res.bodyHtml, { skipHeadings: true }) || htmlToText(res.summaryHtml ?? '', { skipHeadings: true });
-    let proposed: string | undefined;
-    let reason = '';
-    const t = norm(cur);
-    if (!t && text.length >= 50) { proposed = leadSentences(text, L.metaMaxChars - 5); reason = 'No meta description. Taken from the first sentences of the existing description (nothing added).'; }
-    else if (t && t.length < L.metaMinChars && text.length > t.length + 30) { proposed = leadSentences(text, L.metaMaxChars - 5); reason = `Only ${t.length} characters. Replaced by the first sentences of the existing description.`; }
-    else if (t.length > L.metaMaxChars) { proposed = leadSentences(t, L.metaMaxChars - 5); reason = `${t.length} characters; search results cut it near ${L.metaMaxChars}. Shortened at a sentence or word boundary.`; }
-    push('seoDescription', cur, proposed, reason);
+    const a = assessSeoField('seoDescription', cur, { guidelines: L, pageType: res.kind, duplicate: flags.has('dup-meta'), title: res.title });
+    push('seoDescription', cur, suggestText('seoDescription', cur, a, sctx), a);
   }
-  // ---- title (H1 on most templates): only whitespace clean-up is suggested; wording is a human decision
+  // ---- title (H1 on most templates): only clear-cut clean-ups are pre-selected; wording changes are for review
   {
     const cur = res.title;
-    const clean = norm(cur);
-    push('title', cur, clean !== cur ? clean : undefined, 'Extra spaces removed.');
+    const a = assessSeoField('title', cur, { guidelines: L, pageType: res.kind });
+    if (cur !== norm(cur) && !a.problems.some((p) => p.code === 'whitespace')) a.problems.push({ code: 'whitespace', severity: 'improve', message: 'Extra spaces.' });
+    if (a.problems.some((p) => p.code === 'whitespace') && a.verdict === 'good') a.verdict = 'improve';
+    push('title', cur, suggestText('title', cur, a, sctx), a);
   }
-  // ---- tags (products, articles)
+  // ---- tags (products, articles): duplicates and blanks removed; never adds tags
   if (res.kind === 'product' || res.kind === 'article') {
     const cur = (res.tags ?? []).join(', ');
-    const seen = new Set<string>();
-    const dedup = (res.tags ?? []).map((t) => t.trim()).filter((t) => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase()));
-    push('tags', cur, dedup.join(', ') !== cur ? dedup.join(', ') : undefined, 'Duplicate or blank tags removed.');
+    const a = assessSeoField('tags', (res.tags ?? []).join(','), { guidelines: L });
+    push('tags', cur, suggestTags(res.tags ?? [], a), a);
   }
   // ---- description / content: extra H1s demoted to H2
   {
@@ -284,24 +416,20 @@ export function buildFields(c: DraftContext): ShopifyFieldDraft[] {
     const bodyH1 = bodyHeadings(cur).filter((h) => h.level === 1).length;
     const themeH1 = c.pageH1s.length - bodyH1 > 0 || c.h1Basis === 'none';
     const proposed = bodyH1 && themeH1 ? demoteBodyH1(cur) : undefined;
-    push('bodyHtml', cur, proposed, `${bodyH1} H1 in the ${res.kind === 'product' || res.kind === 'collection' ? 'description' : 'content'} while the theme already prints an H1 — demoted to H2. Text unchanged.`,
+    const reason = `${bodyH1} H1 in the ${res.kind === 'product' || res.kind === 'collection' ? 'description' : 'content'} while the theme already prints an H1 — demoted to H2. Text unchanged.`;
+    push('bodyHtml', cur, proposed ? { value: proposed, reason, keep: false, confidence: 'high' } : undefined, undefined,
       'Edit headings (H2/H3) and add internal links (<a href="/collections/…">) here. Only links to this site are expected.');
   }
-  if (res.kind === 'article') push('summaryHtml', res.summaryHtml ?? '', undefined, '');
+  if (res.kind === 'article') push('summaryHtml', res.summaryHtml ?? '', undefined, undefined);
   // ---- image alt text (product media; the featured image of a collection or article)
-  if (res.kind !== 'product') {
-    for (const img of res.images ?? []) {
-      const proposed = norm(img.alt) ? undefined : shorten(res.title, ALT_MAX);
-      push('imageAlt:featured', img.alt, proposed, `No alt text on the ${res.kind}’s image. Uses the ${res.kind} title (describe what the image shows if it differs).`, img.url);
-    }
-  }
-  if (res.kind === 'product') {
-    (res.images ?? []).slice(0, 20).forEach((img, i) => {
-      const cur = img.alt;
-      const proposed = norm(cur) ? undefined : shorten(i === 0 ? res.title : `${res.title} – image ${i + 1}`, ALT_MAX);
-      push(`imageAlt:${img.id}`, cur, proposed, 'No alt text. Uses the product title (describe what the image shows if it differs).', img.url);
-    });
-  }
+  const imgs = res.kind === 'product' ? (res.images ?? []).slice(0, 20) : (res.images ?? []);
+  const altCount = new Map<string, number>();
+  for (const img of imgs) { const k = norm(img.alt).toLowerCase(); if (k) altCount.set(k, (altCount.get(k) ?? 0) + 1); }
+  imgs.forEach((img, i) => {
+    const a = assessSeoField('imageAlt', img.alt, { guidelines: L, pageType: res.kind, duplicate: (altCount.get(norm(img.alt).toLowerCase()) ?? 0) > 1 });
+    const key = res.kind === 'product' ? `imageAlt:${img.id}` : 'imageAlt:featured';
+    push(key, img.alt, suggestText('imageAlt', img.alt, a, { ...sctx, index: res.kind === 'product' ? i : 0 }), a, img.url);
+  });
   return fields;
 }
 

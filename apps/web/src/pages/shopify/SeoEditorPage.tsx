@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Download, ExternalLink, FilePlus2, GitCompare, RefreshCw, RotateCcw, Search, Send, Trash2 } from 'lucide-react';
-import { ApiError, type ShopifyApplyBatchResult, type ShopifyApplyPreview, type ShopifyDraft, type ShopifyFieldDraft, type ShopifyResourceKind, type ShopifyThemeProposal } from '@sentinel/shared';
+import { ApiError, SEO_PROBLEM_LABELS, type ShopifyApplyBatchResult, type ShopifyApplyPreview, type ShopifyDraft, type ShopifyFieldDraft, type ShopifyResourceKind, type ShopifyThemeProposal } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { errorMessage, useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
@@ -216,7 +216,19 @@ function FieldEditor({ f, draftId, onSave, saving }: { f: ShopifyFieldDraft; dra
         </div>
         {themeH1 ? <ThemeH1Button draftId={draftId} text={v} disabled={!can('shopify.theme') || !v.trim() || v === f.current} /> : <Checkbox label="Apply" checked={f.include} disabled={!changed || saving} onChange={(inc) => onSave({ include: inc })} />}
       </div>
+      {f.assessment && <Assessment a={f.assessment} />}
       {f.reason && <p className="mt-1 text-xs text-ink-soft">{f.reason}</p>}
+      {f.suggestion && (f.suggestion.keep ? (
+        <p className="mt-1 text-xs text-ok-ink" data-testid="keep-current">✓ {f.suggestion.reason}</p>
+      ) : f.suggestion.value !== v && f.suggestion.value !== f.current && !isHtml ? (
+        <div className="mt-2 rounded-ctl border border-signal/30 bg-signal-tint/40 p-2 text-xs" data-testid="suggestion">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <p className="min-w-0 break-words"><span className="font-medium">Suggested{f.suggestion.confidence === 'review' ? ' — check the wording' : ''}:</span> “{f.suggestion.value}”</p>
+            <Button size="sm" disabled={saving} onClick={() => { setV(f.suggestion!.value); onSave({ proposed: f.suggestion!.value, include: true }); }}>Use suggestion</Button>
+          </div>
+          <p className="mt-0.5 text-ink-soft">{f.suggestion.reason}</p>
+        </div>
+      ) : f.suggestion.value === f.current && !f.suggestion.keep ? <p className="mt-1 text-xs text-med-ink">{f.suggestion.reason}</p> : null)}
       {f.hint && (/^https?:\/\//.test(f.hint) ? <img src={f.hint} alt="" className="mt-2 h-20 w-20 rounded object-cover" loading="lazy" /> : <p className="mt-1 text-xs text-muted">{f.hint}</p>)}
       <div className="mt-2 grid gap-2 lg:grid-cols-2">
         <div>
@@ -276,6 +288,17 @@ function ThemeH1Button({ draftId, text, disabled }: { draftId: string; text: str
   );
 }
 
+/** What is wrong with the current value (or that it is good). Notes are shown muted: no change is needed for them. */
+function Assessment({ a }: { a: NonNullable<ShopifyFieldDraft['assessment']> }) {
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1" aria-label="Assessment">
+      {a.verdict === 'good' && <Badge tone="ok">Good</Badge>}
+      {a.problems.map((p) => <Badge key={p.code} tone={p.severity === 'fix' ? 'crit' : p.severity === 'improve' ? 'med' : 'neutral'} title={p.message}>{SEO_PROBLEM_LABELS[p.code]}</Badge>)}
+      {a.range && <span className="text-xs text-muted">{a.length} chars · recommended {a.range[0]}–{a.range[1]}</span>}
+    </div>
+  );
+}
+
 const RESULT_TONE = { verified: 'ok', applied_unverified: 'med', failed: 'crit', conflict: 'crit', skipped: 'neutral' } as const;
 const RESULT_LABEL = { verified: 'Written and verified', applied_unverified: 'Written, not verified', failed: 'Failed', conflict: 'Conflict — not written', skipped: 'Skipped' } as const;
 
@@ -301,71 +324,101 @@ function ResultView({ d }: { d: ShopifyDraft }) {
   );
 }
 
-function ApplyDialog({ ids, onClose, onDone }: { ids: string[]; onClose: () => void; onDone: () => void }) {
+/**
+ * Review step: the exact changes read against Shopify just now, each selectable. "Apply changes" writes the selected
+ * ones (no typed phrase); the review's token makes a repeated click return the same result instead of writing twice.
+ */
+export function ApplyDialog({ ids, onClose, onDone }: { ids: string[]; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const pv = useApiQuery(['shopify', 'preview', ids], () => api.previewShopifyApply(ids));
-  const [phrase, setPhrase] = useState('');
+  const [off, setOff] = useState<Record<string, string[]>>({});
   const [result, setResult] = useState<ShopifyApplyBatchResult | null>(null);
-  const apply = useApiMutation((p: { phrase: string }) => api.applyShopifyDrafts(ids, p.phrase), {
+  const sent = useRef(false);
+  const apply = useApiMutation((p: { previewId: string }) => api.applyShopifyDrafts(ids, { previewId: p.previewId, exclude: off }), {
     invalidate: [['shopify', 'drafts']],
     success: (r) => `${r.applied} change(s) written${r.failed ? `, ${r.failed} not written` : ''}`,
     onSuccess: (r) => { setResult(r); onDone(); },
   });
   const backup = async () => { try { saveFile(await api.downloadShopifyBackup(ids)); } catch (e) { toast.error(errorMessage(e)); } };
   const p: ShopifyApplyPreview | undefined = pv.data;
-  const ready = !!p && p.total > 0 && phrase.trim() === p.confirmPhrase;
-  const counts = useMemo(() => result?.drafts.map((d) => ({ d, ok: d.result?.fields.filter((f) => f.status === 'verified').length ?? 0 })), [result]);
+  const selected = p ? p.drafts.reduce((n, d) => n + d.changes.filter((c) => !c.conflict && !(off[d.id] ?? []).includes(c.key)).length, 0) : 0;
+  const toggle = (draftId: string, key: string, on: boolean) => setOff((o) => ({ ...o, [draftId]: on ? (o[draftId] ?? []).filter((k) => k !== key) : [...(o[draftId] ?? []), key] }));
+  const run = () => {
+    if (!p || sent.current) return; // one submission per review
+    sent.current = true;
+    apply.mutate({ previewId: p.previewId }, { onError: () => { sent.current = false; } });
+  };
   return (
     <Dialog
       open
       onClose={onClose}
       size="lg"
-      title={result ? 'Applied' : 'Review changes before writing to Shopify'}
+      title={result ? 'Results' : 'Review changes before writing to Shopify'}
       footer={result ? <Button onClick={onClose}>Close</Button> : (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button icon={<Download className="h-4 w-4" />} onClick={backup}>Download original values</Button>
-          <Button variant="primary" disabled={!ready} loading={apply.isPending} onClick={() => apply.mutate({ phrase })}>Write {p?.total ?? 0} change{p?.total === 1 ? '' : 's'} to Shopify</Button>
+          <Button variant="primary" icon={<Send className="h-4 w-4" />} disabled={!selected || apply.isPending} loading={apply.isPending} onClick={run}>
+            {apply.isPending ? 'Applying…' : `Apply ${selected} change${selected === 1 ? '' : 's'}`}
+          </Button>
         </div>
       )}
     >
-      {result ? (
-        <ul className="space-y-2 text-sm">
-          {counts?.map(({ d, ok }) => <li key={d.id}><Badge tone={STATUS_TONE[d.status]}>{d.status}</Badge> <span className="font-medium">{d.resourceTitle}</span> — {ok} verified{d.result?.reaudit?.note ? `. ${d.result.reaudit.note}` : ''}</li>)}
-          <li className="text-xs text-muted">Open a draft to see each field’s result and the storefront check.</li>
-        </ul>
-      ) : (
+      {result ? <ApplyResults result={result} /> : (
         <Async q={pv} rows={4}>
           {(pr) => (
             <div className="space-y-4 text-sm">
-              <p className="text-ink-soft">Values were read from Shopify just now. Fields changed in Shopify since the draft was made are conflicts and will not be written.</p>
+              <p className="text-ink-soft">Values were read from Shopify just now. Untick anything you do not want written. Fields changed in Shopify since the draft was made are conflicts and are never written.</p>
               {pr.drafts.map((d) => (
                 <section key={d.id}>
                   <h3 className="font-semibold">{KIND_LABEL[d.kind]}: {d.resourceTitle}</h3>
                   {d.problems.map((x) => <p key={x} className="text-xs text-crit-ink">✕ {x}</p>)}
-                  <table className="mt-1 w-full text-xs">
-                    <thead><tr className="text-left text-muted"><th className="py-1 pr-2">Field</th><th className="pr-2">In Shopify now</th><th>Will become</th></tr></thead>
-                    <tbody>
-                      {d.changes.map((c) => (
-                        <tr key={c.key} className={`border-t border-line align-top ${c.conflict ? 'bg-crit-tint/50' : ''}`}>
-                          <td className="py-1 pr-2 font-medium">{c.label}{c.conflict && <Badge tone="crit" className="ml-1">conflict</Badge>}<div className="font-normal text-muted">{c.mutation}</div></td>
-                          <td className="max-w-[260px] break-words py-1 pr-2">{c.live.slice(0, 300) || <em className="text-faint">empty</em>}</td>
-                          <td className="max-w-[260px] break-words py-1">{c.proposed.slice(0, 300) || <em className="text-faint">empty</em>}</td>
-                        </tr>
-                      ))}
-                      {!d.changes.length && <tr><td colSpan={3} className="py-1 text-muted">Nothing to write.</td></tr>}
-                    </tbody>
-                  </table>
+                  <div className="mt-1 overflow-x-auto">
+                    <table className="w-full min-w-[520px] text-xs">
+                      <thead><tr className="text-left text-muted"><th className="w-8 py-1" aria-label="Apply" /><th className="py-1 pr-2">Field</th><th className="pr-2">In Shopify now</th><th>Will become</th></tr></thead>
+                      <tbody>
+                        {d.changes.map((c) => {
+                          const on = !c.conflict && !(off[d.id] ?? []).includes(c.key);
+                          return (
+                            <tr key={c.key} className={`border-t border-line align-top ${c.conflict ? 'bg-crit-tint/50' : ''}`}>
+                              <td className="py-1"><input type="checkbox" className="h-4 w-4 accent-[var(--color-signal,#7650D8)]" aria-label={`Apply ${c.label}`} checked={on} disabled={c.conflict || apply.isPending} onChange={(e) => toggle(d.id, c.key, e.target.checked)} /></td>
+                              <td className="py-1 pr-2 font-medium">{c.label}{c.conflict && <Badge tone="crit" className="ml-1">conflict</Badge>}<div className="font-normal text-muted">{c.mutation}</div></td>
+                              <td className="max-w-[260px] break-words py-1 pr-2">{c.live.slice(0, 300) || <em className="text-faint">empty</em>}</td>
+                              <td className="max-w-[260px] break-words py-1">{c.proposed.slice(0, 300) || <em className="text-faint">empty</em>}</td>
+                            </tr>
+                          );
+                        })}
+                        {!d.changes.length && <tr><td colSpan={4} className="py-1 text-muted">Nothing to write.</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
                 </section>
               ))}
-              {pr.total > 0 ? (
-                <Field label={<>Type <Mono>{pr.confirmPhrase}</Mono> to confirm</>} htmlFor="confirm-apply">
-                  <Input id="confirm-apply" value={phrase} onChange={(e) => setPhrase(e.target.value)} autoComplete="off" />
-                </Field>
-              ) : <Notice tone="med">There is nothing to write: every change is unchanged, invalid or in conflict.</Notice>}
+              {pr.total === 0 && <Notice tone="med">There is nothing to write: every change is unchanged, invalid or in conflict.</Notice>}
+              {apply.isPending && <Notice tone="signal" title="Writing to Shopify">Each change is written, read back from Shopify and checked on the storefront. Keep this open.</Notice>}
             </div>
           )}
         </Async>
       )}
     </Dialog>
+  );
+}
+
+/** Per-field results: successes stay written even when another field failed. */
+function ApplyResults({ result }: { result: ShopifyApplyBatchResult }) {
+  return (
+    <div className="space-y-3 text-sm">
+      <p className="text-ink-soft">{result.applied} written{result.failed ? ` · ${result.failed} not written` : ''}{result.skipped ? ` · ${result.skipped} skipped` : ''}. Only changes Shopify confirmed are marked verified.</p>
+      {result.drafts.map((d) => (
+        <section key={d.id}>
+          <h3 className="flex flex-wrap items-center gap-2 font-semibold"><Badge tone={STATUS_TONE[d.status]}>{d.status}</Badge>{d.resourceTitle}</h3>
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {(d.result?.fields ?? []).map((f) => (
+              <li key={f.key} className="flex flex-wrap gap-1.5"><Badge tone={RESULT_TONE[f.status]}>{RESULT_LABEL[f.status]}</Badge><span className="font-medium">{f.label}</span>{f.message && <span className="text-ink-soft">— {f.message}</span>}</li>
+            ))}
+          </ul>
+          {d.result?.reaudit?.note && <p className="mt-1 text-xs text-med-ink">{d.result.reaudit.note}</p>}
+        </section>
+      ))}
+    </div>
   );
 }

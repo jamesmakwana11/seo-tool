@@ -64,6 +64,7 @@ const P = {
   Integrations: L(() => import('@/pages/settings/IntegrationsPage')),
   Shopify: L(() => import('@/pages/settings/ShopifyPage')),
   SeoEditor: L(() => import('@/pages/shopify/SeoEditorPage')),
+  SeoOptimization: L(() => import('@/pages/seo/SeoOptimizationPage')),
   Thresholds: L(() => import('@/pages/settings/ThresholdsPage')),
   CrawlConfig: L(() => import('@/pages/settings/CrawlConfigPage')),
   Rules: L(() => import('@/pages/rules/RuleBuilderPage')),
@@ -175,6 +176,8 @@ export function AppRoutes() {
         <Route path="settings/integrations" element={g(P.Integrations, 'integrations.view')} />
         <Route path="settings/shopify" element={g(P.Shopify, 'integrations.view')} />
         <Route path="seo-editor" element={g(P.SeoEditor)} />
+        <Route path="optimize" element={<Navigate to="/optimize/titles" replace />} />
+        <Route path="optimize/:field" element={g(P.SeoOptimization, 'crawls.view')} />
         <Route path="settings/thresholds" element={g(P.Thresholds, 'settings.view')} />
         <Route path="settings/crawl" element={g(P.CrawlConfig, 'settings.view')} />
         <Route path="audit" element={g(P.Audit, 'audit.view')} />
@@ -194,5 +197,5 @@ export const SMOKE_PATHS = [
   '/issues', '/issues/groups', '/issues/exclusions', '/websites', '/websites/overview', '/websites/batch', '/team/employees', '/team/roles',
   '/team/allocations', '/opportunities', '/opportunities/keywords', '/opportunities/gaps', '/opportunities/briefs', '/opportunities/clusters', '/opportunities/seasonal',
   '/opportunities/link-building', '/opportunities/mentions', '/competitors', '/reports/daily', '/reports/weekly', '/reports/monthly', '/reports/history',
-  '/ai-compliance/rules', '/settings/notifications', '/settings/integrations', '/settings/shopify', '/seo-editor', '/settings/thresholds', '/settings/crawl', '/audit', '/system', '/diagnostics',
+  '/ai-compliance/rules', '/settings/notifications', '/settings/integrations', '/settings/shopify', '/seo-editor', '/optimize/titles', '/optimize/meta-descriptions', '/optimize/h1', '/optimize/image-alt', '/optimize/tags', '/settings/thresholds', '/settings/crawl', '/audit', '/system', '/diagnostics',
 ];

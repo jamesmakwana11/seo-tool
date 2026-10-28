@@ -445,6 +445,36 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
     allocateWithTask,
     detail,
 
+    /**
+     * An issue whose affected URLs were re-checked by the reverifier after a fix applied through Sentinel (bulk SEO
+     * fixes) with 0 failing: closed as verified. Never called on a suggestion alone — only with a passed re-check.
+     * Issues with a task go through the task's verification (FIXED → VERIFIED → CLOSED).
+     */
+    async confirmFixedByRecheck(actor: Actor, issueId: string, check: { checkedUrls: number; details: string }): Promise<Issue | undefined> {
+      const i = await r.issues.get(issueId);
+      if (!i || !isIssueOpen(i.status)) return i;
+      const t = i.taskId ? await r.tasks.get(i.taskId) : undefined;
+      const primary = t && (!t.issueId || t.issueId === i.id) ? t : undefined;
+      if (primary && !['VERIFIED', 'CLOSED', 'CANCELLED'].includes(primary.status)) {
+        if (primary.status !== 'FIXED') {
+          primary.status = 'FIXED';
+          primary.progress = 100;
+          primary.activity.push({ id: `${primary.id}-a${primary.activity.length + 1}-${Date.now().toString(36)}`, type: 'status_changed', actorId: actor.id, actorName: actor.name, at: iso(), message: `Fixed in Shopify through Sentinel by ${actor.name}; re-checked automatically.` });
+          await r.tasks.update(primary);
+        }
+        await tasks.applyVerification(primary, { id: await r.verifications.nextId('VER'), taskId: primary.id, issueId: i.id, at: iso(), triggeredBy: actor.id, method: 'automated_recrawl', outcome: 'passed', checkedUrls: check.checkedUrls, failingUrls: 0, details: check.details, source: 'live' });
+      } else {
+        const fresh = { ...i, status: 'VERIFIED' as const, delta: 'resolved' as const };
+        await r.issues.update(fresh);
+        for (const cid of fresh.childIssueIds ?? []) {
+          const child = await r.issues.get(cid);
+          if (child && child.status === 'SUPERSEDED') await r.issues.update({ ...child, status: 'VERIFIED', delta: 'resolved' });
+        }
+      }
+      await audit(ctx, actor, 'issue.verified_after_fix', 'issue', i.id, check.details);
+      return r.issues.get(issueId);
+    },
+
     async list(actor: Actor, f: IssueFilter) {
       await need(ctx, actor, 'issues.view');
       const page = filterIssues(await r.issues.list(), f, ctx.clock());

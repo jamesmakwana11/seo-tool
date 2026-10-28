@@ -178,6 +178,40 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     }
     return p;
   }
+  /**
+   * Pages fetched again after an SEO fix (bulk fixes): their new values and score are shown over the crawl's row until
+   * a newer crawl replaces them. Keyed by URL; bounded.
+   */
+  const rechecks = new Map<string, { row: Partial<CrawledUrl>; at: string }>();
+  function withRecheck(row: CrawledUrl, runStartedAt: string | undefined, limits: Parameters<typeof auditPage>[1]): CrawledUrl {
+    const o = rechecks.get(sameUrlKey(row.url));
+    if (!o || (runStartedAt && o.at < runStartedAt)) return row;
+    const merged: CrawledUrl = { ...row, ...o.row };
+    const a = auditPage(merged, limits);
+    return { ...merged, auditScore: a.score ?? undefined, recheckedAt: o.at, scoreBeforeRecheck: row.auditScore ?? null };
+  }
+  /** The newest fetched row for one URL across the completed crawls this server still has. */
+  async function findLatestRow(url: string): Promise<{ row: CrawledUrl; runId: string; at?: string } | undefined> {
+    const norm = (u: string) => u.replace(/#.*$/, '').replace(/\/$/, '').toLowerCase();
+    const want = norm(url);
+    let path = want;
+    try { path = new URL(url).pathname.replace(/\/$/, '') || '/'; } catch { /* keep */ }
+    // Live crawls first (sample / demo rows never describe the real store), newest first.
+    const runs = (await r.crawls.list()).filter((c) => c.status === 'completed' || c.status === 'cancelled')
+      .sort((a, b) => Number(b.source === 'live') - Number(a.source === 'live') || (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
+    for (const run of runs.slice(0, 5)) {
+      const res = await (await storeOf(run.id)).query({ q: path, limit: 200 });
+      const row = res.rows.find((x) => norm(x.url) === want && x.status !== null && (x.crawlState ?? 'fetched') === 'fetched');
+      if (row) return { row, runId: run.id, at: run.finishedAt ?? run.startedAt };
+    }
+    return undefined;
+  }
+  /** The newest completed live crawl (the one All pages and the page report use by default). */
+  async function latestRun(liveOnly = false): Promise<CrawlRun | undefined> {
+    return (await r.crawls.list()).filter((c) => c.status === 'completed' && c.source !== 'simulated' && (!liveOnly || c.source === 'live') && c.type !== 'reverify')
+      .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''))[0];
+  }
+
   /** Rows of a run: its store, else the rows saved with the run (built-in crawler / small runs). */
   async function storeOf(id: string): Promise<CrawlResultStore> {
     const st = await savedStore(id);
@@ -820,8 +854,12 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     /** One page of a crawl's page rows, searched / filtered / sorted on the server, with facet counts. */
     async pages(actor: Actor, id: string, q: CrawlPagesQuery): Promise<CrawlPagesResponse> {
       await need(ctx, actor, 'crawls.view');
-      if (!(await r.crawls.get(id))) throw notFound(`Crawl ${id}`);
-      return (await storeOf(id)).query(q);
+      const run = await r.crawls.get(id);
+      if (!run) throw notFound(`Crawl ${id}`);
+      const res = await (await storeOf(id)).query(q);
+      if (!rechecks.size) return res;
+      const limits = res.auditLimits ?? auditLimitsFrom((await r.config.get()).thresholds as unknown as Record<string, number>);
+      return { ...res, rows: res.rows.map((row) => withRecheck(row, run.startedAt, limits)) };
     },
     /**
      * One URL of a crawl with its page audit (the page report). `id` may be "latest": the newest completed or cancelled
@@ -831,41 +869,25 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       await need(ctx, actor, 'crawls.view');
       if (!url) throw badRequest('url is required.');
       let run = id === 'latest' ? undefined : await r.crawls.get(id);
-      if (id === 'latest') {
-        // A cancelled or failed crawl never stands in for the latest valid audit.
-        const runs = (await r.crawls.list()).filter((c) => c.status === 'completed' && c.source !== 'simulated' && c.type !== 'reverify')
-          .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
-        run = runs[0];
-      }
+      // A cancelled or failed crawl never stands in for the latest valid audit.
+      if (id === 'latest') run = await latestRun();
       if (!run) throw notFound(id === 'latest' ? 'A finished crawl' : `Crawl ${id}`);
       const key = sameUrlKey(url);
       let path = url;
       try { path = new URL(url).pathname; } catch { /* keep */ }
       const store = await storeOf(run.id);
       const res = await store.query({ q: path === '/' ? url : path, limit: 500 });
-      const row = res.rows.find((x) => sameUrlKey(x.url) === key);
-      if (!row) throw notFound(`${url} in crawl ${run.id}`);
       const limits = res.auditLimits ?? auditLimitsFrom((await r.config.get()).thresholds as unknown as Record<string, number>);
+      const found = res.rows.find((x) => sameUrlKey(x.url) === key);
+      if (!found) throw notFound(`${url} in crawl ${run.id}`);
+      const row = withRecheck(found, run.startedAt, limits);
       return { runId: run.id, crawledAt: run.startedAt, row, audit: auditPage(row, limits), limits, duplicates: await store.duplicatesOf(row.url) };
     },
     /**
      * The newest fetched row for one URL across the completed crawls this server still has (SEO editor: H1 source,
      * current issues). Internal — callers check their own permissions.
      */
-    async latestRow(url: string): Promise<{ row: CrawledUrl; runId: string; at?: string } | undefined> {
-      const norm = (u: string) => u.replace(/#.*$/, '').replace(/\/$/, '').toLowerCase();
-      const want = norm(url);
-      let path = want;
-      try { path = new URL(url).pathname.replace(/\/$/, '') || '/'; } catch { /* keep */ }
-      const runs = (await r.crawls.list()).filter((c) => c.status === 'completed' || c.status === 'cancelled')
-        .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
-      for (const run of runs.slice(0, 5)) {
-        const res = await (await storeOf(run.id)).query({ q: path, limit: 200 });
-        const row = res.rows.find((x) => norm(x.url) === want && x.status !== null && (x.crawlState ?? 'fetched') === 'fetched');
-        if (row) return { row, runId: run.id, at: run.finishedAt ?? run.startedAt };
-      }
-      return undefined;
-    },
+    latestRow: (url: string) => findLatestRow(url),
     /** What the crawl found, crawled, failed, excluded, and where sitemap and link graph disagree. */
     async coverage(actor: Actor, id: string): Promise<CrawlCoverageReport> {
       await need(ctx, actor, 'crawls.view');
@@ -903,6 +925,48 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     async listVerifications(actor: Actor) {
       await need(ctx, actor, 'crawls.view');
       return (await r.verifications.list()).sort((a, b) => b.at.localeCompare(a.at));
+    },
+    /**
+     * Every row of a crawl (default: the newest completed live crawl), streamed from its store — callers never hold the
+     * whole run. Internal: callers check their own permissions.
+     */
+    async rowsOf(runId?: string): Promise<{ run: CrawlRun; total: number; rows: AsyncIterable<CrawledUrl>; limits: Parameters<typeof auditPage>[1] } | undefined> {
+      const run = runId ? await r.crawls.get(runId) : await latestRun(true);
+      if (!run || (run.status !== 'completed' && run.status !== 'cancelled')) return undefined;
+      const store = await storeOf(run.id);
+      const limits = auditLimitsFrom((await r.config.get()).thresholds as unknown as Record<string, number>);
+      const iter = store.iterate();
+      async function* rows() { for await (const row of iter) yield withRecheck(row, run!.startedAt, limits); }
+      return { run, total: store.count(), rows: rows(), limits };
+    },
+    /** Rows of a crawl matching All-pages filters (at most `max`), with re-checks applied. Internal. */
+    async filteredRows(runId: string | undefined, q: CrawlPagesQuery, max: number): Promise<{ run: CrawlRun; rows: CrawledUrl[]; total: number } | undefined> {
+      const run = runId ? await r.crawls.get(runId) : await latestRun(true);
+      if (!run) return undefined;
+      const res = await (await storeOf(run.id)).query({ ...q, offset: 0, limit: max });
+      const limits = res.auditLimits ?? auditLimitsFrom((await r.config.get()).thresholds as unknown as Record<string, number>);
+      return { run, rows: res.rows.map((row) => withRecheck(row, run.startedAt, limits)), total: res.total };
+    },
+    /**
+     * Records a page fetched again after a fix: `fresh` holds the values read from the storefront. Returns the page
+     * score before (crawl) and after. The row of the crawl is shown with these values until a newer crawl.
+     */
+    async recordRecheck(url: string, fresh: Partial<CrawledUrl>): Promise<{ before: number | null; after: number | null } | undefined> {
+      const base = await findLatestRow(url);
+      if (!base) return undefined;
+      const limits = auditLimitsFrom((await r.config.get()).thresholds as unknown as Record<string, number>);
+      const before = auditPage(base.row, limits).score;
+      // Duplicate flags are crawl-wide: kept unless the value changed (then unknown until the next crawl → dropped only if no other page in the crawl has the new value).
+      const flags = new Set(base.row.flags ?? []);
+      if (fresh.title !== undefined && fresh.title !== base.row.title) flags.delete('dup-title');
+      if (fresh.metaDescription !== undefined && fresh.metaDescription !== base.row.metaDescription) flags.delete('dup-meta');
+      if (fresh.h1 && fresh.h1.join('|') !== (base.row.h1 ?? []).join('|')) flags.delete('dup-h1');
+      if ((fresh.imagesMissingAlt ?? 1) === 0) flags.delete('alt');
+      const row = { ...fresh, flags: [...flags] };
+      const after = auditPage({ ...base.row, ...row }, limits).score;
+      rechecks.set(sameUrlKey(url), { row, at: iso() });
+      if (rechecks.size > 20_000) rechecks.delete(rechecks.keys().next().value as string);
+      return { before, after };
     },
     /** Shopify products/update webhook → mark page changed so the next smart crawl includes it (PDF §16). */
     async markChanged(urls: string[]) {

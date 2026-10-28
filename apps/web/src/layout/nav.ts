@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Gauge, CircleAlert, Users, Globe, FolderCog, Radar, Wrench, Zap, FileText, Code2, Link2, MessageSquareQuote,
   Sparkles, ShieldCheck, Bot, Lightbulb, Search, Layers, CalendarRange, Swords, Megaphone, AtSign, Newspaper, CalendarDays, CalendarClock,
   History, Bell, Plug, SlidersHorizontal, Settings2, ScrollText, Activity, Terminal, ListChecks, KeyRound, ArrowLeftRight, BadgeCheck,
-  Ban, Network, PencilRuler, Store, FilePenLine,
+  Ban, Network, PencilRuler, Store, FilePenLine, Wand2, Heading1, Type, AlignLeft, Image as ImageIcon, Tags,
 } from 'lucide-react';
 import type { Permission, Role } from '@sentinel/shared';
 
@@ -17,6 +17,8 @@ export interface NavItem {
   anyOf?: Permission[];
   roles?: Role[]; // restrict visibility by role in addition to permission
   end?: boolean;
+  /** Sub-pages listed under the item (indented). */
+  children?: NavItem[];
 }
 /** `collapsible` groups can be folded; the group holding the current page always opens. */
 export interface NavSection { id: string; label: string; items: NavItem[]; collapsible?: boolean }
@@ -41,6 +43,16 @@ export const NAV: NavSection[] = [
       { to: '/crawls', label: 'Crawl Center', icon: Radar, perm: 'crawls.view' },
       { to: '/images', label: 'Image Audit', icon: Images, perm: 'crawls.view' },
       { to: '/seo-editor', label: 'SEO editor', icon: FilePenLine, anyOf: ['shopify.edit', 'shopify.theme'] },
+      {
+        to: '/optimize', label: 'SEO optimization', icon: Wand2, perm: 'crawls.view',
+        children: [
+          { to: '/optimize/titles', label: 'Titles', icon: Type, perm: 'crawls.view' },
+          { to: '/optimize/meta-descriptions', label: 'Meta descriptions', icon: AlignLeft, perm: 'crawls.view' },
+          { to: '/optimize/h1', label: 'H1 headings', icon: Heading1, perm: 'crawls.view' },
+          { to: '/optimize/image-alt', label: 'Image alt text', icon: ImageIcon, perm: 'crawls.view' },
+          { to: '/optimize/tags', label: 'Tags', icon: Tags, perm: 'crawls.view' },
+        ],
+      },
     ],
   },
   {
@@ -106,7 +118,8 @@ export const NAV: NavSection[] = [
 ];
 
 export function visibleNav(role: Role, can: (p: Permission) => boolean): NavSection[] {
-  return NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.perm || can(i.perm)) && (!i.anyOf || i.anyOf.some(can)) && (!i.roles || i.roles.includes(role))) })).filter((s) => s.items.length);
+  const ok = (i: NavItem) => (!i.perm || can(i.perm)) && (!i.anyOf || i.anyOf.some(can)) && (!i.roles || i.roles.includes(role));
+  return NAV.map((s) => ({ ...s, items: s.items.filter(ok).map((i) => (i.children ? { ...i, children: i.children.filter(ok) } : i)) })).filter((s) => s.items.length);
 }
 
 /** True when `pathname` is the page an item points to (same rule NavLink uses). */

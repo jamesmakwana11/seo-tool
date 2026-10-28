@@ -10,6 +10,7 @@ import type {
 } from './types';
 import type { LighthouseFormFactor, LighthouseRun, LighthouseStatus } from './lighthouse';
 import type {
+  SeoBulkItemsPage, SeoBulkJob, SeoBulkStartInput, SeoOptimizationField, SeoOptimizationPage, SeoOptimizationQuery,
   ShopifyApplyBatchResult, ShopifyApplyPreview, ShopifyDraft, ShopifyResolveResult, ShopifyResourceKind, ShopifyResourceList, ShopifyStatus,
   ShopifyTheme, ShopifyThemeFile, ShopifyThemeProposal,
 } from './shopify';
@@ -327,12 +328,24 @@ export interface SentinelApi {
   deleteShopifyDraft(id: string): Promise<{ ok: true }>;
   /** Rebuilds a draft from the values in Shopify now (after a conflict). */
   refreshShopifyDraft(id: string): Promise<ShopifyDraft>;
-  /** Reads the live values again and lists exactly what will be written, with conflicts and the confirmation phrase. */
+  /** Review: reads the live values again and lists exactly what will be written, with conflicts and a review token. */
   previewShopifyApply(ids: string[]): Promise<ShopifyApplyPreview>;
   /** Download of the original (live) values of the drafts' fields, taken now. */
   downloadShopifyBackup(ids: string[]): Promise<{ filename: string; mimeType: string; content: string | Blob }>;
-  /** Writes the included changes after explicit confirmation, verifies each by reading it back, then re-audits the page. */
-  applyShopifyDrafts(ids: string[], confirm: string): Promise<ShopifyApplyBatchResult>;
+  /**
+   * Writes the reviewed changes (the review's token; `exclude` = field keys per draft unticked in the review), verifies
+   * each by reading it back, then re-audits the page. Repeating the call with the same token returns the first result.
+   */
+  applyShopifyDrafts(ids: string[], review: { previewId: string; exclude?: Record<string, string[]> }): Promise<ShopifyApplyBatchResult>;
+  /** Bulk SEO fixes: prepare (nothing written), read, select, apply (background), cancel. */
+  startSeoBulkFix(input: SeoBulkStartInput): Promise<SeoBulkJob>;
+  getSeoBulkFix(): Promise<SeoBulkJob | null>;
+  listSeoBulkFixItems(q: { offset?: number; limit?: number; field?: string; filter?: string }): Promise<SeoBulkItemsPage>;
+  selectSeoBulkFix(input: { jobId: string; url?: string; key?: string; included: boolean; all?: boolean }): Promise<SeoBulkJob>;
+  applySeoBulkFix(jobId: string): Promise<SeoBulkJob>;
+  cancelSeoBulkFix(jobId: string): Promise<SeoBulkJob>;
+  /** SEO Optimization lists (Titles, Meta descriptions, H1 headings, Image alt text, Tags). */
+  getSeoOptimization(field: SeoOptimizationField, q: SeoOptimizationQuery): Promise<SeoOptimizationPage>;
   /** Fetches the storefront page again and checks the applied values are visible. */
   reauditShopifyDraft(id: string): Promise<ShopifyDraft>;
   listShopifyThemes(): Promise<ShopifyTheme[]>;

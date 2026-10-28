@@ -82,10 +82,20 @@ token from memory; to revoke it, uninstall the app in the Shopify admin.
    URLs and locale prefixes included).
 2. The draft shows, per field: the value **now in Shopify**, the **proposed** value, **why** it is proposed, the
    **validation** result, and **how it is applied** (the mutation, or “Theme edit”).
-   Suggestions only reuse text that is already there (title, description, shop name): a missing meta description is
-   taken from the first sentences of the description, an over-long SEO title is shortened at a word boundary, an
-   `<h1>` inside a description is demoted to `<h2>` when the theme already prints the title as H1, duplicate tags are
-   removed, an image without alt text gets the product title. Titles are never reworded automatically.
+   Every field is **assessed** — missing, too short, too long, duplicated (from the crawl), keyword-stuffed, unclear
+   (generic text, file names as alt text), all capitals — against the guidelines in **Settings → Thresholds &
+   scoring** (`titleMinChars`/`titleMaxChars`, `metaMinChars`/`metaMaxChars`, `h1MinChars`/`h1MaxChars`,
+   `altMaxChars`, `lengthTolerancePct`, `keywordRepeatMax`, `tagsMax`). A value a little outside a range (within
+   the tolerance) is only noted; the page type counts (a simple page may have a short title). A **good value is
+   recommended to be kept** — nothing is proposed for it.
+   Every field also gets a **suggestion with its reason**, built only from text that is already there (title,
+   description, shop name, the store keywords): a missing or weak meta description comes from the first sentences of
+   the description (forms, buttons and labels are skipped); an over-long SEO title is shortened at a word boundary,
+   keeping the shop name and leaving room for the “ – Shop name” many themes append (read from the crawl's title
+   tag); repeated words are removed; an `<h1>` inside a description is demoted to `<h2>` when the theme already prints
+   the title as H1; duplicate tags are removed (no tag is ever added); an image without alt text gets the title.
+   Clear-cut fixes are pre-selected; wording changes (a shortened product title, all capitals → normal case, a
+   suggestion that drops a store keyword) are shown **for review** and not selected. **Use suggestion** fills it in.
 3. Edit any proposed value by hand. Validation flags lengths, HTML in plain-text fields, `<script>`/event handlers/
    `javascript:` links (refused), heading-level skips, extra H1s, internal links over `http://` or to
    collection-scoped product URLs, and **figures (numbers, sizes, quantities) that appear nowhere in the current
@@ -98,8 +108,10 @@ token from memory; to revoke it, uninstall the app in the Shopify admin.
    snippets files and creates a theme proposal (if it is in several files you pick one; if it is in none — an app
    block, a translation in `locales/` or a metafield — the editor says so and nothing is changed).
 5. **Review and apply** (one draft or a batch of up to 50): Sentinel reads every value from Shopify again, lists
-   exactly what will change, marks fields changed in Shopify since the draft as **conflicts** (never written), offers
-   **Download original values** (JSON), and asks you to type `APPLY <n> CHANGES`.
+   exactly what will change, marks fields changed in Shopify since the draft as **conflicts** (never written) and
+   offers **Download original values** (JSON). Untick any change you do not want, then **Apply changes** — no phrase
+   to type. The review is recorded on the server (a token valid 15 minutes, for the user who reviewed): applying
+   without it is refused, and a second click or a retry returns the first result instead of writing again.
 6. Applying runs one resource after another. Shopify's rate limits are respected (cost-based throttling, 429
    `Retry-After`, 5xx retries). A failed field does not stop the batch; each field ends as *verified*, *written but
    not verified*, *failed*, *conflict* or *skipped*.
@@ -107,7 +119,39 @@ token from memory; to revoke it, uninstall the app in the Shopify admin.
    (when live crawling is allowed) and the title tag, meta description, H1 and image alt are compared. Shopify's
    storefront cache can lag — **Check storefront again** repeats the check.
 
-## 5. Theme changes
+## 5. Bulk fixes and SEO Optimization
+
+- **Issues board → Fix all** (beside *Detected*): every open issue from a live crawl is mapped to the fields it
+  concerns — title tags (ONP-TITLE), meta descriptions (ONP-META), H1s (ONP-H1), image alt text (ONP-IMAGES, alt
+  findings only) and internal links (TECH-BROKEN-INTERNAL). Everything else (schema, templates, pagination,
+  compliance, redirects…) is listed under **Needs a person** with the reason.
+- **All pages → Fix all SEO issues** (header) and **Fix all / Fix these** (beside *Response*, using the table's
+  filters): the crawl's pages are read one by one from the server's result store (never all in memory) and judged
+  on title tag, meta description, H1, image alt text and broken links. Pages that are not Shopify resources
+  (homepage, paginated/filtered URLs, theme or app pages) are listed for a person.
+- **SEO operations → SEO optimization → Titles / Meta descriptions / H1 headings / Image alt text / Tags**: one list
+  per field for the website chosen in the header, with the current value, its problems and a suggestion from the
+  page's Shopify content; filters for page type, problem (missing, too long, duplicated…), and open issues; select
+  pages and **Fix selected**, or **Fix all that need work**. Lists are paged on the server (25 rows); suggestions
+  are read from Shopify only for the rows shown. Tags come from Shopify (50 products per page).
+
+A bulk fix first **prepares** (nothing is written): each page is matched to its product / collection / page / article
+and only fields that need work get a change (good values are left alone). The review groups the changes by field
+and page; pages and single changes can be excluded. **Apply** writes the selection in the background, one resource
+at a time through the same path as the editor (live values first — conflicts are never written — then write, read
+back, storefront check), in batches of 10, with progress and **Cancel** (stops after the current page). Failures
+are reported per change; successful changes stay. Afterwards:
+
+- each fixed page is fetched again and its **page score** recorded (All pages shows the new score and values, marked
+  as re-checked, until the next crawl; the pages are also queued for the next smart crawl);
+- an **issue is closed only when all its affected URLs were fixed and the re-verifier re-checks them with 0
+  failing**. Partly fixed issues stay open with “fixed on N of M pages”.
+
+One bulk fix runs per website at a time; at most 2,000 pages are prepared per run (run it again for the rest). Broken
+links are fixed only where it is safe: a link in the page's content whose target now redirects to a working page is
+pointed at the final page; links to missing pages, or links in the theme / menus, are listed for a person.
+
+## 6. Theme changes
 
 **SEO editor → Theme changes** (permission `shopify.theme`; Admin and Developer by default).
 
@@ -126,7 +170,8 @@ token from memory; to revoke it, uninstall the app in the Shopify admin.
 
 ## Limitations
 
-- Drafts, proposals and the OAuth token live in memory: a restart discards them (no database at this stage).
+- Drafts, proposals, bulk-fix jobs and post-fix page re-checks live in memory: a restart discards them (what was
+  written to Shopify stays written, and the audit log records it).
 - Clearing an existing SEO title / meta description is not offered (Shopify then falls back to the title /
   description); do that in the Shopify admin.
 - Image alt text is edited for product media (first 20 images) and the collection / article featured image. Images inside description HTML are edited in the

@@ -15,11 +15,12 @@
  * its original file was downloaded and its own confirmation phrase (WRITE TO LIVE THEME …) was typed.
  */
 import type {
-  CrawledUrl, H1SourceReport, ShopifyApplyBatchResult, ShopifyApplyPreview, ShopifyApplyResult, ShopifyDraft, ShopifyFieldResult, ShopifyReaudit,
+  CrawledUrl, H1SourceReport, SeoBulkItemsPage, SeoBulkJob, SeoBulkStartInput, SeoOptimizationField, SeoOptimizationPage, SeoOptimizationQuery,
+  ShopifyApplyBatchResult, ShopifyApplyPreview, ShopifyApplyResult, ShopifyDraft, ShopifyFieldDraft, ShopifyFieldResult, ShopifyReaudit,
   ShopifyResolveResult, ShopifyResourceKind, ShopifyResourceList, ShopifyStatus, ShopifyTheme, ShopifyThemeFile, ShopifyThemeProposal,
   ThemeDiffResponse, ThemeSnapshotMeta,
 } from '@sentinel/shared';
-import { SHOPIFY_OPTIONAL_SCOPES, SHOPIFY_REQUIRED_SCOPES } from '@sentinel/shared';
+import { assessSeoField, seoGuidelinesFrom, SHOPIFY_OPTIONAL_SCOPES, SHOPIFY_REQUIRED_SCOPES } from '@sentinel/shared';
 import type { Request } from 'express';
 import { defaultFetch, type FetchLike } from '../connectors/http';
 import { shopifyDomain } from '../connectors/connectors';
@@ -30,9 +31,10 @@ import { badRequest, conflict, ApiError, notFound } from '../lib/errors';
 import { randomToken } from '../lib/passwords';
 import { SecretBoxError, type SecretBox } from '../security/secretBox';
 import { firstBasePath, registerBasePath } from '../http/basePath';
-import { audit, need, type Actor, type Ctx } from '../services/context';
+import { audit, can, need, type Actor, type Ctx } from '../services/context';
+import { createBulkFixer, type SeoOpsDeps } from './bulk';
 import { createAdminClient, ShopifyApiError, type AdminClient } from './client';
-import { bodyHeadings, buildFields, detectH1Sources, sourceTexts, themeNotes, validateField, type Limits } from './drafts';
+import { bodyHeadings, buildFields, detectH1Sources, sourceTexts, suggestText, themeNotes, validateField, type Limits } from './drafts';
 import { authorizeUrl, createStateStore, exchangeCode, missingScopes, normalizeShop, OAuthError, verifyQueryHmac, CALLBACK_MAX_AGE_S } from './oauth';
 import { adminUrl, fetchByHandle, fetchById, fieldValue, isGid, listResources, mutationFor, parseStorefrontPath, sameValue, summarize, writeOps, type ShopifyResource } from './resources';
 import { EDITABLE_FILE, getTheme, lineDiff, listThemeFiles, listThemes, md5, MAX_THEME_FILE_BYTES, readThemeFile, readThemeFiles, SNAPSHOT_FILE, writeThemeFile } from './theme';
@@ -52,6 +54,8 @@ export interface ShopifyDeps {
   scope?: string;
   /** Encryption for credentials entered in the app; undefined = they cannot be stored (no key material). */
   secretBox?: SecretBox;
+  /** Bulk SEO fixes: the crawl's rows (streamed), page re-checks after a fix, and issue confirmation after a passed re-check. */
+  seo?: SeoOpsDeps;
 }
 
 /** Credentials entered in the app (decrypted, in memory only). */
@@ -74,6 +78,8 @@ interface ThemeProposalInternal extends ShopifyThemeProposal { original: string;
 /** OAuth states are shared by all website workspaces: the public callback has no website header, so the state says which one started it. */
 const states = createStateStore();
 const owners = new Map<string, ReturnType<typeof createShopifyService>>();
+
+const PREVIEW_TTL_MS = 15 * 60_000;
 
 const TOKEN_NOTE = 'The access token is kept only in this server’s memory: it is never sent to the browser, saved to disk, written to logs or included in exports. After a restart or redeploy, connect again — or set SHOPIFY_STORE_DOMAIN and SHOPIFY_ADMIN_TOKEN in the server environment (primary website only).';
 const TOKEN_NOTE_SEALED = 'The access token is stored encrypted (AES-256-GCM) in the database and kept in this server’s memory while in use: it is never sent to the browser, written to logs or included in exports, and it survives restarts. Disconnect removes it.';
@@ -154,6 +160,8 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
   /** Existing text of each draft's resource (facts check for hand edits). */
   const draftSources = new Map<string, string[]>();
   let applying = false;
+  /** Reviews (preview step) by token: applying needs one; its result is kept so a repeated submission does not write twice. */
+  const previews = new Map<string, { ids: string[]; actorId: string; expiresAt: string; running?: Promise<ShopifyApplyBatchResult>; result?: ShopifyApplyBatchResult }>();
   const snapshots = deps.themeSnapshotDir ? createThemeSnapshotStore(deps.themeSnapshotDir) : undefined;
   const requestedScopes = () => (env.SHOPIFY_SCOPES ? env.SHOPIFY_SCOPES.split(',').map((s) => s.trim()).filter(Boolean) : [...SHOPIFY_REQUIRED_SCOPES, ...SHOPIFY_OPTIONAL_SCOPES]);
   const appUrl = () => (saved.appUrl ?? env.SHOPIFY_APP_URL ?? env.APP_BASE_URL)?.replace(/\/$/, '');
@@ -247,8 +255,10 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
     return (ctx.engine.readiness().baseUrl || (await ctx.repos.config.get()).site.baseUrl || '').replace(/\/$/, '');
   }
   async function limits(): Promise<Limits> {
-    const t = (await ctx.repos.config.get()).thresholds as unknown as Partial<Limits>;
-    return { titleMinChars: t.titleMinChars ?? 30, titleMaxChars: t.titleMaxChars ?? 60, metaMinChars: t.metaMinChars ?? 70, metaMaxChars: t.metaMaxChars ?? 160 };
+    return seoGuidelinesFrom((await ctx.repos.config.get()).thresholds);
+  }
+  async function storeKeywords(): Promise<string[]> {
+    return (await ctx.repos.config.get()).moneyKeywords ?? [];
   }
 
   async function status(): Promise<ShopifyStatus> {
@@ -307,13 +317,17 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
 
   // ------------------------------------------------------------------------------------------ drafts
 
-  /** H1 texts of the live storefront page (undefined when it cannot be fetched: crawling off, other host, error). */
-  async function storefrontH1s(url: string): Promise<string[] | undefined> {
+  /** The live storefront page, parsed (undefined when it cannot be fetched: crawling off, other host, error). */
+  async function storefrontPage(url: string): Promise<ReturnType<typeof parseHtml> | undefined> {
     const base = await siteBase();
     if (!ctx.engine.readiness().ready || !base || hostOf(url).replace(/^www\./, '') !== hostOf(base).replace(/^www\./, '')) return undefined;
     const r = await deps.collector.http.request(url, { readBody: true }).catch(() => undefined);
     if (!r || r.finalStatus !== 200 || !r.body) return undefined;
-    return parseHtml(r.body, r.finalUrl, hostOf(url)).h1s.map((h) => h.replace(/\s+/g, ' ').trim());
+    return parseHtml(r.body, r.finalUrl, hostOf(url));
+  }
+  /** H1 texts of the live storefront page (undefined when it cannot be fetched: crawling off, other host, error). */
+  async function storefrontH1s(url: string): Promise<string[] | undefined> {
+    return (await storefrontPage(url))?.h1s.map((h) => h.replace(/\s+/g, ' ').trim());
   }
 
   const h1Source = (d: ShopifyDraft) => d.h1.sources[0]?.source;
@@ -355,16 +369,17 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
     return rest;
   }
 
-  async function buildDraft(actor: Actor, res: ShopifyResource, url: string | undefined, existing?: ShopifyDraft): Promise<ShopifyDraft> {
+  /** `opts.crawlRow`: plan from the crawl's row (no storefront request) — bulk planning; applying always reads the live page. */
+  async function buildDraft(actor: Actor, res: ShopifyResource, url: string | undefined, existing?: ShopifyDraft, opts: { crawlRow?: CrawledUrl } = {}): Promise<ShopifyDraft> {
     const base = await siteBase();
     const pageUrl = url ?? (base ? `${base}${res.path}` : undefined);
-    const found = pageUrl ? await deps.latestRow(pageUrl).catch(() => undefined) : undefined;
+    const found = opts.crawlRow ? { row: opts.crawlRow, at: undefined } : pageUrl ? await deps.latestRow(pageUrl).catch(() => undefined) : undefined;
     // The H1 as the live storefront shows it now (one request); the latest crawl only when the page cannot be fetched.
-    const liveH1s = pageUrl ? await storefrontH1s(pageUrl) : undefined;
+    const liveH1s = pageUrl && !opts.crawlRow ? await storefrontH1s(pageUrl) : undefined;
     const pageH1s = liveH1s ?? found?.row.h1 ?? [];
     const basis: H1SourceReport['basis'] = liveH1s ? 'storefront' : found ? 'crawl' : 'none';
     const observedAt = liveH1s ? iso() : found?.at;
-    const dctx = { res, shopName: conn?.shopName, siteHost: base ? hostOf(base) : '', row: found?.row, pageH1s, h1Basis: basis, observedAt, limits: await limits() };
+    const dctx = { res, shopName: conn?.shopName, siteHost: base ? hostOf(base) : '', row: found?.row, pageH1s, h1Basis: basis, observedAt, limits: await limits(), keywords: await storeKeywords() };
     const h1 = detectH1Sources(res, pageH1s, basis, observedAt);
     const fields = buildFields(dctx);
     // ---- H1 heading: its own field, written to wherever the live H1 comes from.
@@ -376,9 +391,17 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
         : src?.source === 'body' ? `${mutationFor(res.kind, 'bodyHtml')} — the <h1> inside the ${res.kind === 'product' || res.kind === 'collection' ? 'description' : 'content'}`
           : 'Theme file — change in theme (diff, backup and confirmation)';
       const at = fields.findIndex((f) => f.key === 'title') + 1;
+      const titleField = fields.find((f) => f.key === 'title');
+      const assessment = assessSeoField('h1', cur, { guidelines: dctx.limits, pageType: res.kind, h1Count: h1.pageH1s.length, duplicate: (found?.row.flags ?? []).includes('dup-h1') });
+      // From the title: the Title field's suggestion is the H1 suggestion (one value in Shopify); from the content: its own.
+      const suggestion = src?.source === 'title' && titleField
+        ? { value: titleField.proposed, reason: titleField.proposed === cur ? (assessment.verdict === 'good' ? 'Already good — keep it.' : `${assessment.problems.filter((p) => p.severity !== 'note').map((p) => p.message).join(' ')} The theme prints the title as the H1: edit the Title field (one value).`) : `The theme prints the title as the H1, so the Title suggestion applies: ${titleField.reason}`, keep: titleField.proposed === cur && assessment.verdict === 'good', confidence: titleField.suggestion?.confidence ?? 'review' as const }
+        : cur ? suggestText('h1', cur, assessment, { res, shopName: conn?.shopName, limits: dctx.limits, descText: '', keywords: dctx.keywords }) : undefined;
+      const proposed = src?.source === 'body' && suggestion && !suggestion.keep ? suggestion.value : cur;
       fields.splice(at > 0 ? at : fields.length, 0, {
-        key: 'h1', label: 'H1 heading', current: cur, proposed: cur, reason: '', source: 'unchanged', applyVia: via, mutation: where, include: false,
-        validation: validateField('h1', cur, { res, siteHost: base ? hostOf(base) : '', limits: dctx.limits, current: cur, sources: sourceTexts(res, conn?.shopName), source: 'unchanged' }),
+        key: 'h1', label: 'H1 heading', current: cur, proposed, reason: proposed !== cur ? suggestion!.reason : '', source: proposed !== cur ? 'suggested' : 'unchanged', applyVia: via, mutation: where,
+        include: proposed !== cur && suggestion?.confidence === 'high', assessment, ...(suggestion ? { suggestion } : {}),
+        validation: validateField('h1', proposed, { res, siteHost: base ? hostOf(base) : '', limits: dctx.limits, current: cur, sources: sourceTexts(res, conn?.shopName), source: proposed !== cur ? 'suggested' : 'unchanged', keywords: dctx.keywords }),
         hint: src ? `${src.explanation}${h1.pageH1s.length > 1 ? ` The page has ${h1.pageH1s.length} H1s; this field is the first.` : ''}` : basis === 'none' ? 'The live page could not be read, so its H1 is unknown.' : 'The live page has no H1 — the theme template needs one (change in theme).',
       });
     }
@@ -425,7 +448,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
     return { live, changes, problems };
   }
 
-  async function preview(ids: string[]): Promise<ShopifyApplyPreview> {
+  async function preview(ids: string[], actor: Actor): Promise<ShopifyApplyPreview> {
     if (!ids.length) throw badRequest('Choose at least one draft.');
     if (ids.length > 50) throw badRequest('At most 50 drafts per batch.');
     const list = ids.map(getDraft);
@@ -437,7 +460,12 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
       }
       const total = out.reduce((n, d) => n + d.changes.filter((x) => !x.conflict).length, 0);
       const conflicts = out.reduce((n, d) => n + d.changes.filter((x) => x.conflict).length, 0);
-      return { drafts: out, total, conflicts, confirmPhrase: `APPLY ${total} CHANGE${total === 1 ? '' : 'S'}` };
+      // The review is recorded server-side: applying needs this token (no typed phrase), and reusing it never writes twice.
+      const previewId = `PV-${randomToken(10)}`;
+      const expiresAt = new Date(ctx.clock().getTime() + PREVIEW_TTL_MS).toISOString();
+      for (const [k, v] of previews) if (Date.parse(v.expiresAt) < ctx.clock().getTime()) previews.delete(k);
+      previews.set(previewId, { ids: [...ids], actorId: actor.id, expiresAt });
+      return { drafts: out, total, conflicts, previewId, expiresAt };
     });
   }
 
@@ -522,6 +550,66 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
     await audit(ctx, actor, 'shopify.apply', 'shopify', d.id, `Applied ${verifiedKeys.length} verified change(s) to ${d.kind} “${d.resourceTitle}” (${failed} failed/conflict) in ${conn!.shop}`);
     return d;
   }
+
+  /** Writes reviewed drafts one resource at a time; fields unticked in the review are left out. */
+  async function runApply(actor: Actor, ids: string[], exclude: Record<string, unknown>): Promise<ShopifyApplyBatchResult> {
+    applying = true;
+    try {
+      for (const id of ids) {
+        const skip = Array.isArray(exclude[id]) ? (exclude[id] as unknown[]).map(String) : [];
+        for (const f of getDraft(id).fields) if (skip.includes(f.key)) f.include = false;
+      }
+      const list = ids.map(getDraft);
+      if (!list.some((d) => d.fields.some((f) => f.include))) throw badRequest('Nothing is selected to apply.');
+      const c = client();
+      const out: ShopifyDraft[] = [];
+      let stopped: string | undefined;
+      for (const d of list) {
+        if (stopped) {
+          d.result = { at: iso(), by: actor.name, fields: d.fields.filter((f) => f.include).map((f) => ({ key: f.key, label: f.label, status: 'skipped', before: f.current, message: `Not attempted: ${stopped}` })), verified: false };
+          out.push(d);
+          continue;
+        }
+        try {
+          out.push(await applyOne(d, c, actor));
+        } catch (e) {
+          stopped = (e as Error).message;
+          d.status = 'failed';
+          d.result = { at: iso(), by: actor.name, fields: d.fields.filter((f) => f.include).map((f) => ({ key: f.key, label: f.label, status: 'failed', before: f.current, message: stopped })), verified: false };
+          out.push(d);
+        }
+      }
+      const fl = out.flatMap((d) => d.result?.fields ?? []);
+      return { applied: fl.filter((f) => f.status === 'verified' || f.status === 'applied_unverified').length, failed: fl.filter((f) => f.status === 'failed' || f.status === 'conflict').length, skipped: fl.filter((f) => f.status === 'skipped').length, drafts: out };
+    } finally {
+      applying = false;
+    }
+  }
+
+  // ------------------------------------------------------------------------------------------ bulk SEO fixes
+  const bulkSources = new WeakMap<ShopifyDraft, string[]>();
+  async function validateFor(d: ShopifyDraft, f: ShopifyFieldDraft, value: string) {
+    const base = await siteBase();
+    const res = { kind: d.kind, id: d.resourceId, handle: d.handle, title: f.key === 'title' ? value : d.resourceTitle, seoTitle: '', seoDescription: '', bodyHtml: '', path: '' } as ShopifyResource;
+    const v = validateField(f.key, value, { res, siteHost: base ? hostOf(base) : '', limits: await limits(), current: f.current, sources: bulkSources.get(d) ?? draftSources.get(d.id) ?? [], source: 'suggested', keywords: await storeKeywords() });
+    if (f.key.startsWith('imageAlt:') && f.key !== 'imageAlt:featured' && !(hasScope('write_files') || hasScope('write_themes'))) { v.ok = false; v.errors.push('Needs the write_files (or write_themes) access scope — reconnect and approve it.'); }
+    return v;
+  }
+  const bulk = createBulkFixer({
+    ctx, requireEditable: async () => { await requireEditable(); }, connected: () => !!conn, call, client,
+    resolveUrl: async (url) => { const r = await resolve(url); return { res: r.res, problem: r.result.problem }; },
+    fetchById,
+    buildDraft: async (actor, res, url, opts) => {
+      const d = await buildDraft(actor, res, url, undefined, opts);
+      bulkSources.set(d, draftSources.get(d.id) ?? []);
+      draftSources.delete(d.id); // not kept in the editor's list
+      return d;
+    },
+    validate: validateFor, applyOne,
+    lock: () => { if (applying) return false; applying = true; return true; },
+    unlock: () => { applying = false; },
+    siteBase, latestRow: (u) => deps.latestRow(u), fetchPage: storefrontPage, shop: () => conn?.shop,
+  }, deps.seo);
 
   const service = {
     ownerKey,
@@ -705,6 +793,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
       if (!input.fields || typeof input.fields !== 'object') throw badRequest('fields is required.');
       const base = await siteBase();
       const L = await limits();
+      const keywords = await storeKeywords();
       const sources = draftSources.get(d.id) ?? [];
       for (const [key, ch] of Object.entries(input.fields)) {
         const f = d.fields.find((x) => x.key === key);
@@ -716,7 +805,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
           f.proposed = ch.proposed;
           if (changed) { f.source = ch.proposed === f.current ? 'unchanged' : 'manual'; if (f.source === 'manual') f.reason = f.reason || 'Edited by hand.'; }
           const res = { kind: d.kind, id: d.resourceId, handle: d.handle, title: f.key === 'title' ? f.proposed : d.resourceTitle, seoTitle: '', seoDescription: '', bodyHtml: '', path: '' } as ShopifyResource;
-          const v = validateField(key, f.proposed, { res, siteHost: base ? hostOf(base) : '', limits: L, current: f.current, sources, source: f.source });
+          const v = validateField(key, f.proposed, { res, siteHost: base ? hostOf(base) : '', limits: L, current: f.current, sources, source: f.source, keywords });
           if (key.startsWith('imageAlt:') && key !== 'imageAlt:featured' && !(hasScope('write_files') || hasScope('write_themes'))) { v.ok = false; v.errors.push('Needs the write_files (or write_themes) access scope — reconnect and approve it.'); }
           f.validation = v;
           if (ch.include === undefined) f.include = f.proposed !== f.current;
@@ -750,7 +839,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
     async preview(actor: Actor, ids: string[]): Promise<ShopifyApplyPreview> {
       await need(ctx, actor, 'shopify.edit');
       await requireEditable();
-      return preview(ids);
+      return preview(ids, actor);
     },
 
     async backup(actor: Actor, ids: string[]): Promise<{ filename: string; mimeType: string; content: string }> {
@@ -770,39 +859,71 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
       return { filename: `shopify-originals-${stamp}.json`, mimeType: 'application/json; charset=utf-8', content: JSON.stringify({ shop: conn!.shop, takenAt: iso(), note: 'Values in Shopify at download time, before applying the drafts.', resources }, null, 2) };
     },
 
-    async apply(actor: Actor, ids: string[], confirm: string): Promise<ShopifyApplyBatchResult> {
+    /**
+     * Applies reviewed drafts. `previewId` comes from the review (preview) step; `exclude` lists field keys per draft that
+     * were unticked there. The same previewId twice returns the first result (no second write).
+     */
+    async apply(actor: Actor, ids: string[], opts: { previewId?: unknown; exclude?: unknown }): Promise<ShopifyApplyBatchResult> {
       await need(ctx, actor, 'shopify.edit');
       await requireEditable();
+      const previewId = typeof opts.previewId === 'string' ? opts.previewId : '';
+      const rv = previews.get(previewId);
+      if (!rv) throw new ApiError(400, 'REVIEW_REQUIRED', 'Nothing was written. Review the changes first (the review step lists exactly what will be written).');
+      if (rv.actorId !== actor.id) throw new ApiError(403, 'REVIEW_REQUIRED', 'This review belongs to another user. Review the changes yourself.');
+      if (rv.result) return rv.result;
+      if (rv.running) return rv.running;
+      if (Date.parse(rv.expiresAt) < ctx.clock().getTime()) { previews.delete(previewId); throw new ApiError(409, 'REVIEW_EXPIRED', 'The review is older than 15 minutes. Review the changes again — values may have changed in Shopify.'); }
+      if (ids.length !== rv.ids.length || ids.some((x) => !rv.ids.includes(x))) throw badRequest('The drafts differ from the reviewed ones. Review the changes again.');
       if (applying) throw conflict('Another batch is being applied. Wait for it to finish.');
-      applying = true;
+      const exclude = (opts.exclude && typeof opts.exclude === 'object' ? opts.exclude : {}) as Record<string, unknown>;
+      rv.running = runApply(actor, ids, exclude);
       try {
-        const pv = await preview(ids);
-        if (typeof confirm !== 'string' || confirm.trim() !== pv.confirmPhrase) throw new ApiError(400, 'CONFIRMATION_REQUIRED', `Nothing was written. Review the preview and type “${pv.confirmPhrase}” to apply.`);
-        if (pv.total === 0) throw badRequest('There are no changes to apply (all are unchanged, invalid or in conflict).');
-        const c = client();
-        const out: ShopifyDraft[] = [];
-        let stopped: string | undefined;
-        for (const id of ids) {
-          const d = getDraft(id);
-          if (stopped) {
-            d.result = { at: iso(), by: actor.name, fields: d.fields.filter((f) => f.include).map((f) => ({ key: f.key, label: f.label, status: 'skipped', before: f.current, message: `Not attempted: ${stopped}` })), verified: false };
-            out.push(d);
-            continue;
-          }
-          try {
-            out.push(await applyOne(d, c, actor));
-          } catch (e) {
-            stopped = (e as Error).message;
-            d.status = 'failed';
-            d.result = { at: iso(), by: actor.name, fields: d.fields.filter((f) => f.include).map((f) => ({ key: f.key, label: f.label, status: 'failed', before: f.current, message: stopped })), verified: false };
-            out.push(d);
-          }
-        }
-        const fl = out.flatMap((d) => d.result?.fields ?? []);
-        return { applied: fl.filter((f) => f.status === 'verified' || f.status === 'applied_unverified').length, failed: fl.filter((f) => f.status === 'failed' || f.status === 'conflict').length, skipped: fl.filter((f) => f.status === 'skipped').length, drafts: out };
+        rv.result = await rv.running;
+        return rv.result;
       } finally {
-        applying = false;
+        rv.running = undefined;
       }
+    },
+
+    // -------------------------------------------------------------------------------------- bulk SEO fixes
+
+    async seoBulkStart(actor: Actor, input: Partial<SeoBulkStartInput>): Promise<SeoBulkJob> {
+      await need(ctx, actor, 'shopify.edit');
+      if (input?.scope === 'issues') await need(ctx, actor, 'issues.view');
+      return bulk.start(actor, input ?? {});
+    },
+    async seoBulkStatus(actor: Actor): Promise<SeoBulkJob | null> {
+      await need(ctx, actor, 'shopify.edit');
+      return bulk.status();
+    },
+    async seoBulkItems(actor: Actor, q: Record<string, unknown>): Promise<SeoBulkItemsPage> {
+      await need(ctx, actor, 'shopify.edit');
+      return bulk.items(q);
+    },
+    async seoBulkSelect(actor: Actor, input: Record<string, unknown>): Promise<SeoBulkJob> {
+      await need(ctx, actor, 'shopify.edit');
+      return bulk.select(input);
+    },
+    async seoBulkApply(actor: Actor, jobId: unknown): Promise<SeoBulkJob> {
+      await need(ctx, actor, 'shopify.edit');
+      return bulk.apply(actor, jobId);
+    },
+    async seoBulkCancel(actor: Actor, jobId: unknown): Promise<SeoBulkJob> {
+      await need(ctx, actor, 'shopify.edit');
+      return bulk.cancel(jobId);
+    },
+    /** Tests: wait for the bulk job's running phase. */
+    seoBulkIdle: () => bulk.idle(),
+    /** SEO Optimization lists: pages with current values, problems and suggestions (suggestions need Shopify edit access). */
+    async seoOptimization(actor: Actor, field: SeoOptimizationField, q: SeoOptimizationQuery): Promise<SeoOptimizationPage> {
+      await need(ctx, actor, 'crawls.view');
+      await load();
+      if (!(await can(ctx, actor, 'shopify.edit'))) {
+        const page = await bulk.optimizationList(actor, field === 'tags' ? 'titles' : field, { ...q, limit: q.limit });
+        if (field === 'tags') return { ...page, field, rows: [], total: 0, counts: {}, note: 'Tags live in Shopify; your role cannot read Shopify content.' };
+        return { ...page, rows: page.rows.map((r) => ({ ...r, suggestion: null, suggestionNote: 'Your role cannot read Shopify content, so no suggestions.' })) };
+      }
+      return bulk.optimizationList(actor, field, q);
     },
 
     async reauditDraft(actor: Actor, id: string): Promise<ShopifyDraft> {
@@ -817,6 +938,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
       d.updatedAt = iso();
       return d;
     },
+
 
     // -------------------------------------------------------------------------------------- theme source snapshots (read-only)
 

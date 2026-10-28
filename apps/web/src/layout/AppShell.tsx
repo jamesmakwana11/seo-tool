@@ -13,6 +13,7 @@ import { Menu } from '@/components/ui/overlay';
 import { RoleBadge } from '@/components/domain/badges';
 
 const CRUMB: Record<string, string> = {
+  optimize: 'SEO optimization', titles: 'Titles', 'meta-descriptions': 'Meta descriptions', h1: 'H1 headings', 'image-alt': 'Image alt text', tags: 'Tags',
   health: 'Health Score', issues: 'Issues', websites: 'Websites', overview: 'All websites',
   verification: 'Verification', pages: 'All pages', report: 'Page report', images: 'Image Audit', modules: 'Audit modules', technical: 'Technical SEO', crawlability: 'Crawlability & indexability', responses: 'Response codes & links',
   canonicals: 'Canonicals & duplication', security: 'Security, mobile & rendering', 'structured-data': 'Structured data', performance: 'Performance & CWV',
@@ -196,6 +197,24 @@ export function AppShell() {
                             </>
                           )}
                         </NavLink>
+                        {!icons && it.children && it.children.length > 0 && (
+                          <ul className="ml-[18px] mt-px space-y-px border-l border-line pl-2" aria-label={it.label}>
+                            {it.children.map((ch) => (
+                              <li key={ch.to}>
+                                <NavLink
+                                  to={ch.to}
+                                  className={({ isActive: on }) => clsx(
+                                    'flex h-7 items-center gap-2 rounded-lg px-2 text-[12.5px] transition-colors duration-150',
+                                    on ? 'bg-signal-tint font-medium text-signal-dark' : 'text-ink-soft hover:bg-raised hover:text-ink',
+                                  )}
+                                >
+                                  <ch.icon className="h-3.5 w-3.5 shrink-0 text-faint" strokeWidth={1.9} aria-hidden />
+                                  <span className="truncate">{ch.label}</span>
+                                </NavLink>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </li>
                     ))}
                   </ul>

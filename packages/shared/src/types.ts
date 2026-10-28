@@ -827,6 +827,10 @@ export interface CrawledUrl {
   auditTodo?: string[];
   /** Page problems worked out over the whole crawl (dup-title, dup-meta, broken, …) — set on rows read from the Pages API. */
   flags?: string[];
+  /** Set when the page was fetched again after an SEO fix (values and score are from that fetch, not the crawl). */
+  recheckedAt?: string;
+  /** The crawl's score before the fix (rows with `recheckedAt`). */
+  scoreBeforeRecheck?: number | null;
 }
 
 export interface SitemapDiff {

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowUpRight, ExternalLink, Search } from 'lucide-react';
+import { ArrowUpRight, ExternalLink, Search, Wand2 } from 'lucide-react';
 import {
   CRAWL_PROBLEM_LABELS, CRAWL_STATE_LABELS, CRAWL_STATUS_LABELS, PAGE_AUDIT_TODO, auditPage, crawlRowStatus,
   type CrawledUrl, type CrawledUrlIssue, type CrawlPageProblem, type CrawlPagesQuery, type PageAuditLimits, type Severity,
@@ -42,8 +42,10 @@ function useDebounced<T>(v: T, ms: number): T {
  * Every URL of one crawl — fetched pages and URLs found but not fetched — searched, filtered, sorted and paged on the
  * server, so a 50,000-page crawl loads one page of rows at a time.
  */
-export function PageResults({ runId, active, check: checkProp, onCheck, scoreBand, onScoreBand }: {
+export function PageResults({ runId, active, check: checkProp, onCheck, scoreBand, onScoreBand, onFixPages }: {
   runId: string; active?: boolean;
+  /** Bulk SEO fix of the pages these filters list (button beside the Response column). */
+  onFixPages?: (filter: CrawlPagesQuery, count: number) => void;
   /** Controlled audit-check / score filters (the All Pages screen sets them from its to-do list). */
   check?: string; onCheck?: (v: string) => void; scoreBand?: string; onScoreBand?: (v: string) => void;
 }) {
@@ -125,7 +127,15 @@ export function PageResults({ runId, active, check: checkProp, onCheck, scoreBan
           },
           { key: 'inlinks', header: 'Inlinks', hideOnMobile: true, className: 'tabular-nums', cell: (u) => <span className="text-xs">{u.inlinks ?? '—'}</span>, sort: () => 0 },
           { key: 'links', header: 'Links / broken', hideOnMobile: true, cell: (u) => <span className="whitespace-nowrap text-xs tabular-nums">{u.internalLinks ?? '—'} / <span className={u.brokenLinks?.length ? 'font-medium text-crit-ink' : ''}>{u.brokenLinks?.length ?? 0}</span></span>, sort: () => 0 },
-          { key: 'ms', header: 'Response', hideOnMobile: true, className: 'tabular-nums', cell: (u) => <span className={`text-xs ${u.responseMs && u.responseMs > 2000 ? 'font-medium text-med-ink' : ''}`}>{u.responseMs !== undefined ? fmtMs(u.responseMs) : '—'}</span>, sort: () => 0 },
+          {
+            key: 'ms', hideOnMobile: true, header: 'Response',
+            headerAction: onFixPages && (
+              <button type="button" className="inline-flex items-center gap-1 whitespace-nowrap rounded-ctl border border-signal/40 px-1.5 py-0.5 text-[11px] font-medium text-signal hover:bg-signal-tint"
+                title={filtered ? 'Prepare SEO fixes for the pages these filters list — you review them first' : 'Prepare SEO fixes for every page of this crawl — you review them first'}
+                onClick={(e) => { e.stopPropagation(); const { offset: _o, limit: _l, sort: _s, dir: _d, ...flt } = query; onFixPages(flt, res.data?.total ?? 0); }}>
+                <Wand2 className="h-3 w-3" aria-hidden />Fix {filtered ? 'these' : 'all'}
+              </button>
+            ), className: 'tabular-nums', cell: (u) => <span className={`text-xs ${u.responseMs && u.responseMs > 2000 ? 'font-medium text-med-ink' : ''}`}>{u.responseMs !== undefined ? fmtMs(u.responseMs) : '—'}</span>, sort: () => 0 },
         ]}
       />
       <PageDrawer page={open} runId={runId} limits={res.data?.auditLimits} checkCounts={res.data?.facets.check} onClose={() => setOpen(null)} />

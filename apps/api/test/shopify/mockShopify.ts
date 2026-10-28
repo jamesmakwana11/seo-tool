@@ -171,7 +171,7 @@ export function createMockShopify() {
 
   function storefront(path: string): Response {
     const page = (title: string, desc: string | null, body: string, imgs: Media[] = []) => new Response(
-      `<!doctype html><html><head><title>${title} – DeoDap Test</title>${desc ? `<meta name="description" content="${desc.replace(/"/g, '&quot;')}">` : ''}</head><body><main>${body}${imgs.map((m) => `<img src="${m.url}" alt="${m.alt ?? ''}">`).join('')}</main></body></html>`,
+      `<!doctype html><html><head><title>${title.includes('DeoDap Test') ? title : `${title} – DeoDap Test`}</title>${desc ? `<meta name="description" content="${desc.replace(/"/g, '&quot;')}">` : ''}</head><body><main>${body}${imgs.map((m) => `<img src="${m.url}" alt="${m.alt ?? ''}">`).join('')}</main></body></html>`,
       { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
     );
     const seg = path.split('/').filter(Boolean);

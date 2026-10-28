@@ -80,6 +80,13 @@ export async function createContainer(o: ContainerOptions) {
     await repos.schedules.insert({ id: 'SCH-smart', type: 'smart', cron: '0 2 * * *', description: 'Daily smart crawl (PDF §16)', enabled: true, timezone: 'Asia/Kolkata' });
     await repos.schedules.insert({ id: 'SCH-full', type: 'full', cron: '0 3 * * 0', description: 'Weekly full crawl (PDF §16)', enabled: true, timezone: 'Asia/Kolkata' });
   }
+  {
+    // Thresholds added in later versions: missing keys get their defaults (existing values are never changed).
+    const cfg = await repos.config.get();
+    const def = defaultConfig(clock()).thresholds;
+    const missing = Object.keys(def).filter((k) => !(k in (cfg.thresholds ?? {})));
+    if (missing.length) await repos.config.set({ ...cfg, thresholds: { ...Object.fromEntries(missing.map((k) => [k, def[k]])), ...cfg.thresholds } });
+  }
   setPriorityConfig(await repos.config.get());
   if (!o.repos && env.ADMIN_EMAIL && env.ADMIN_INITIAL_PASSWORD && (await repos.employees.count()) === 0) {
     await bootstrapAdmin(repos, env, clock());
@@ -204,6 +211,10 @@ export async function createContainer(o: ContainerOptions) {
   // SHOPIFY_ADMIN_TOKEN belongs to the primary website only; added websites connect their own store with OAuth.
   const shopify = createShopifyService(ctx, {
     fetchImpl, collector: baseEngine.collector, latestRow: (u) => crawls.latestRow(u), useEnvToken: !o.repos, scope, secretBox: createSecretBox(env),
+    seo: {
+      rowsOf: (id) => crawls.rowsOf(id), filteredRows: (id, q, max) => crawls.filteredRows(id, q, max), recordRecheck: (u, fresh) => crawls.recordRecheck(u, fresh), markChanged: (urls) => crawls.markChanged(urls),
+      confirmIssueFixed: (actor, id, check) => issues.confirmFixedByRecheck(actor, id, check),
+    },
     themeSnapshotDir: async () => path.join(changes.directory, safeName(new URL(engine.readiness().baseUrl ?? env.CRAWLER_BASE_URL ?? (await repos.config.get()).site.baseUrl).host), 'themes'),
   });
   const reports = createReportService(ctx);

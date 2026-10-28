@@ -12,6 +12,8 @@ export interface Column<T> {
   /** Hide below the md breakpoint to keep tables readable on phones. */
   hideOnMobile?: boolean;
   width?: string;
+  /** A control shown beside the header (outside the sort button), e.g. a bulk action. */
+  headerAction?: ReactNode;
 }
 
 interface Props<T> {
@@ -86,12 +88,15 @@ export function DataTable<T>({ rows, columns, rowKey, onRowClick, search, search
             <tr className="border-b border-line bg-raised/70 text-left">
               {columns.map((c) => (
                 <th key={c.key} scope="col" style={{ width: c.width }} className={clsx('px-3 py-2.5 text-xs font-medium text-muted', c.hideOnMobile && 'hidden md:table-cell', c.className)} aria-sort={curSort?.key === c.key ? (curSort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                  {c.sort ? (
-                    <button className="inline-flex items-center gap-1 hover:text-ink" onClick={() => toggleSort(c.key)}>
-                      {c.header}
-                      {curSort?.key === c.key && (curSort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
-                    </button>
-                  ) : c.header}
+                  <span className={c.headerAction ? 'flex items-center justify-between gap-2' : undefined}>
+                    {c.sort ? (
+                      <button className="inline-flex items-center gap-1 hover:text-ink" onClick={() => toggleSort(c.key)}>
+                        {c.header}
+                        {curSort?.key === c.key && (curSort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                      </button>
+                    ) : c.header}
+                    {c.headerAction}
+                  </span>
                 </th>
               ))}
             </tr>

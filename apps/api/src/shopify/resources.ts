@@ -114,7 +114,7 @@ export async function fetchByHandle(client: AdminClient, kind: ShopifyResourceKi
 
 export async function listResources(client: AdminClient, kind: ShopifyResourceKind, q?: string, after?: string): Promise<{ items: ShopifyResource[]; nextCursor?: string }> {
   const root = { product: 'products', collection: 'collections', page: 'pages', article: 'articles' }[kind];
-  const fields = kind === 'product' ? 'id handle title updatedAt seo { title description }' : kind === 'collection' ? COLLECTION_FIELDS.replace('descriptionHtml ', '') : kind === 'page' ? `id handle title updatedAt ${SEO_TAGS}` : `id handle title updatedAt blog { handle } ${SEO_TAGS}`;
+  const fields = kind === 'product' ? 'id handle title tags updatedAt seo { title description }' : kind === 'collection' ? COLLECTION_FIELDS.replace('descriptionHtml ', '') : kind === 'page' ? `id handle title updatedAt ${SEO_TAGS}` : `id handle title updatedAt blog { handle } ${SEO_TAGS}`;
   const d = await client.request<Record<string, { nodes: Raw[]; pageInfo: { hasNextPage: boolean; endCursor?: string | null } }>>(
     `query SentinelList($after: String, $q: String) { r: ${root}(first: 50, after: $after, query: $q, sortKey: UPDATED_AT, reverse: true) { pageInfo { hasNextPage endCursor } nodes { ${fields} } } }`,
     { after: after ?? null, q: q?.trim() ? q.trim() : null },

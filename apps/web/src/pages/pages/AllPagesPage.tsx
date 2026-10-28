@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Download, ListChecks } from 'lucide-react';
-import { PAGE_AUDIT_AREA_LABELS, PAGE_AUDIT_TODO, type CrawlRun } from '@sentinel/shared';
+import { Download, ListChecks, Wand2 } from 'lucide-react';
+import { PAGE_AUDIT_AREA_LABELS, PAGE_AUDIT_TODO, type CrawlRun, type SeoBulkStartInput } from '@sentinel/shared';
+import { useAuth } from '@/auth/AuthContext';
+import { BulkFixDialog } from '@/components/seo/BulkFixDialog';
 import { api } from '@/api/client';
 import { errorMessage, useApiQuery } from '@/api/hooks';
 import { Button, EmptyState, Field, LoadingBlock, Notice, PageHeader, Panel, Select } from '@/components/ui/primitives';
@@ -50,6 +52,9 @@ export default function AllPagesPage() {
   };
   const sum = summary.data?.scoreSummary;
   const templates = Object.entries(sum?.byTemplate ?? {}).sort((a, b) => b[1].pages - a[1].pages);
+  const canFix = useAuth().can('shopify.edit');
+  const [fix, setFix] = useState<{ start: SeoBulkStartInput; title: string } | null>(null);
+  const live = run?.source === 'live';
   const todo = PAGE_AUDIT_TODO.map((t) => ({ ...t, n: f?.check?.[t.id] ?? 0 })).filter((t) => t.n > 0).sort((a, b) => b.n - a.n);
 
   return (
@@ -59,6 +64,7 @@ export default function AllPagesPage() {
         description="Every page of a crawl with its audit score: title, meta description, headings, canonical, indexability, links and image ALT text, each with what to change."
         actions={list.length > 0 && (
           <div className="flex flex-wrap items-end gap-2">
+          {canFix && live && <Button variant="primary" icon={<Wand2 className="h-4 w-4" />} onClick={() => setFix({ start: { scope: 'pages', runId }, title: 'Fix all SEO issues' })} title="Find SEO problems on every page of this crawl and prepare fixes — you review them before anything is written">Fix all SEO issues</Button>}
           <Button variant="secondary" icon={<Download className="h-4 w-4" />} disabled={!runId || !!busy} onClick={() => void exportAs('csv')} title="Every URL with its audit score and the checks to fix">{busy === 'csv' ? 'Exporting…' : 'Export CSV'}</Button>
           <Field label="Crawl" htmlFor="pages-run">
             <Select id="pages-run" value={runId} onChange={(e) => { const p = new URLSearchParams(); p.set('run', e.target.value); setParams(p, { replace: true }); }}>
@@ -130,9 +136,11 @@ export default function AllPagesPage() {
               )}
             </Panel>
           </div>
-          <PageResults key={run.id} runId={run.id} check={check} onCheck={(v) => set('check', v)} scoreBand={score} onScoreBand={(v) => set('score', v)} />
+          <PageResults key={run.id} runId={run.id} check={check} onCheck={(v) => set('check', v)} scoreBand={score} onScoreBand={(v) => set('score', v)}
+            onFixPages={canFix && live ? (filter, n) => setFix({ start: { scope: 'pages', runId: run.id, ...(Object.keys(filter).some((k) => filter[k as keyof typeof filter]) ? { filter } : {}) }, title: Object.keys(filter).some((k) => filter[k as keyof typeof filter]) ? `Fix SEO issues on the ${n} listed page${n === 1 ? '' : 's'}` : 'Fix all SEO issues' }) : undefined} />
         </div>
       )}
+      {fix && <BulkFixDialog title={fix.title} start={fix.start} onClose={() => setFix(null)} />}
     </div>
   );
 }

@@ -2,11 +2,11 @@ import { useNavigate } from 'react-router-dom';
 import { Layers } from 'lucide-react';
 import { CHECKS_BY_ID, MODULE_LABELS, SEVERITY_ORDER, type Issue } from '@sentinel/shared';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { DeltaBadge, IssueStatusBadge, SeverityBadge, SlaCountdown, TeamBadge, TierBadge } from './badges';
+import { DeltaBadge, IssueStatusBadge, SeverityBadge, TeamBadge, TierBadge } from './badges';
 import { fmtNum, fmtRelative } from '@/lib/format';
 import type { ReactNode } from 'react';
 
-export function issueColumns(opts: { showModule?: boolean; showAllocator?: boolean } = {}): Column<Issue>[] {
+export function issueColumns(opts: { showModule?: boolean; showAllocator?: boolean; detectedAction?: ReactNode } = {}): Column<Issue>[] {
   const cols: Column<Issue>[] = [
     { key: 'sev', header: 'Severity', width: '108px', cell: (i) => <SeverityBadge severity={i.severity} />, sort: (a, b) => SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity] },
     {
@@ -46,18 +46,19 @@ export function issueColumns(opts: { showModule?: boolean; showAllocator?: boole
         </div>
       ),
     },
-    { key: 'sla', header: 'SLA', hideOnMobile: true, cell: (i) => <SlaCountdown dueAt={i.slaDueAt} done={['VERIFIED', 'CLOSED', 'NOT_AN_ISSUE', 'SUPERSEDED', 'FIXED'].includes(i.status)} />, sort: (a, b) => +new Date(b.slaDueAt) - +new Date(a.slaDueAt) },
-    { key: 'det', header: 'Detected', hideOnMobile: true, cell: (i) => <span className="text-xs text-muted">{fmtRelative(i.detectedAt)}</span>, sort: (a, b) => +new Date(a.detectedAt) - +new Date(b.detectedAt) },
+    {
+      key: 'det', header: 'Detected', headerAction: opts.detectedAction, hideOnMobile: true, cell: (i) => <span className="text-xs text-muted">{fmtRelative(i.detectedAt)}</span>, sort: (a, b) => +new Date(a.detectedAt) - +new Date(b.detectedAt),
+    },
   ];
   return cols;
 }
 
-export function IssueTable({ issues, showModule = true, empty, toolbar, server }: { issues: Issue[]; showModule?: boolean; empty?: ReactNode; toolbar?: ReactNode; server?: { page: number; pageSize: number; total: number; onPage: (p: number) => void } }) {
+export function IssueTable({ issues, showModule = true, empty, toolbar, server, detectedAction }: { issues: Issue[]; showModule?: boolean; empty?: ReactNode; toolbar?: ReactNode; server?: { page: number; pageSize: number; total: number; onPage: (p: number) => void }; detectedAction?: ReactNode }) {
   const nav = useNavigate();
   return (
     <DataTable
       rows={issues}
-      columns={issueColumns({ showModule, showAllocator: true })}
+      columns={issueColumns({ showModule, showAllocator: true, detectedAction })}
       rowKey={(i) => i.id}
       onRowClick={(i) => nav(`/issues/${i.id}`)}
       search={server ? undefined : (i) => `${i.id} ${i.title} ${i.checkId} ${i.affectedUrls.slice(0, 5).join(' ')}`}

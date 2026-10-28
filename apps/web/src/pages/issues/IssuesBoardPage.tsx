@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Layers, Ban } from 'lucide-react';
+import { Layers, Ban, Wand2 } from 'lucide-react';
 import { MODULE_LABELS, ISSUE_STATUS_LABELS, TEAMS, type AuditModule, type IssueFilter, type IssueStatus, type Severity, type TeamId, type PageTemplate } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { useEmployees } from '@/hooks/lookups';
-import { Async, DemoBadge, EmptyState, Input, PageHeader, Panel } from '@/components/ui/primitives';
+import { useAuth } from '@/auth/AuthContext';
+import { Async, Button, DemoBadge, EmptyState, Input, PageHeader, Panel } from '@/components/ui/primitives';
+import { BulkFixDialog } from '@/components/seo/BulkFixDialog';
 import { ChipGroup, ClearFilters, FilterSelect, useUrlFilters } from '@/components/ui/filters';
 import { IssueTable } from '@/components/domain/IssueTable';
 
@@ -32,12 +35,17 @@ export default function IssuesBoardPage() {
   };
   const q = useApiQuery(['issues', filter], () => api.listIssues(filter));
   const allocators = [...new Map(emp.list.filter((e) => e.role !== 'developer').map((e) => [e.id, e])).values()];
+  const canFix = useAuth().can('shopify.edit');
+  const [fixing, setFixing] = useState(false);
+  const fixAll = canFix ? (
+    <Button size="sm" variant="primary" icon={<Wand2 className="h-3.5 w-3.5" />} onClick={(e) => { e.stopPropagation(); setFixing(true); }} title="Prepare fixes for every eligible open issue — you review them before anything is written">Fix all</Button>
+  ) : undefined;
 
   return (
     <div>
       <PageHeader
         title="Issues board"
-        description="Every finding with severity, page tier, allocation and SLA. Filter by severity, module, allocated team, allocator and status (PDF §12.3). Nothing closes without automated re-verification."
+        description="Every finding with severity, page tier and allocation. Filter by severity, module, allocated team, allocator and status (PDF §12.3). Nothing closes without automated re-verification."
         meta={<DemoBadge />}
         actions={
           <>
@@ -58,7 +66,7 @@ export default function IssuesBoardPage() {
           <FilterSelect label="Allocated team" value={f.get('team')} onChange={(v) => f.set('team', v)} options={[{ value: 'unallocated', label: 'Unallocated' }, ...Object.values(TEAMS).map((t) => ({ value: t.id, label: t.name }))]} />
           <FilterSelect label="Allocator" value={f.get('allocator')} onChange={(v) => f.set('allocator', v)} options={[{ value: 'system', label: 'Sentinel (automatic)' }, ...allocators.map((e) => ({ value: e.id, label: e.name }))]} />
           <FilterSelect label="Change" value={f.get('delta')} onChange={(v) => f.set('delta', v)} options={[{ value: 'new', label: 'New' }, { value: 'worsening', label: 'Worsening' }, { value: 'recurring', label: 'Recurring' }, { value: 'unchanged', label: 'Unchanged' }, { value: 'resolved', label: 'Resolved' }]} />
-          <FilterSelect label="Sort" allLabel="Severity" value={f.get('sort') === 'severity' ? '' : f.get('sort')} onChange={(v) => f.set('sort', v)} options={[{ value: 'priority', label: 'Priority score' }, { value: 'sla', label: 'SLA due' }, { value: 'detected', label: 'Newest' }, { value: 'affected', label: 'Most URLs' }]} />
+          <FilterSelect label="Sort" allLabel="Severity" value={f.get('sort') === 'severity' ? '' : f.get('sort')} onChange={(v) => f.set('sort', v)} options={[{ value: 'priority', label: 'Priority score' }, { value: 'detected', label: 'Newest' }, { value: 'affected', label: 'Most URLs' }]} />
           {f.get('checkId') && <span className="rounded-full border border-line bg-canvas px-2 py-0.5 text-xs">Check: <span className="font-mono">{f.get('checkId')}</span></span>}
           <ClearFilters show={f.active} onClear={f.clear} />
         </div>
@@ -69,9 +77,11 @@ export default function IssuesBoardPage() {
             issues={p.items}
             server={{ page: p.page, pageSize: p.pageSize, total: p.total, onPage: (n) => f.set('page', String(n)) }}
             empty={<EmptyState title="No issues match these filters" description="Clear filters to see everything, or include closed statuses." />}
+            detectedAction={fixAll}
           />
         )}
       </Async>
+      {fixing && <BulkFixDialog title="Fix all eligible issues" start={{ scope: 'issues' }} onClose={() => setFixing(false)} />}
     </div>
   );
 }

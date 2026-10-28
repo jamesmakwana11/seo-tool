@@ -119,6 +119,18 @@ export interface ShopifyFieldDraft {
   include: boolean;
   /** Extra context shown with the field (image URL, character limits…). */
   hint?: string;
+  /** What is wrong with the current value (missing, too long, duplicated…); verdict good = keep it. */
+  assessment?: import('./seoAssess').FieldAssessment;
+  /** A suggested value built from the page's own content, with why; `keep` when the current value is already good. */
+  suggestion?: ShopifyFieldSuggestion;
+}
+
+export interface ShopifyFieldSuggestion {
+  value: string;
+  reason: string;
+  keep: boolean;
+  /** high: safe to apply in bulk; review: changes wording — a person should look at it first. */
+  confidence: 'high' | 'review';
 }
 
 export type H1Source = 'title' | 'body' | 'theme' | 'unknown';
@@ -190,8 +202,12 @@ export interface ShopifyApplyPreview {
   /** Number of field changes that will be written. */
   total: number;
   conflicts: number;
-  /** Type exactly this to apply. */
-  confirmPhrase: string;
+  /**
+   * One-time token for this review. Applying needs it (no typed phrase): it proves the changes were reviewed, and a
+   * second submission with the same token returns the first result instead of writing again.
+   */
+  previewId: string;
+  expiresAt: string;
 }
 
 export interface ShopifyApplyBatchResult {
@@ -247,4 +263,166 @@ export interface ShopifyThemeProposal {
   /** Storefront page to check after writing (H1 changes). */
   pageUrl?: string;
   result?: { at: string; by: string; message: string; verified: boolean; liveCheck?: { url: string; expected: string; found: string[]; ok: boolean; note?: string } };
+}
+
+// ------------------------------------------------------------------------------------------ bulk SEO fixes
+
+/** Field groups a bulk fix can change. links = internal links in the description / content HTML. */
+export type SeoBulkField = 'seoTitle' | 'seoDescription' | 'title' | 'h1' | 'imageAlt' | 'tags' | 'links';
+
+export const SEO_BULK_FIELD_LABELS: Record<SeoBulkField, string> = {
+  seoTitle: 'SEO titles', seoDescription: 'Meta descriptions', title: 'Titles', h1: 'H1 headings', imageAlt: 'Image alt text', tags: 'Tags', links: 'Internal links',
+};
+
+export interface SeoBulkStartInput {
+  /** pages: every page of a crawl; issues: open issues (all, or `issueIds`); urls: chosen pages. */
+  scope: 'pages' | 'issues' | 'urls';
+  runId?: string;
+  issueIds?: string[];
+  urls?: string[];
+  fields?: SeoBulkField[];
+  /** pages: only the pages matching these All-pages filters (at most the job's page cap). */
+  filter?: import('./api').CrawlPagesQuery;
+}
+
+export interface SeoBulkChange {
+  /** Draft field key (seoTitle, imageAlt:<id>, bodyHtml…). */
+  key: string;
+  field: SeoBulkField;
+  label: string;
+  current: string;
+  proposed: string;
+  reason: string;
+  problems: string[];
+  included: boolean;
+  /** review: wording changes a person should check — not selected until someone selects it. */
+  confidence: 'high' | 'review';
+  result?: { status: 'verified' | 'applied_unverified' | 'failed' | 'conflict' | 'skipped'; message?: string; after?: string };
+}
+
+export interface SeoBulkItem {
+  url: string;
+  title: string;
+  pageType: string;
+  kind?: ShopifyResourceKind;
+  resourceId?: string;
+  included: boolean;
+  issueIds: string[];
+  changes: SeoBulkChange[];
+  status: 'planned' | 'applying' | 'done' | 'partial' | 'failed' | 'skipped';
+  /** Page audit score from the crawl, and after the fix (storefront fetched again). */
+  score?: { before?: number | null; after?: number | null; checkedAt?: string };
+  storefront?: ShopifyReaudit;
+}
+
+export interface SeoBulkManual {
+  /** What needs a person: one row per reason, with how many pages / which issue. */
+  reason: string;
+  detail: string;
+  count: number;
+  urls: string[];
+  issueId?: string;
+  field?: SeoBulkField | string;
+  /** A suggestion when one exists (e.g. a wording change to review, a theme H1). */
+  suggestion?: string;
+}
+
+export interface SeoBulkIssueCheck {
+  issueId: string;
+  title: string;
+  outcome: 'resolved' | 'still_failing' | 'not_verifiable' | 'error';
+  details: string;
+}
+
+export interface SeoBulkJob {
+  id: string;
+  scope: SeoBulkStartInput['scope'];
+  fields: SeoBulkField[];
+  runId?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  state: 'scanning' | 'ready' | 'applying' | 'done' | 'cancelled' | 'failed';
+  progress: { phase: string; done: number; total: number; message?: string };
+  scan: { pagesScanned: number; candidates: number; capped: boolean; cap: number };
+  summary: { pages: number; changes: number; selectedPages: number; selectedChanges: number; reviewChanges: number; byField: Partial<Record<SeoBulkField, { pages: number; changes: number }>>; manual: number };
+  manual: SeoBulkManual[];
+  result?: {
+    finishedAt: string;
+    verified: number;
+    unverified: number;
+    failed: number;
+    conflicts: number;
+    skipped: number;
+    pagesRechecked: number;
+    issues: SeoBulkIssueCheck[];
+    message: string;
+  };
+  error?: string;
+  cancelRequested?: boolean;
+}
+
+export interface SeoBulkItemsPage {
+  total: number;
+  offset: number;
+  limit: number;
+  items: SeoBulkItem[];
+}
+
+// ------------------------------------------------------------------------------------------ SEO optimization lists
+
+export type SeoOptimizationField = 'titles' | 'meta-descriptions' | 'h1' | 'image-alt' | 'tags';
+
+export const SEO_OPTIMIZATION_FIELDS: Record<SeoOptimizationField, { label: string; bulkField: SeoBulkField; assess: import('./seoAssess').SeoFieldType }> = {
+  titles: { label: 'Titles', bulkField: 'seoTitle', assess: 'seoTitle' },
+  'meta-descriptions': { label: 'Meta descriptions', bulkField: 'seoDescription', assess: 'seoDescription' },
+  h1: { label: 'H1 headings', bulkField: 'h1', assess: 'h1' },
+  'image-alt': { label: 'Image alt text', bulkField: 'imageAlt', assess: 'imageAlt' },
+  tags: { label: 'Tags', bulkField: 'tags', assess: 'tags' },
+};
+
+export interface SeoOptimizationQuery {
+  runId?: string;
+  template?: string;
+  /** A problem code (missing, too_long…), 'needs_work' or 'good'. */
+  problem?: string;
+  /** open: pages with an open issue for this field; none: without. */
+  issue?: 'open' | 'none';
+  q?: string;
+  offset?: number;
+  limit?: number;
+  /** Tags only: Shopify page cursor. */
+  cursor?: string;
+}
+
+export interface SeoOptimizationRow {
+  url: string;
+  title: string;
+  pageType: string;
+  /** Current value as the storefront shows it (crawl) — or from Shopify for tags. */
+  current: string;
+  /** Extra values (several H1s, images without alt…). */
+  detail?: string;
+  assessment: import('./seoAssess').FieldAssessment;
+  issueIds: string[];
+  /** Editable through Shopify (products, collections, pages, articles). */
+  editable: boolean;
+  /** Why it cannot be fixed here (homepage, pagination URL, theme H1…). */
+  manualReason?: string;
+  suggestion?: { value: string; reason: string; keep: boolean; confidence: 'high' | 'review' } | null;
+  /** Why no suggestion (Shopify not connected, resource not found…). */
+  suggestionNote?: string;
+}
+
+export interface SeoOptimizationPage {
+  field: SeoOptimizationField;
+  runId?: string;
+  total: number;
+  offset: number;
+  limit: number;
+  rows: SeoOptimizationRow[];
+  counts: Record<string, number>;
+  guidelines: import('./seoAssess').SeoGuidelines;
+  nextCursor?: string;
+  note?: string;
 }

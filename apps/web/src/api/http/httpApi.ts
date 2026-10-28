@@ -18,6 +18,7 @@ import {
   type ShopifyTheme, type ShopifyThemeFile, type ShopifyThemeProposal,
   type CaptureJob, type CaptureStatus, type ChangeDetail, type ChangeListResponse, type ChangeMonitorStatus, type ChangeRunSummary, type PageCapture, type PageComparison,
   type ThemeDiffResponse, type ThemeSnapshotMeta,
+  type SeoBulkItemsPage, type SeoBulkJob, type SeoOptimizationPage,
 } from '@sentinel/shared';
 
 const TOKEN_KEY = 'sentinel.http.token';
@@ -166,7 +167,14 @@ export function createHttpApi(baseUrl = '/api', websiteId: () => string | undefi
     refreshShopifyDraft: (id) => post<ShopifyDraft>(`/shopify/drafts/${encodeURIComponent(id)}/refresh`),
     previewShopifyApply: (ids) => post<ShopifyApplyPreview>('/shopify/drafts/preview', { ids }),
     downloadShopifyBackup: (ids) => download(`/shopify/drafts/backup${qs({ ids })}`),
-    applyShopifyDrafts: (ids, confirm) => post<ShopifyApplyBatchResult>('/shopify/drafts/apply', { ids, confirm }),
+    applyShopifyDrafts: (ids, review) => post<ShopifyApplyBatchResult>('/shopify/drafts/apply', { ids, ...review }),
+    startSeoBulkFix: (input) => post<SeoBulkJob>('/seo/bulk-fix', input),
+    getSeoBulkFix: () => get<SeoBulkJob | null>('/seo/bulk-fix'),
+    listSeoBulkFixItems: (q) => get<SeoBulkItemsPage>(`/seo/bulk-fix/items${qs(q)}`),
+    selectSeoBulkFix: (input) => post<SeoBulkJob>('/seo/bulk-fix/select', input),
+    applySeoBulkFix: (jobId) => post<SeoBulkJob>('/seo/bulk-fix/apply', { jobId }),
+    cancelSeoBulkFix: (jobId) => post<SeoBulkJob>('/seo/bulk-fix/cancel', { jobId }),
+    getSeoOptimization: (field, q) => get<SeoOptimizationPage>(`/seo/optimization/${field}${qs(q as Record<string, unknown>)}`),
     reauditShopifyDraft: (id) => post<ShopifyDraft>(`/shopify/drafts/${encodeURIComponent(id)}/reaudit`),
     listShopifyThemes: () => get<ShopifyTheme[]>('/shopify/themes'),
     getShopifyThemeFile: (themeId, filename) => get<ShopifyThemeFile>(`/shopify/themes/file${qs({ themeId, filename })}`),
