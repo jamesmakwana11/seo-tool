@@ -74,13 +74,19 @@ export interface FixtureOptions {
   repeatedBadge: string[];
   /** Path → absolute URL on another website that it 302-redirects to (cross-site redirect tests). */
   offsiteRedirects: Record<string, string>;
+  /** Products added to the store after the first crawl (handle; listed in the sitemap and in their collection). */
+  newProducts: string[];
+  /** Collections added after the first crawl (handle; listed in the sitemap and the navigation). */
+  newCollections: string[];
+  /** Path → sitemap <lastmod> override (a page edited in Shopify gets a new date). */
+  lastmod: Record<string, string>;
 }
 
 export const defaultFixtureOptions = (): FixtureOptions => ({
   noindex: [], xRobotsNoindex: [], deletedProducts: [], missingCanonical: [], duplicateTitle: [], thinCollections: [], longTitle: [], missingMeta: [],
   multipleH1: [], missingAlt: [], largeImage: [], brokenImages: [], sharedBanner: false, host: '127.0.0.1', noOffers: [], productTemplateNoOffers: false, priceMismatch: {}, reviewMarkupWithoutReviews: [],
   robotsDisallowCollections: false, robotsBlockGptBot: false, aiBoilerplate: [], ymylClaim: [], newHeadScriptOnProducts: false, linkErrorRoutes: false,
-  slowMs: 1500, ssrfRedirect: false, malformedPage: false, orphanInSitemap: false, scopedSelfCanonical: false, unavailable: [], themeVersion: 1, galleryImages: 0, limitImages: {}, repeatedBadge: [], offsiteRedirects: {},
+  slowMs: 1500, ssrfRedirect: false, malformedPage: false, orphanInSitemap: false, scopedSelfCanonical: false, unavailable: [], themeVersion: 1, galleryImages: 0, limitImages: {}, repeatedBadge: [], offsiteRedirects: {}, newProducts: [], newCollections: [], lastmod: {},
 });
 
 interface Product { handle: string; name: string; price: number; collection: string; material: string; size: string; use: string; detail: string; more: string; review: string }
@@ -162,6 +168,9 @@ export interface FixtureSite {
 
 export async function startFixtureSite(initial?: Partial<FixtureOptions>): Promise<FixtureSite> {
   const opts: FixtureOptions = { ...defaultFixtureOptions(), ...(initial ?? {}) };
+  const titleCase = (h: string) => h.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  const allCollections = (): Collection[] => [...COLLECTIONS, ...opts.newCollections.map((h) => ({ ...COLLECTIONS[0], handle: h, name: titleCase(h) }))];
+  const allProducts = (): Product[] => [...PRODUCTS, ...opts.newProducts.map((h) => ({ ...PRODUCTS[0], handle: h, name: `${titleCase(h)} for Kitchen Use`, price: 299 }))];
   const requests: FixtureSite['requests'] = [];
   let origin = '';
   const server = http.createServer((req, res) => {
@@ -231,7 +240,7 @@ ${p.jsonld.map((j) => `<script type="application/ld+json">${JSON.stringify(j)}</
 </head><body>
 <header class="header"><a href="/" class="header__heading-link">DeoDap</a>${opts.sharedBanner ? `<img src="/cdn/img/banner.webp?v=1" alt="">${path === '/' ? '<img src="/cdn/img/banner.webp?v=2" alt="Festive sale">' : ''}` : ''}
 <nav class="header__menu" aria-label="Main"><ul>
-<li><a href="/">Home</a></li>${COLLECTIONS.map((c) => `<li><a href="/collections/${c.handle}">${c.name}</a></li>`).join('')}<li><a href="/blogs/news">Blog</a></li>
+<li><a href="/">Home</a></li>${allCollections().map((c) => `<li><a href="/collections/${c.handle}">${c.name}</a></li>`).join('')}<li><a href="/blogs/news">Blog</a></li>
 </ul></nav></header>
 <main id="MainContent">
 <h1>${esc(p.h1)}</h1>${extraH1}
@@ -306,7 +315,7 @@ ${reviews}
   }
 
   function collectionHtml(c: Collection, path: string): string {
-    const prods = PRODUCTS.filter((p) => p.collection === c.handle);
+    const prods = allProducts().filter((p) => p.collection === c.handle);
     const deleted = opts.deletedProducts.filter((h) => !PRODUCTS.some((p) => p.handle === h));
     const extra = c.handle === 'toys' ? deleted : [];
     const desc = opts.thinCollections.includes(c.handle) ? '' : `<div class="collection-description rte">${c.blurb.map((b) => `<p>${esc(b)}</p>`).join('')}</div>`;
@@ -329,7 +338,7 @@ ${reviews}
 ${desc}
 <p><a href="${path}?sort_by=price-ascending">Sort by price</a></p>
 <ul class="product-grid">${[...prods.map((p) => p.handle), ...extra].map((h) => {
-        const p = PRODUCTS.find((x) => x.handle === h);
+        const p = allProducts().find((x) => x.handle === h);
         return `<li class="grid__item"><div class="card-wrapper product-card"><a href="${link(h)}">${esc(p?.name ?? h)}</a><span class="price">₹ ${p?.price ?? 199}</span></div></li>`;
       }).join('')}</ul>
 <p>Explore more: ${others.map((o) => `<a href="/collections/${o.handle}">${o.name}</a>`).join(', ')}</p>
@@ -345,7 +354,7 @@ ${desc}
       description: 'DeoDap is India\'s wholesale marketplace for resellers: No MOQ, wholesale price, COD and fast shipping on 5,000+ dropshipping products.',
       jsonld: [orgLd(), { '@context': 'https://schema.org', '@type': 'WebSite', name: 'DeoDap', url: `${origin}/`, potentialAction: { '@type': 'SearchAction', target: `${origin}/search?q={search_term_string}`, 'query-input': 'required name=search_term_string' } }],
       body: `<p class="hero">No MOQ wholesale prices on kitchen, home decor and toys — perfect for resellers and dropshipping stores across India.</p>
-<h2>Shop by category</h2><ul>${COLLECTIONS.map((c) => `<li><a href="/collections/${c.handle}">${c.name}</a></li>`).join('')}</ul>
+<h2>Shop by category</h2><ul>${allCollections().map((c) => `<li><a href="/collections/${c.handle}">${c.name}</a></li>`).join('')}</ul>
 <h2>New arrivals</h2><ul>${PRODUCTS.slice(0, 4).map((p) => `<li><a href="/products/${p.handle}">${esc(p.name)}</a></li>`).join('')}</ul>
 <h2>What is DeoDap?</h2><p>DeoDap is a wholesale marketplace where small retailers, resellers and dropshippers buy everyday products at factory prices with no minimum order quantity. Orders ship from our Rajkot warehouse within one working day, cash on delivery is available on most pin codes, and every product comes with reusable photos for your listings.</p>
 <h2>Why resellers choose DeoDap</h2><p>We ship from our own warehouse in Rajkot, publish real product photos you can reuse, and support cash on delivery for your customers. Thousands of small sellers use DeoDap to run their dropshipping business without holding inventory.</p>
@@ -406,13 +415,14 @@ ${a.sections.map(([h, t]) => `<h2>${esc(h)}</h2><p>${esc(t)}</p>`).join('\n')}
   function sitemapXml(): string {
     const entries: [string, string][] = [
       ['/', '2026-10-10'],
-      ...COLLECTIONS.map((c, i) => [`/collections/${c.handle}`, `2026-10-0${i + 1}`] as [string, string]),
-      ...PRODUCTS.map((p, i) => [`/products/${p.handle}`, `2026-09-${String(10 + i).padStart(2, '0')}`] as [string, string]),
+      ...allCollections().map((c, i) => [`/collections/${c.handle}`, `2026-10-0${(i % 9) + 1}`] as [string, string]),
+      ...allProducts().map((p, i) => [`/products/${p.handle}`, `2026-09-${String(10 + (i % 18)).padStart(2, '0')}`] as [string, string]),
       ['/blogs/news', '2026-09-28'],
       ...ARTICLES.map((a) => [`/blogs/news/${a.handle}`, a.modified] as [string, string]),
       ...Object.keys(PAGES).map((h, i) => [`/pages/${h}`, `2026-08-0${i + 1}`] as [string, string]),
     ];
     if (opts.orphanInSitemap) entries.push(['/pages/wholesale-price-list', '2026-10-01']);
+    for (const e of entries) if (opts.lastmod[e[0]]) e[1] = opts.lastmod[e[0]];
     return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.map(([pth, lm]) => `<url><loc>${origin}${pth}</loc><lastmod>${lm}</lastmod></url>`).join('\n')}\n</urlset>`;
   }
 
@@ -461,19 +471,19 @@ ${a.sections.map(([h, t]) => `<h2>${esc(h)}</h2><p>${esc(t)}</p>`).join('\n')}
     if (path === '/loop-b') return redirect(res, 301, '/loop-a');
     let m = path.match(/^\/collections\/([^/]+)\/products\/([^/]+)$/);
     if (m) {
-      const p = PRODUCTS.find((x) => x.handle === m![2]);
+      const p = allProducts().find((x) => x.handle === m![2]);
       if (!p || opts.deletedProducts.includes(p.handle)) return send(res, 404, '<h1>404 Page not found</h1>', {}, method);
       return send(res, 200, productHtml(p, path, opts.scopedSelfCanonical ? path : `/products/${p.handle}`), xr(path), method);
     }
     m = path.match(/^\/products\/([^/]+)$/);
     if (m) {
-      const p = PRODUCTS.find((x) => x.handle === m![1]);
+      const p = allProducts().find((x) => x.handle === m![1]);
       if (!p || opts.deletedProducts.includes(p.handle)) return send(res, 404, layout({ path, title: '404 Not Found | DeoDap', h1: 'Page not found', body: '<p>The page you were looking for does not exist.</p>', jsonld: [] }), {}, method);
       return send(res, 200, productHtml(p, path, path), xr(path), method);
     }
     m = path.match(/^\/collections\/([^/]+)$/);
     if (m) {
-      const c = COLLECTIONS.find((x) => x.handle === m![1]);
+      const c = allCollections().find((x) => x.handle === m![1]);
       if (!c) return send(res, 404, '<h1>Not found</h1>', {}, method);
       const html = collectionHtml(c, path);
       // Sorted variants: Shopify serves the same page; the canonical stays on the clean collection URL.

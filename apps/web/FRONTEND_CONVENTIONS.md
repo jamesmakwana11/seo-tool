@@ -22,15 +22,15 @@ Domain types, rules and the API contract come from `@sentinel/shared` (packages/
 
 ## Components (reuse — do not re-implement)
 - `@/components/ui/primitives`: `Button` (variants primary/secondary/ghost/danger/subtle, `loading`, `icon`), `IconButton`, `Panel`
-  (title/subtitle/actions), `PageHeader` (title/description/meta/actions), `Stat`, `Badge` (tones), `DemoBadge`, `Field`, `Input`,
+  (title/subtitle/actions), `PageHeader` (title/description/meta/actions), `Stat`, `Badge` (tones), `SampleBadge`, `Field`, `Input`,
   `Textarea`, `Select`, `Checkbox`, `Toggle`, `ProgressBar`, `Skeleton`, `LoadingBlock`, `EmptyState`, `ErrorState`, `Async`, `Tabs`,
-  `KV`, `Code`, `Mono`, `Notice` (tones neutral/demo/crit/med/signal).
+  `KV`, `Code`, `Mono`, `Notice` (tones neutral/caution/crit/med/signal).
 - `@/components/ui/overlay`: `Dialog`, `Drawer`, `ConfirmDialog` (supports required/optional reason), `Menu`.
 - `@/components/ui/DataTable`: sortable, searchable, paginated table (client or `server` paging); `onRowClick` for drill-down.
 - `@/components/ui/filters`: `ChipGroup`, `FilterSelect`, `ClearFilters`, `useUrlFilters` (filters live in the URL).
 - `@/components/ui/charts`: `TrendChart`, `StackedBars`, `Sparkline`, `SERIES` colours.
 - `@/components/domain/badges`: `SeverityBadge`, `IssueStatusBadge`, `TaskStatusBadge`, `TeamBadge`, `TierBadge`, `RoleBadge`,
-  `PriorityBadge`, `DeltaBadge`, `SourceBadge` (demo/simulated/manual/live), `SlaCountdown`.
+  `PriorityBadge`, `DeltaBadge`, `SourceBadge` (sample/simulated/manual/live), `SlaCountdown`.
 - `@/components/domain/*`: `FixCardView`, `AllocationButtons` + `AllocationTrail`, `IssueTable`, `TaskActions` + `TaskCard`,
   `UrlList`, `EvidenceList`, `ActivityTimeline`, `HealthDial`, `ModuleScoreList`, `ModuleView` (+ `CheckTable`, `ModuleLinkCards`, `useModule`).
 - Formatting: `@/lib/format` (`fmtDate`, `fmtDateTime` (IST), `fmtRelative`, `fmtNum` (en-IN), `fmtPct`, `fmtMs`, `shortUrl`, `downloadText`).
@@ -38,7 +38,7 @@ Domain types, rules and the API contract come from `@sentinel/shared` (packages/
   were not assigned — other agents are working in parallel.
 
 ## Honesty rules (non-negotiable — prompt §1.3, §7.2)
-- Every screen that shows sample data shows `<DemoBadge />` in the PageHeader `meta`, and records with `source` show `<SourceBadge>`.
+- Records with `source` show `<SourceBadge>`; simulated data shows `<SampleBadge />`.
 - Never present simulated/sample results as live, delivered, connected or verified. When the API returns `available:false`,
   `outcome:'pending_data'`, `skipped_not_configured`, `not_configured`, `evaluated:false`, render that state plainly and say what is
   needed (e.g. "Requires Ahrefs or Semrush API").
@@ -60,7 +60,7 @@ Domain types, rules and the API contract come from `@sentinel/shared` (packages/
 
 ## Each page file
 `export default function XxxPage()`; keep page-specific subcomponents in the same file unless reused.
-Start with `<PageHeader title description meta={<DemoBadge/>} actions={…} />`.
+Start with `<PageHeader title description actions={…} />`.
 Reference the PDF section in descriptions where it helps the team understand why the screen exists (e.g. "PDF §12.1").
 
 ## Checks before you finish

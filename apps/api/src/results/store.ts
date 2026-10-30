@@ -2,7 +2,7 @@
  * Crawl page results with server-side search, filters, sorting and paging.
  *
  * Two implementations behind one interface:
- *  - MemoryResultStore: rows held in memory (built-in Node crawler, small runs, DEMO data);
+ *  - MemoryResultStore: rows held in memory (built-in Node crawler, small runs, sample data);
  *  - FileResultStore: rows written once to `rows.ndjson` in the run's results directory, with only compact columns
  *    (typed arrays + URL and title strings) in memory; a page of rows is read back by byte offset. A 50,000-page crawl
  *    keeps a few MB in memory instead of every row.

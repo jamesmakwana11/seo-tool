@@ -6,7 +6,7 @@ import {
   type AuditModule, type DataSource, type DeltaState, type IssueStatus, type PageTier, type Role, type Severity,
   type TaskPriority, type TeamId,
 } from '@sentinel/shared';
-import { Badge, DemoBadge, type Tone } from '@/components/ui/primitives';
+import { Badge, SampleBadge, type Tone } from '@/components/ui/primitives';
 
 const SEV_TONE: Record<Severity | 'opportunity', Tone> = { critical: 'crit', medium: 'med', low: 'low', opportunity: 'opp' };
 const SEV_LABEL: Record<Severity | 'opportunity', string> = { critical: 'Critical', medium: 'Medium', low: 'Low', opportunity: 'Opportunity' };
@@ -39,7 +39,7 @@ export function TierBadge({ tier }: { tier: PageTier }) {
 }
 
 export function RoleBadge({ role }: { role: Role }) {
-  return <Badge tone={role === 'admin' ? 'opp' : role === 'developer' ? 'low' : 'signal'}>{ROLE_LABELS[role]}</Badge>;
+  return <Badge tone={role === 'admin' || role === 'super_admin' ? 'opp' : role === 'developer' ? 'low' : 'signal'}>{ROLE_LABELS[role]}</Badge>;
 }
 
 export function PriorityBadge({ p }: { p: TaskPriority }) {
@@ -59,8 +59,8 @@ export function DeltaBadge({ delta }: { delta: DeltaState }) {
 }
 
 export function SourceBadge({ source }: { source: DataSource }) {
-  if (source === 'demo') return <DemoBadge />;
-  if (source === 'simulated') return <DemoBadge label="SIMULATED" title="Produced by a simulated run — no real crawl or API call happened." />;
+  if (source === 'sample') return <Badge tone="neutral">Sample</Badge>;
+  if (source === 'simulated') return <SampleBadge label="SIMULATED" title="Produced by a simulated run — no real crawl or API call happened." />;
   if (source === 'manual') return <Badge tone="neutral">Manual</Badge>;
   return <Badge tone="ok">Live</Badge>;
 }

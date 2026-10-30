@@ -12,7 +12,7 @@
  */
 export const PHASE_NOTE = `**Current phase:** Phase 1 (frontend) complete; **Phase 2 (backend with temporary in-memory storage) complete and gate-evaluated** — see \`FRONTEND_STATUS.md\` and \`BACKEND_STATUS.md\`. **No database work has been started** (Phase 3 awaits explicit authorization).
 
-Evidence keys: **SHARED** = \`packages/shared/test/rules.test.ts\` (62 tests) · **MOCK** = \`apps/web/test/mockApi.test.ts\` (21) · **COMP** = \`apps/web/test/components.test.tsx\` (6) · **API** = \`apps/api/test/api/*\` (57 HTTP/service tests over the in-memory repositories) · **CRAWL** = \`apps/api/test/crawler/*\` (63 tests; real crawls of loopback fixture stores, every one of the 54 crawler analyzers has an asserting test) · **CONN** = \`apps/api/test/connectors/*\` (128 tests; connector tests, registry states, delivery, Google auth, LLM, Task Ops, webhook HMAC, redaction — network stubbed) · **SYNC** = \`apps/api/test/sync/sync.test.ts\` (13; GA4/GSC/CrUX data syncs, network stubbed) · **SMOKE** = \`apps/web/e2e/smoke.mjs\` in mock mode (540 visits, 0 failures) · **HTTP-SMOKE** = the same smoke against the real API (\`VITE_API_MODE=http\`, 540 visits, 0 failures, 4 interaction checks) · **A11Y** = \`apps/web/e2e/a11y.mjs\` (axe WCAG 2.1 AA, 19 screens, 0 violations).
+Evidence keys: **SHARED** = \`packages/shared/test/rules.test.ts\` (62 tests) · **FIXTURE** = \`apps/web/test/support/fixtureApi.ts\` (web test adapter) · **COMP** = \`apps/web/test/components.test.tsx\` (6) · **API** = \`apps/api/test/api/*\` (57 HTTP/service tests over the in-memory repositories) · **CRAWL** = \`apps/api/test/crawler/*\` (63 tests; real crawls of loopback fixture stores, every one of the 54 crawler analyzers has an asserting test) · **CONN** = \`apps/api/test/connectors/*\` (128 tests; connector tests, registry states, delivery, Google auth, LLM, Task Ops, webhook HMAC, redaction — network stubbed) · **SYNC** = \`apps/api/test/sync/sync.test.ts\` (13; GA4/GSC/CrUX data syncs, network stubbed) · **SMOKE** = \`apps/web/e2e/smoke.mjs\` in mock mode (540 visits, 0 failures) · **HTTP-SMOKE** = the same smoke against the real API (\`VITE_API_MODE=http\`, 540 visits, 0 failures, 4 interaction checks) · **A11Y** = \`apps/web/e2e/a11y.mjs\` (axe WCAG 2.1 AA, 19 screens, 0 violations).
 
 Nothing has been run against deodap.in or any live third-party API: no credentials were provided. Every connector-dependent requirement is therefore at most **PARTIAL**, with the remaining step named.`;
 
@@ -30,7 +30,7 @@ export const STATUS = {
   'PDF-1.4': s('TESTED', 'In-process scheduler (crawls, 00:30 escalations, 01:00 syncs, 08:00 digest, weekly/monthly) — API "scheduler wiring", cron unit tests', 'Enable with SCHEDULER_ENABLED=true in deployment'),
   'PDF-1.1.1': s('TESTED', 'Real HTTP crawler + analyzers — CRAWL; full crawl → live issues — API crawl-e2e', 'Not yet run against deodap.in (needs CRAWLER_BASE_URL + CRAWLER_ALLOW_LIVE=true)'),
   'PDF-1.1.2': s('TESTED', 'Content/on-page analyzers — CRAWL coverage; changed pages (Shopify webhook) prioritised in the smart crawl — API crawl-e2e "webhook → smart crawl"'),
-  'PDF-1.1.3': s('PARTIAL', 'Off-page screens over DEMO data — SMOKE/HTTP-SMOKE; backlink connector test — CONN', BACKLINK),
+  'PDF-1.1.3': s('PARTIAL', 'Off-page screens (no data until a backlink source is connected) — SMOKE/HTTP-SMOKE; backlink connector test — CONN', BACKLINK),
   'PDF-1.1.4': s('PARTIAL', 'AEO crawler checks (answer block, FAQ, extractability, entity, AI crawlers) — CRAWL', 'AI-engine visibility sampling (ChatGPT/Gemini/Perplexity) not implemented — connection tests only'),
   'PDF-1.1.5': s('PARTIAL', 'GEO-EEAT, GEO-FRESHNESS, GEO-STRUCTURE — CRAWL', 'GEO-CITATION/CLUSTER need SERP data and a topic map; GEO-SEMANTIC/BRAND-FACTS need backlink/GBP/LLM data'),
   'PDF-1.1.6': s('PARTIAL', '9 of 12 built-in AI-compliance checks evaluated (AIC-01/02/05/06/07/08/09/11/12) — CRAWL; custom rules run in the crawl pipeline — API workflows2', 'AIC-03 needs Shopify product data + LLM; AIC-04 needs an LLM; AIC-10 needs third-party content sources'),
@@ -69,7 +69,7 @@ export const STATUS = {
   'PDF-10.2.5': s('PARTIAL', 'Schedule (daily / on-publish / weekly) stored and validated — SHARED', 'All enabled rules currently run on every crawl; weekly and on-publish cadences are not differentiated'),
   'PDF-10.2.6': s('TESTED', 'Day-one example rules — SHARED "supports all PDF §10.2 example rules"'),
   'PDF-10.2.7': s('PARTIAL', 'Custom-rule hits become AI-compliance flags in the digest section — API workflows2', 'Custom-rule hits do not yet create Issues with Fix Cards and re-verification'),
-  'PDF-10.2.8': s('TESTED', 'Dry run over last 30 days required before enabling; LLM rules need a provider — API config-rules, MOCK'),
+  'PDF-10.2.8': s('TESTED', 'Dry run over last 30 days required before enabling; LLM rules need a provider — API config-rules'),
   // ---- PDF §11 Fix Cards & allocation
   'PDF-11.0': s('TESTED', 'Complete Fix Card for every issue — SHARED; generated for live issues on the server — API'),
   'PDF-11.S1': s('TESTED', 'Context assembly — SHARED'),
@@ -95,7 +95,7 @@ export const STATUS = {
   'PDF-12.3.1': s('TESTED', 'Overview dashboard from server state — HTTP-SMOKE'),
   'PDF-12.3.2': s('TESTED', 'Issues board filters (severity/module/team/allocator/status) — API list filters, HTTP-SMOKE'),
   'PDF-12.3.3': s('TESTED', 'Opportunity → task in one click (once only) — API workflows2'),
-  'PDF-12.3.4': s('PARTIAL', 'Competitor view over DEMO data — HTTP-SMOKE', BACKLINK),
+  'PDF-12.3.4': s('PARTIAL', 'Competitor view (needs a backlink source) — HTTP-SMOKE', BACKLINK),
   'PDF-12.4.1': s('BLOCKED', 'Adapter + payload builder — CONN (stubbed)', TASKOPS),
   'PDF-12.4.2': s('TESTED', 'Unallocated Critical >24h auto-allocated to the recommended team with a task — API jobs'),
   'PDF-12.4.3': s('TESTED', 'Allocation trail written into task activity — API workflows2'),
@@ -103,10 +103,10 @@ export const STATUS = {
   'PDF-12.5.1': s('PARTIAL', 'Weekly rollup builder + Monday job — API scheduler, HTTP-SMOKE', `AI-visibility panel and off-page deep-dive need AI-engine and backlink data (${CREDS})`),
   'PDF-12.5.2': s('PARTIAL', 'Monthly 1-pager builder + monthly job — HTTP-SMOKE', 'Organic traffic/revenue vs last month & YoY needs a monthly GA4 series (not synced yet)'),
   // ---- PDF §13 opportunity engine
-  'PDF-13.1': s('PARTIAL', 'Keyword-gap workflow (approve/reject) over DEMO data — API workflows2', BACKLINK),
+  'PDF-13.1': s('PARTIAL', 'Keyword-gap workflow (approve/reject) over test fixtures — API workflows2', BACKLINK),
   'PDF-13.2': s('PARTIAL', 'Brief generated only from an approved gap — API workflows2', 'SERP-based outline needs SERP/backlink data; current outline is a template'),
   'PDF-13.3': s('IMPLEMENTED', 'Seasonal planner (festival calendar, 60-day lead, collections to refresh) — rendered HTTP-SMOKE'),
-  'PDF-13.4': s('PARTIAL', 'Cluster tracker over DEMO data — HTTP-SMOKE', 'Needs a pillar → cluster topic map and per-cluster GSC traffic'),
+  'PDF-13.4': s('PARTIAL', 'Cluster tracker over test fixtures — HTTP-SMOKE', 'Needs a pillar → cluster topic map and per-cluster GSC traffic'),
   // ---- PDF §14 health score
   'PDF-14.1': s('TESTED', 'Weights exactly per PDF — SHARED'),
   'PDF-14.2': s('TESTED', 'Severity-weighted, size-normalised, Tier 1 × 5 — SHARED'),
@@ -151,14 +151,19 @@ export const STATUS = {
   'CUS-UX-06': s('IMPLEMENTED', 'Async (skeleton/error+retry/empty), ConfirmDialog, toasts; sync failures shown as errors, never as success'),
   'CUS-UX-07': s('IMPLEMENTED', 'DataTable sort/search/pagination; URL-synced filters'),
   'CUS-UX-08': s('TESTED', 'Every control calls a SentinelApi method; HTTP-SMOKE drives the UI against the real API with 0 errors'),
-  'CUS-UX-09': s('TESTED', 'DEMO/SIMULATED/role-preview indicator on every route in both modes — SMOKE, HTTP-SMOKE; server reports DEMO provenance (serverDemoData)'),
-  'CUS-UX-10': s('TESTED', 'One SentinelApi contract, two adapters (mock + HTTP) — MOCK, HTTP-SMOKE'),
-  'CUS-UX-11': s('TESTED', 'VITE_API_MODE=mock|http; Diagnostics shows mode and live request log — HTTP-SMOKE'),
+  'CUS-UX-09': s('IMPLEMENTED', 'Records carry their source (SourceBadge); data from sources that are not connected is reported as not connected. Sample data exists only in test fixtures (CUS-SYNC-05)'),
+  'CUS-UX-10': s('TESTED', 'One SentinelApi contract; HTTP adapter in the app, fixture adapter in web tests — COMP, API'),
+  'CUS-UX-11': s('REMOVED', 'Removed at the owner\'s request (Oct 2026): the app always talks to the API server; Diagnostics shows the live request log'),
   // ---- Roles
   'CUS-ROLE-01': s('TESTED', 'Admin experience against the real API — HTTP-SMOKE (60 routes × 3 widths)'),
   'CUS-ROLE-02': s('TESTED', 'SEO Specialist experience + one-tap allocation creating a server task — HTTP-SMOKE interaction'),
   'CUS-ROLE-03': s('TESTED', 'Developer experience; team-scoped tasks enforced server-side — HTTP-SMOKE, API permissions'),
-  'CUS-ROLE-04': s('TESTED', 'Labelled DEV role preview; refused in production — API auth, SMOKE'),
+  'CUS-ROLE-04': s('REMOVED', 'Removed at the owner\'s request (Oct 2026): password sign-in only — API auth "has no role-preview sign-in"'),
+  'CUS-SYNC-01': s('TESTED', 'Default and maximum 10,000; a capped crawl stops at the budget — API gocrawl/smart-budget'),
+  'CUS-SYNC-02': s('TESTED', 'New product + collection, edited title, deleted product found and crawled alone, merged into the full results, issues updated; fixed title removed from the issue; next sync finds nothing — API monitor "website sync"'),
+  'CUS-SYNC-03': s('TESTED', 'POST /api/monitor/run; 409 NO_BASELINE_CRAWL before the first crawl — API monitor'),
+  'CUS-SYNC-04': s('TESTED', 'Due 12 hours after the last sync / crawl; toggle off and on; last and next sync in the status — API monitor "every 12 hours"'),
+  'CUS-SYNC-05': s('TESTED', 'Fixtures load only under NODE_ENV=test — API production; no preview sign-in — API auth; web app http-only'),
   'CUS-ROLE-05': s('TESTED', 'Role-aware nav + route guards — SMOKE (denied list, nav hidden interaction)'),
   'CUS-ROLE-06': s('IMPLEMENTED', 'TeamBadge vs RoleBadge; Employees page separates roles and teams'),
   'CUS-ROLE-07': s('TESTED', 'Every endpoint checks the permission matrix server-side — API permissions (developer 403s, team-scoped tasks, Admin-only automation)'),
@@ -170,7 +175,7 @@ export const STATUS = {
   'CUS-TASK-05': s('TESTED', 'Views (My/Team/All/Kanban/List/Workload/Overdue/SLA/Review/Verification) — SHARED filterTasks, HTTP-SMOKE'),
   'CUS-TASK-06': s('TESTED', 'Server validates action, role and required notes — API workflow ("block" without a note → 400)'),
   'CUS-TASK-07': s('TESTED', 'Developer can submit; cannot approve or verify — SHARED; API permissions "only the system may verify"'),
-  'CUS-TASK-08': s('TESTED', 'pending_data when the data cannot be checked (DEMO issues, missing connectors, CrUX insufficient data) — API workflow, SYNC'),
+  'CUS-TASK-08': s('TESTED', 'pending_data when the data cannot be checked (sample issues, missing connectors, CrUX insufficient data) — API workflow, SYNC'),
   'CUS-TASK-09': s('TESTED', 'Failed verification → IN_PROGRESS; regression → reopened — API ingest'),
   // ---- Backend (Phase 2)
   'CUS-BE-01': s('TESTED', 'Login, logout/revocation, reset (no account enumeration), profile, account status, scrypt hashes — API auth'),
@@ -233,14 +238,14 @@ export function CHECK_STATUS(id) {
   if (NOT_EVALUATED[id]) return s('PARTIAL', 'Defined with severity rule + Fix Card playbook — SHARED; reported as "not evaluated" with the reason, never faked', NOT_EVALUATED[id]);
   if (id === 'PERF-CRUX') return s('PARTIAL', 'CrUX sync raises PERF-CRUX issues (Poor = Critical, insufficient data never resolves) — SYNC', CREDS);
   if (id === 'ONP-STRIKING') return s('PARTIAL', 'Striking-distance queries synced from Search Console into opportunities and the digest — SYNC', CREDS);
-  if (/^OFF-/.test(id) || ['AIC-10', 'AEO-PAA', 'CONT-PLAGIARISM', 'GEO-SEMANTIC'].includes(id)) return s('PARTIAL', 'Defined + playbook — SHARED; screens over DEMO data — HTTP-SMOKE', BACKLINK);
-  if (id === 'OFF-LOCAL' || id === 'GEO-BRAND-FACTS') return s('PARTIAL', 'Defined + playbook — SHARED; DEMO data — HTTP-SMOKE', 'GBP data sync not implemented');
-  if (id === 'AEO-AI-VISIBILITY') return s('PARTIAL', 'Defined — SHARED; panel over DEMO data — HTTP-SMOKE', 'AI-engine sampling not implemented');
+  if (/^OFF-/.test(id) || ['AIC-10', 'AEO-PAA', 'CONT-PLAGIARISM', 'GEO-SEMANTIC'].includes(id)) return s('PARTIAL', 'Defined + playbook — SHARED; screens over test fixtures — HTTP-SMOKE', BACKLINK);
+  if (id === 'OFF-LOCAL' || id === 'GEO-BRAND-FACTS') return s('PARTIAL', 'Defined + playbook — SHARED; test fixtures — HTTP-SMOKE', 'GBP data sync not implemented');
+  if (id === 'AEO-AI-VISIBILITY') return s('PARTIAL', 'Defined — SHARED; panel over test fixtures — HTTP-SMOKE', 'AI-engine sampling not implemented');
   if (id === 'AIC-04') return s('PARTIAL', 'Defined + playbook — SHARED', 'Needs an LLM evaluation pass (not implemented)');
   if (id === 'TECH-SCHEMA-SYNC') return s('PARTIAL', 'Defined + playbook — SHARED', 'Needs a schema.org / Google docs change feed');
   if (id === 'PERF-PSI') return s('PARTIAL', 'Defined + playbook — SHARED', 'PSI lab runs not synced (CrUX field data is)');
   // Remaining GSC-derived checks (index coverage, rich results, cannibalization, decay, intent, low CTR, SERP features, snippets).
-  return s('PARTIAL', 'Defined with severity rule + playbook — SHARED; screens over DEMO data — HTTP-SMOKE', 'Analysis over Search Console data not implemented (sync covers visibility, page impressions and striking distance only)');
+  return s('PARTIAL', 'Defined with severity rule + playbook — SHARED; screens over test fixtures — HTTP-SMOKE', 'Analysis over Search Console data not implemented (sync covers visibility, page impressions and striking distance only)');
 }
 
 export function DEFAULT_BY_PHASE(r) {

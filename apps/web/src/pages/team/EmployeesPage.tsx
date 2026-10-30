@@ -4,7 +4,7 @@ import { ROLE_LABELS, TEAMS, TEAM_IDS, type AccountStatus, type Employee, type E
 import { api } from '@/api/client';
 import { useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth, useUser } from '@/auth/AuthContext';
-import { Async, Badge, Button, Checkbox, DemoBadge, EmptyState, Field, IconButton, Input, Notice, PageHeader, Panel, Select } from '@/components/ui/primitives';
+import { Async, Badge, Button, Checkbox, EmptyState, Field, IconButton, Input, Notice, PageHeader, Panel, Select } from '@/components/ui/primitives';
 import { Dialog } from '@/components/ui/overlay';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ClearFilters, FilterSelect, useUrlFilters } from '@/components/ui/filters';
@@ -51,7 +51,6 @@ export default function EmployeesPage() {
       <PageHeader
         title="Employees"
         description="Who can sign in and what they work on. A role controls permissions (what someone can do); teams are allocation groups (which allocated issues they work on). One person can be in several teams."
-        meta={<DemoBadge />}
         actions={manage && <Button variant="primary" icon={<UserPlus className="h-4 w-4" />} onClick={() => setEditing('new')}>Invite employee</Button>}
       />
       {!manage && <div className="mb-4"><Notice>You can view the directory. Only Admins (employees.manage) can invite or edit employees.</Notice></div>}
@@ -119,7 +118,7 @@ function EmployeeDialog({ employee, onClose }: { employee?: Employee; onClose: (
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((x) => ({ ...x, [k]: v }));
   const input: EmployeeInput = { name: f.name.trim(), email: f.email.trim(), role: f.role as Role, teamIds: f.teamIds, title: f.title.trim(), status: f.status, capacityHoursPerWeek: Number(f.cap), isSeoLead: f.isSeoLead };
   const m = useApiMutation(() => (employee ? api.updateEmployee(employee.id, input) : api.createEmployee(input)), {
-    success: (e) => (employee ? `${e.name} updated` : `${e.name} invited as ${ROLE_LABELS[e.role]} (demo — no email is sent)`),
+    success: (e) => (employee ? `${e.name} updated` : `${e.name} invited as ${ROLE_LABELS[e.role]}`),
     invalidate: [['employees'], ['workload'], ['audit']],
     onSuccess: onClose,
   });
@@ -162,7 +161,7 @@ function EmployeeDialog({ employee, onClose }: { employee?: Employee; onClose: (
         <div className="md:col-span-2">
           <Checkbox label="SEO lead" description="Receives review requests and escalations for the SEO team." checked={f.isSeoLead} onChange={(v) => set('isSeoLead', v)} />
         </div>
-        {!employee && <div className="md:col-span-2"><Notice tone="demo">Demo mode: the invite is stored in this browser session only and no email is sent. The new account can sign in with the demo password.</Notice></div>}
+        {!employee && <div className="md:col-span-2"><Notice>The invite email carries a one-time set-password link (valid 72 hours). It is sent only when an email channel is configured in Settings → Notifications.</Notice></div>}
         <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
       </form>
     </Dialog>

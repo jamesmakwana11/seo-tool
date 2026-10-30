@@ -2,16 +2,26 @@
 
 _Last updated: 21 Oct 2026 · Storage: **PostgreSQL** with `DATABASE_URL` (temporary in-memory without it) · see the dated sections below._
 
+## 0. Update 30 Oct 2026 — website sync, 10,000-page Smart crawl, production-only app
+
+- **Smart crawl budget 10,000 pages** (`CRAWLER_SMART_MAX_PAGES`, default and maximum). Rows are streamed to disk as before.
+- **Website sync** (`docs/WEBSITE_SYNC.md`): after one Full or Smart crawl, Sync Now and Auto Sync (every 12 hours, on/off per
+  website) find new, changed and removed URLs and crawl only those. The results are merged into the full result set, and issues
+  are updated for the crawled URLs only. Tests: `apps/api/test/api/monitor.test.ts`.
+- **Production-only app:** the in-browser adapter, the hosted review build, the role preview sign-in and every sample-data label
+  were removed. The sample dataset is now a test fixture (`SEED_TEST_FIXTURES`, honoured only when `NODE_ENV=test`).
+  The dated sections below describe earlier phases as they were run.
+
 ## 1. What exists
 
 `apps/api` is a Node 22 / Express 4 / TypeScript service that implements every method of the single `SentinelApi` contract
-(`packages/shared/src/api.ts`). The web app talks to it with `VITE_API_MODE=http`; the in-browser DEMO adapter (`mock`) still works.
+(`packages/shared/src/api.ts`). The web app always talks to it (the in-browser adapter, sample data and role preview were removed on 30 Oct 2026).
 
 | Area | What it does | Where |
 |---|---|---|
 | Composition root | Wires repositories → adapters → services; no storage implementation leaks into business logic | `src/container.ts` |
 | Repositories | Interfaces for every collection + a labelled in-memory implementation (lost on restart) | `src/repositories/` |
-| Auth | Email + password (scrypt), HMAC session tokens backed by revocable sessions, password reset without account enumeration, profile, account status, DEV role preview (refused in production) | `src/services/auth.ts` |
+| Auth | Email + password (scrypt), HMAC session tokens backed by revocable sessions, password reset without account enumeration, profile, account status | `src/services/auth.ts` |
 | Websites | Multi-website workspaces: each website has its own repositories and crawler (issues, Fix Cards, crawls, reports, settings, integration configuration); people, sessions and permissions are shared. Requests are bound to one website by the `X-Website-Id` header (AsyncLocalStorage); unknown ids get 404. New websites start empty with schedules off | `src/websites.ts`, `src/http/app.ts` |
 | Permissions | Every endpoint checks the role permission matrix server-side; developers may only update the status of issues allocated to their team | `src/services/context.ts`, each service |
 | Issues | Ingestion from crawls and connector syncs: exclusions, delta detection, severity = check × page tier, SLA, regression reopen, auto-resolution only when re-checked, template grouping that supersedes page-level cards, real-time alerts, one-tap allocation, bulk allocation, Not-an-issue → exclusions | `src/services/issues.ts` |
@@ -36,26 +46,13 @@ environment only, refused as UI settings, redacted from logs, errors and stored 
 
 ```bash
 npm install
-npm run dev:api                          # http://localhost:4000 — DEMO data loaded, role preview enabled
-VITE_API_MODE=http npm run dev:web       # http://localhost:5173 — proxies /api to :4000
+npm run dev:api                          # http://localhost:4000 — set ADMIN_EMAIL / ADMIN_INITIAL_PASSWORD first
+npm run dev:web                          # http://localhost:5173 — proxies /api to :4000
 ```
 
-For a clean live start: `SEED_DEMO_DATA=false`, set `CRAWLER_BASE_URL=https://deodap.in`, `CRAWLER_ALLOW_LIVE=true`, the connector
+For a live start: set `CRAWLER_BASE_URL=https://deodap.in`, `CRAWLER_ALLOW_LIVE=true`, the connector
 credentials you have, and `SCHEDULER_ENABLED=true`. Then run **Test connection** for each integration in Settings → Integrations;
 data syncs only start after a passed test.
-
-### Hosted review build
-
-A private review link (published 14 Oct 2026) runs the full web app on the in-browser DEMO adapter: every screen and workflow,
-the same permission and issue-workflow rules, nothing persisted (websites you add are lost on reload). It does **not** include this API server — hosting a long-running
-Node process needs a hosting account, which this workspace does not have. Differences from a normal build: in-memory routing (the
-URL does not change), Print hidden, and exports are copied to the clipboard because the host blocks downloads. Rebuild with:
-
-```bash
-cd apps/web
-VITE_API_MODE=mock VITE_ROUTER=memory VITE_HOSTED_REVIEW=true npx vite build --outDir <dir>
-node scripts/package-review.mjs <dir>
-```
 
 ## 3. Verification
 
@@ -345,7 +342,7 @@ browser signed the user out whenever `/api/auth/me` failed for any reason — in
 Now:
 - `SESSION_TTL_HOURS` defaults to `0` = signed in until *Sign out* (a positive value still caps sessions).
 - The signed token carries the account id and a fingerprint of the password hash. After a restart a correctly signed
-  token for the same active account with the same password is accepted again; the first admin and DEMO accounts get the
+  token for the same active account with the same password is accepted again; the first admin and sample accounts get the
   same password hash at every start (salt keyed with `SESSION_SECRET`), so their sessions survive restarts.
 - A session still ends at sign-out, password change or reset, account deactivation, or a changed `SESSION_SECRET`.
 - The browser signs out only on a 401; while the server is unreachable or answers 5xx it keeps the session and retries
@@ -407,7 +404,7 @@ checks) · API 436 · shared 85 · web 38 — all pass; typecheck and lint clean
 | `apps/api` — 43 files, 435 tests, incl. new: bridge stall → partial; Change Monitor end to end on the Go **and** the Node engine (title, meta, H1, canonical, indexability, structured data, content, images / alt, 404 → removed, 503 → failed not removed, carry-over of the last good record); partial / cancelled / failed crawls preserving the baseline; smart-crawl merge; suspected removals; robots / redirect / status changes; truncated pages → suspected; retention and a deleted baseline file; HTTP API paging, page-size cap, filters, CSV / JSON exports, issues per URL; real-Chromium captures (no previous screenshot → said so, pixel diff, DOM diff, SEO fields, CSS diff, after-crawl captures, files served only signed in, HTML served as text, other sites refused), no-browser state; read-only theme snapshots and diffs (no write / publish calls, token not on disk); line-diff bounds | ✅ 434 pass, 1 skipped (opt-in in-process stress test) |
 | `packages/shared` 85 tests · `apps/web` 38 tests (incl. diff rendering, side-by-side + difference view, "never made up" state) | ✅ all pass |
 | Typecheck api / web / shared · ESLint web (0 warnings) · `npm run build:prod` (bundle syntax-checked, started with `NODE_ENV=production`: `/healthz` 200, change APIs 401 without sign-in) | ✅ clean |
-| Route smoke (in-browser DEMO adapter): 59 routes × 3 roles × 3 widths = 531 visits + 5 interaction checks | ✅ 0 failures |
+| Route smoke (in-browser sample adapter): 59 routes × 3 roles × 3 widths = 531 visits + 5 interaction checks | ✅ 0 failures |
 
 Measured on this sandbox (synthetic store on 127.0.0.1, `node --max-old-space-size=288` as in the Docker image, 450 MB budget):
 
@@ -426,12 +423,12 @@ Measured on this sandbox (synthetic store on 127.0.0.1, `node --max-old-space-si
 | `packages/shared` — 85 tests · `apps/web` — 34 tests | ✅ all pass |
 | Typecheck api, web, shared · ESLint web (0 warnings) · `npm run build:prod` (bundle syntax-checked, started in production mode) | ✅ clean |
 | Windows build path: Go cross-compiled to a Windows PE executable; Rust `cargo check --target x86_64-pc-windows-gnu` | ✅ (not run on a Windows machine) |
-| Route smoke against the in-browser DEMO adapter: 58 routes × 3 roles × 3 widths = 522 visits | ✅ 0 failures; 5 interaction checks pass |
+| Route smoke against the in-browser sample adapter: 58 routes × 3 roles × 3 widths = 522 visits | ✅ 0 failures; 5 interaction checks pass |
 | Stress, synthetic store on 127.0.0.1: 25,000 products (26,633 pages, 53,491 URL rows) and 50,000 products (53,235 pages, 106,966 rows) | ✅ completed within a 450 MB budget — `docs/measurements/` |
 
 Notable server behaviours covered by tests: developers get 403 on allocation/audit and on updating another team's issue; only the
 system can verify; a FIXED issue closes automatically when the next crawl finds 0 failing URLs and returns to work otherwise;
-regressions reopen to the same team; DEMO issues never "pass" verification; integrations are never "connected" without a passed
+regressions reopen to the same team; sample issues never "pass" verification; integrations are never "connected" without a passed
 test; reports sent with no configured channel claim no delivery; crawls refuse to start without an allowed site.
 
 ## 4. Bugs found and fixed during the gate
@@ -440,9 +437,9 @@ test; reports sent with no configured channel claim no delivery; crawls refuse t
   cluster), but ingestion matched only on check × template, so later runs updated the first issue and left the others stale.
   Issues now carry a `findingKey`; tests cover independent tracking and resolution.
 - **Template grouping.** Server-created groups did not supersede their children (PDF §11.2.4) and bulk allocation skipped superseded
-  children. Children are now `SUPERSEDED` (same model as the DEMO seed), allocated with the parent, and verified with it.
+  children. Children are now `SUPERSEDED` (same model as the sample seed), allocated with the parent, and verified with it.
 - **Audit gaps.** Real-time alerts were not in the audit log (PDF §17.5); they are now, with the provider outcome per channel.
-- The route smoke assumed a fresh DEMO dataset (fixed issue and crawl ids). Against a long-lived API, an earlier run's allocation
+- The route smoke assumed a fresh sample dataset (fixed issue and crawl ids). Against a long-lived API, an earlier run's allocation
   persists and the seed's crawl count depends on the date; the smoke now picks an unallocated Critical from the board, taps its
   engine-suggested team, and uses a crawl id that exists on every date.
 - Several tests were found to be vacuous during review (an early `return`, a `≥ 0` check, a tautology) and were rewritten to assert
@@ -463,7 +460,7 @@ test; reports sent with no configured channel claim no delivery; crawls refuse t
 - Crawls fetch raw HTML only: TECH-JS-RENDER and TECH-MOBILE are reported as "not evaluated" in crawl results. A rendered-vs-raw
   check and Lighthouse mobile/desktop audits run on demand per URL (Crawl Center → Lighthouse) when Chromium is installed.
 - Data syncs for Ahrefs/Semrush (backlinks, keyword gaps, competitors, toxic links), Google Business Profile, a bulk Shopify
-  product-data sync (the SEO editor reads resources one by one) and AI-engine visibility sampling are not built — those screens show labelled DEMO data, or "not available" on a clean start.
+  product-data sync (the SEO editor reads resources one by one) and AI-engine visibility sampling are not built — those screens show labelled sample data, or "not available" on a clean start.
 - Search Console analysis beyond visibility / impressions / striking distance (cannibalization, decay, low CTR, rich results) is not
   built; index-coverage counts are not available from the public API and are never fabricated.
 - LLM-written rewrite drafts; title/meta variants are template-based with a heuristic CTR score.

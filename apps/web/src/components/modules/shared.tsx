@@ -32,11 +32,11 @@ export function NoAccess({ what, perm }: { what: string; perm: string }) {
   return <Notice>{what} is not visible to your role (needs the <span className="font-mono text-xs">{perm}</span> permission). Ask an admin or the SEO lead if you need it.</Notice>;
 }
 
-/** API `note` → DEMO notice (prompt §7.2 honesty rule). */
+/** API `note` → data-source notice (prompt §7.2 honesty rule). */
 export function ApiNote({ note, available = true }: { note?: string; available?: boolean }) {
   if (!note && available) return null;
   return (
-    <Notice tone="demo" title={available ? undefined : 'Data source not connected'}>
+    <Notice tone="caution" title={available ? undefined : 'Data source not connected'}>
       {note ?? 'This section needs an external data source that is not connected.'}
     </Notice>
   );

@@ -6,7 +6,7 @@ import type { DeliveryAttempt, Notification } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Button, DemoBadge, EmptyState, Notice, PageHeader, Panel, Stat, Tabs, type Tone } from '@/components/ui/primitives';
+import { Async, Badge, Button, EmptyState, Notice, PageHeader, Panel, Stat, Tabs, type Tone } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/DataTable';
 import { FilterSelect } from '@/components/ui/filters';
 import { SeverityBadge } from '@/components/domain/badges';
@@ -36,7 +36,6 @@ export default function NotificationsPage() {
       <PageHeader
         title="Notifications"
         description="In-app notifications for you: Critical alerts, assignments, reviews, SLA warnings and digests (PDF §12.1–12.2)."
-        meta={<DemoBadge />}
         actions={can('notifications.configure') ? <Link to="/settings/notifications" className="inline-flex h-9 items-center rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card transition-colors hover:border-signal/40 hover:text-signal-dark">Alert settings</Link> : undefined}
       />
       {canDeliveries && (
@@ -163,7 +162,7 @@ function Deliveries() {
         return (
           <div className="space-y-5">
             {skipped > 0 && (
-              <Notice tone="demo" title={`${skipped} of ${list.length} external deliveries were skipped — channel not configured`}>
+              <Notice tone="caution" title={`${skipped} of ${list.length} external deliveries were skipped — channel not configured`}>
                 Email, WhatsApp and Slack need credentials on the API server (for example <span className="font-mono">SMTP_HOST</span>, <span className="font-mono">WHATSAPP_API_TOKEN</span>, <span className="font-mono">SLACK_WEBHOOK_URL</span>). Until then, alerts reach people in-app only.{' '}
                 {can('integrations.view') && <Link to="/settings/integrations" className="font-medium underline">Integrations</Link>}
               </Notice>

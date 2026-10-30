@@ -3,7 +3,7 @@ import { ArrowUpRight } from 'lucide-react';
 import type { Severity, WeeklyReport } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
-import { Async, Badge, DemoBadge, EmptyState, Mono, PageHeader, Panel, ProgressBar, Stat } from '@/components/ui/primitives';
+import { Async, Badge, EmptyState, Mono, PageHeader, Panel, ProgressBar, Stat } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/DataTable';
 import { SeverityBadge, SourceBadge, TeamBadge } from '@/components/domain/badges';
 import { ReportActions, ReportMetaPanel } from '@/components/reports/ReportParts';
@@ -19,7 +19,7 @@ export default function WeeklyReportPage() {
       <PageHeader
         title="Weekly rollup"
         description="Monday report (PDF §12.5): off-page deep-dive, AI-visibility panel results, competitor movement, SLA compliance and the top 10 priorities for the week."
-        meta={<><DemoBadge />{q.data && <span className="text-xs text-muted">Week {fmtDate(q.data.meta.periodStart)} → {fmtDate(q.data.meta.periodEnd)}</span>}</>}
+        meta={<>{q.data && <span className="text-xs text-muted">Week {fmtDate(q.data.meta.periodStart)} → {fmtDate(q.data.meta.periodEnd)}</span>}</>}
         actions={<ReportActions kind="weekly" />}
       />
       <Async q={q} rows={12}>{(r) => <Body r={r} />}</Async>

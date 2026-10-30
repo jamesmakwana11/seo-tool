@@ -38,7 +38,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function listen(origin: string): Promise<{ base: string; container: Container; login: () => Promise<string> }> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-bg-'));
   const env = loadEnv({
-    NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'b'.repeat(40), LOG_LEVEL: 'silent', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password,
+    NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'b'.repeat(40), LOG_LEVEL: 'silent', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password,
     CRAWLER_BASE_URL: origin, CRAWLER_ENGINE: 'go', CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_RETRIES: '0',
     CHANGE_SNAPSHOT_DIR: path.join(tmp, 'changes'), CRAWLER_WORK_DIR: path.join(tmp, 'work'),
   });
@@ -190,7 +190,7 @@ describe.skipIf(!DB_URL || !HAVE_GO)('crawls interrupted by a server restart (Po
 
   const serverEnv = (url: string, origin: string, tmp: string) => ({
     NODE_ENV: 'development', DATABASE_URL: url, SESSION_SECRET: 'r'.repeat(40), ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password,
-    SEED_DEMO_DATA: 'false', LOG_LEVEL: 'warn', SCHEDULER_ENABLED: 'false', CRAWLER_BASE_URL: origin, CRAWLER_ENGINE: 'go', CRAWLER_RETRIES: '0',
+    SEED_TEST_FIXTURES: 'false', LOG_LEVEL: 'warn', SCHEDULER_ENABLED: 'false', CRAWLER_BASE_URL: origin, CRAWLER_ENGINE: 'go', CRAWLER_RETRIES: '0',
     CRAWLER_REQUEST_DELAY_MS: '0', CHANGE_SNAPSHOT_DIR: path.join(tmp, 'changes'), CRAWLER_WORK_DIR: path.join(tmp, 'work'),
   });
   const storedRun = async (url: string, id: string) => (await sql(url, `SELECT doc FROM sentinel_records WHERE website_id = $1 AND collection = 'crawls' AND id = $2`, [PRIMARY, id])).rows[0]?.doc as CrawlRun | undefined;

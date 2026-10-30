@@ -33,7 +33,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 RUN npm ci --no-audit --no-fund
 COPY . .
-# The web bundle MUST talk to the real API: VITE_API_MODE=http (the default "mock" mode is the in-browser DEMO adapter).
+# Builds the web bundle (served by the API) and the API server.
 RUN npm run build:prod
 
 # ---------------------------------------------------------------- runtime

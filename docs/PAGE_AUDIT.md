@@ -66,7 +66,7 @@ Files: `docs/measurements/go-crawl-25k-before-page-audit-details.json`, `docs/me
   before it have no page list until the next crawl.
 - The report shows the page as the crawler fetched it (raw HTML). Content added later by JavaScript is not audited.
 - Up to 20 broken links and 5 images without ALT text are listed per page (the counts are complete).
-- Sample (DEMO) crawls carry few page fields, so most checks cannot be judged there.
+- Sample crawls (test fixtures) carry few page fields, so most checks cannot be judged there.
 
 ## API
 

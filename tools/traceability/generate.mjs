@@ -10,7 +10,7 @@ import { STATUS, CHECK_STATUS, PHASE_NOTE, DEFAULT_BY_PHASE } from './status.mjs
 import { CHECKS } from '../../packages/shared/src/checks/library.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const VALID = ['NOT STARTED', 'IN PROGRESS', 'IMPLEMENTED', 'TESTED', 'BLOCKED', 'PARTIAL'];
+const VALID = ['NOT STARTED', 'IN PROGRESS', 'IMPLEMENTED', 'TESTED', 'BLOCKED', 'PARTIAL', 'REMOVED'];
 
 const checkReqs = CHECKS.map((c) => ({
   id: `PDF-CHK-${c.id}`,
@@ -59,6 +59,7 @@ const sections = [
   ['Prompt §4.3 · Roles & role-aware experiences', (r) => r.id.startsWith('CUS-ROLE-')],
   ['Prompt §6 · Task management workflow', (r) => r.id.startsWith('CUS-TASK-')],
   ['Prompt §9 · Backend', (r) => r.id.startsWith('CUS-BE-')],
+  ['Owner request · Website sync, 10,000-page Smart crawl, production-only app', (r) => r.id.startsWith('CUS-SYNC-')],
   ['Prompt §2/§7/§9/§14 · Documentation, process & database gate', (r) => r.id.startsWith('CUS-DOC-') || r.id.startsWith('CUS-DB-')],
 ];
 
@@ -81,8 +82,8 @@ ${VALID.map((s) => `| ${s} | ${counts[s]} |`).join('\n')}
 
 Status meanings: **TESTED** = implemented and covered by an automated test or recorded verification (evidence column cites it).
 **IMPLEMENTED** = code exists and works in the app, not covered by a dedicated automated test. **PARTIAL** = some of the requirement
-works; the gap is stated. **BLOCKED** = cannot be completed without credentials/access/infrastructure (stated). Sample (DEMO) data never
-counts as "connected to live data".
+works; the gap is stated. **BLOCKED** = cannot be completed without credentials/access/infrastructure (stated). **REMOVED** = taken out at
+the owner's request. Sample data (test fixtures only) never counts as "connected to live data".
 
 `;
 for (const [title, pred] of sections) {

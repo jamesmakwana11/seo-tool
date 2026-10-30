@@ -1,8 +1,7 @@
-import { forwardRef, useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useSyncExternalStore } from 'react';
+import { forwardRef, useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import clsx from 'clsx';
 import { AlertTriangle, Inbox, Loader2, RotateCcw, Activity, CircleCheck, Info, OctagonAlert, TriangleAlert, type LucideIcon, TrendingDown, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { demoScope } from '@/api/websiteScope';
 import { CountUp } from '@/lib/motion';
 
 // ------------------------------------------------------------------ Button
@@ -135,7 +134,7 @@ export function KpiCard({ label, value, decimals, format, icon: Icon, tint = 'vi
 }
 
 // ------------------------------------------------------------------ Badge
-export type Tone = 'neutral' | 'crit' | 'med' | 'low' | 'ok' | 'opp' | 'signal' | 'demo' | 'dark';
+export type Tone = 'neutral' | 'crit' | 'med' | 'low' | 'ok' | 'opp' | 'signal' | 'caution' | 'dark';
 const TONES: Record<Tone, string> = {
   neutral: 'bg-[#F5F3F9] text-ink-soft border-line',
   crit: 'bg-crit-tint text-crit-ink border-crit/25',
@@ -144,7 +143,7 @@ const TONES: Record<Tone, string> = {
   ok: 'bg-ok-tint text-ok-ink border-ok/25',
   opp: 'bg-opp-tint text-opp-ink border-opp/25',
   signal: 'bg-signal-tint text-signal-dark border-signal/20',
-  demo: 'bg-demo-tint text-demo border-demo/30',
+  caution: 'bg-caution-tint text-caution border-caution/30',
   dark: 'bg-raised text-signal-dark border-signal/20',
 };
 export function Badge({ tone = 'neutral', children, className, title, icon }: { tone?: Tone; children: ReactNode; className?: string; title?: string; icon?: ReactNode }) {
@@ -156,13 +155,10 @@ export function Badge({ tone = 'neutral', children, className, title, icon }: { 
   );
 }
 
-/** Marks sample / simulated data (prompt §7.2). Hatched so it never reads as a status colour. */
-export function DemoBadge({ label = 'DEMO data', title = 'Deterministic sample data — not from a live crawl or connected API.' }: { label?: string; title?: string }) {
-  // A website added by a person holds no sample data, so the generic badge would be false there.
-  const demoSite = useSyncExternalStore(demoScope.subscribe, demoScope.get);
-  if (!demoSite && label === 'DEMO data') return null;
+/** Marks simulated data (prompt §7.2). Hatched so it never reads as a status colour. */
+export function SampleBadge({ label, title }: { label: string; title?: string }) {
   return (
-    <span title={title} className="demo-hatch inline-flex items-center rounded-full border border-demo/40 px-2 py-0.5 text-xs font-semibold text-demo">
+    <span title={title} className="caution-hatch inline-flex items-center rounded-full border border-caution/40 px-2 py-0.5 text-xs font-semibold text-caution">
       {label}
     </span>
   );
@@ -336,11 +332,9 @@ export function Spinner({ className }: { className?: string }) {
   return <Loader2 className={clsx('h-4 w-4 animate-spin text-muted', className)} aria-label="Loading" />;
 }
 
-export function Notice({ tone = 'neutral', title, children, icon, demoData }: { tone?: 'neutral' | 'demo' | 'crit' | 'med' | 'signal'; title?: ReactNode; children: ReactNode; icon?: ReactNode; /** says the shown data is DEMO sample data — hidden on websites that hold none */ demoData?: boolean }) {
-  const demoSite = useSyncExternalStore(demoScope.subscribe, demoScope.get);
-  if (demoData && !demoSite) return null;
+export function Notice({ tone = 'neutral', title, children, icon }: { tone?: 'neutral' | 'caution' | 'crit' | 'med' | 'signal'; title?: ReactNode; children: ReactNode; icon?: ReactNode }) {
   return (
-    <div className={clsx('flex gap-2.5 rounded-ctl border px-3.5 py-2.5 text-sm leading-relaxed', tone === 'demo' ? 'border-demo/30 bg-demo-tint text-[#8A5408]' : tone === 'crit' ? 'border-crit/30 bg-crit-tint text-[#B0303F]' : tone === 'med' ? 'border-med/30 bg-med-tint text-[#8A5408]' : tone === 'signal' ? 'border-signal/30 bg-signal-tint text-signal-dark' : 'border-line bg-raised/60 text-ink-soft')}>
+    <div className={clsx('flex gap-2.5 rounded-ctl border px-3.5 py-2.5 text-sm leading-relaxed', tone === 'caution' ? 'border-caution/30 bg-caution-tint text-[#8A5408]' : tone === 'crit' ? 'border-crit/30 bg-crit-tint text-[#B0303F]' : tone === 'med' ? 'border-med/30 bg-med-tint text-[#8A5408]' : tone === 'signal' ? 'border-signal/30 bg-signal-tint text-signal-dark' : 'border-line bg-raised/60 text-ink-soft')}>
       {icon && <span className="mt-0.5 shrink-0">{icon}</span>}
       <div className="min-w-0">
         {title && <p className="font-medium">{title}</p>}

@@ -10,7 +10,7 @@ import type { CrawledUrl, CrawlPagesResponse, Issue, SeoBulkItemsPage, SeoBulkJo
 import { loadEnv } from '../../src/config/env';
 import { createContainer } from '../../src/container';
 import { createApp } from '../../src/http/app';
-import { DEMO } from '../api/helpers';
+import { FIXTURE } from '../api/helpers';
 import { createMockShopify, SHOP, STOREFRONT, TOKEN } from './mockShopify';
 
 const RUN = 'CRL-BULK-1';
@@ -20,12 +20,12 @@ const row = (path: string, x: Partial<CrawledUrl>): CrawledUrl => ({ url: `${STO
 async function setup() {
   const mock = createMockShopify();
   const env = loadEnv({
-    NODE_ENV: 'test', SEED_DEMO_DATA: 'true', SESSION_SECRET: 'bulk-fix-test-secret-value-at-least-32-chars', LOG_LEVEL: 'silent',
+    NODE_ENV: 'test', SEED_TEST_FIXTURES: 'true', SESSION_SECRET: 'bulk-fix-test-secret-value-at-least-32-chars', LOG_LEVEL: 'silent',
     CRAWLER_BASE_URL: STOREFRONT, CRAWLER_ALLOW_LIVE: 'true', APP_BASE_URL: 'https://sentinel.example', SHOPIFY_STORE_DOMAIN: SHOP, SHOPIFY_ADMIN_TOKEN: TOKEN,
   });
   const c = await createContainer({ env, fetchImpl: mock.fetchImpl });
   const agent = supertest(createApp(c));
-  const tokenOf = async (email: string) => (await agent.post('/api/auth/login').send({ email, password: DEMO.password })).body.token as string;
+  const tokenOf = async (email: string) => (await agent.post('/api/auth/login').send({ email, password: FIXTURE.password })).body.token as string;
   const as = (tok: string) => ({
     get: (p: string) => agent.get(p).set({ Authorization: `Bearer ${tok}` }),
     post: (p: string, b: unknown = {}) => agent.post(p).set({ Authorization: `Bearer ${tok}` }).send(b as object),
@@ -52,7 +52,7 @@ async function setup() {
   await c.repos.issues.insert(issue('ISS-B1', 'ONP-TITLE', 'onpage', '1 page with a title longer than 60 characters', [`${STOREFRONT}/products/vegetable-chopper`]));
   await c.repos.issues.insert(issue('ISS-B2', 'TECH-SCHEMA-ERRORS', 'technical', 'Review markup without visible reviews', [`${STOREFRONT}/products/vegetable-chopper`]));
   await c.repos.issues.insert(issue('ISS-B3', 'ONP-META', 'onpage', '2 pages without a meta description', [`${STOREFRONT}/products/vegetable-chopper`, `${STOREFRONT}/`]));
-  return { c, mock, agent, seo: as(await tokenOf(DEMO.seoLead)), dev: as(await tokenOf(DEMO.developer)), admin: as(await tokenOf(DEMO.admin)) };
+  return { c, mock, agent, seo: as(await tokenOf(FIXTURE.seoLead)), dev: as(await tokenOf(FIXTURE.developer)), admin: as(await tokenOf(FIXTURE.admin)) };
 }
 
 describe('bulk SEO fixes', () => {

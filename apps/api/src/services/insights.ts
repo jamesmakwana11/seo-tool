@@ -10,7 +10,7 @@ const MODULES: AuditModule[] = ['technical', 'performance', 'content', 'onpage',
 
 /**
  * Read models + opportunity/off-page workflows (PDF §5–§9, §13). Every metric-backed response states its provenance:
- * DEMO seed data is labelled; without DEMO data and without a connected source, `available: false` with the reason.
+ * test dataset data is labelled; without sample data and without a connected source, `available: false` with the reason.
  */
 export function createInsightService(ctx: Ctx) {
   const r = ctx.repos;
@@ -19,7 +19,7 @@ export function createInsightService(ctx: Ctx) {
   async function availability(ids: IntegrationId[], label: string, hasData: boolean) {
     const m = await r.metrics.get();
     const connected = (await Promise.all(ids.map((i) => ctx.integrations.isConnected(i)))).some(Boolean);
-    if (m.source === 'demo' && hasData) return { available: true, note: `DEMO data — ${label}.` };
+    if (m.source === 'sample' && hasData) return { available: true, note: `sample data — ${label}.` };
     if (connected && hasData) return { available: true, note: undefined };
     if (connected) return { available: false, note: `${label}: connection test passed, but no data has been synced yet.` };
     return { available: false, note: `Not available: ${label}. Configure and test the connection under Settings → Integrations.` };
@@ -49,7 +49,7 @@ export function createInsightService(ctx: Ctx) {
       await need(ctx, actor, 'modules.view');
       if (!MODULES.includes(m)) throw badRequest('Unknown module.');
       const v = await loadView(ctx);
-      return buildModuleData(v, m, ctx.clock(), (await r.metrics.get()).source === 'demo');
+      return buildModuleData(v, m, ctx.clock(), (await r.metrics.get()).source === 'sample');
     },
     async cwv(actor: Actor) { await need(ctx, actor, 'modules.view'); return (await r.metrics.get()).cwv; },
     async contentScores(actor: Actor) { await need(ctx, actor, 'modules.view'); return (await r.metrics.get()).contentScores; },
@@ -117,7 +117,7 @@ export function createInsightService(ctx: Ctx) {
         entities: [g.keyword, 'wholesale', 'No MOQ', 'COD', g.relevantCategory ?? ''].filter(Boolean),
         faqs: [{ q: `What is the minimum order for ${g.keyword}?` }, { q: 'Do you ship across India?' }],
         internalLinks: g.relevantCategory ? [{ from: `/collections/${g.relevantCategory.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, anchor: g.keyword }] : [],
-        origin: 'keyword_gap', originRef: g.id, status: 'draft', updatedAt: iso(), source: g.source === 'demo' ? 'demo' : 'manual',
+        origin: 'keyword_gap', originRef: g.id, status: 'draft', updatedAt: iso(), source: g.source === 'sample' ? 'sample' : 'manual',
       };
       await r.briefs.insert(b);
       g.status = 'brief_created';

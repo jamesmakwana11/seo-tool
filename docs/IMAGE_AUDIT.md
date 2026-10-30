@@ -87,7 +87,7 @@ export of the filtered list (streamed).
 - The last 5 audits per website are kept: in PostgreSQL with `DATABASE_URL` (kept across restarts), otherwise in the API's
   memory (lost on a restart). The image references are stored with the crawl's results (`CRAWLER_KEEP_RESULTS` most
   recent crawls; in PostgreSQL too), so a recent crawl can be audited after a restart; an older crawl cannot.
-- Needs the Go crawler binary (included in the Docker image). The browser-only demo cannot run it.
+- Needs the Go crawler binary (included in the Docker image).
 - Pixel size is unknown when the image header is beyond the first 64 KB (e.g. a JPEG with a large EXIF block).
 
 ## API

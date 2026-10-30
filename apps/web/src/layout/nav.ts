@@ -60,13 +60,13 @@ export const NAV: NavSection[] = [
     items: [
       { to: '/modules/technical', label: 'Technical SEO', icon: Wrench, perm: 'modules.view' },
       { to: '/modules/performance', label: 'Performance & CWV', icon: Zap, perm: 'modules.view' },
-      { to: '/modules/content', label: 'Content', icon: FileText, perm: 'modules.view', roles: ['admin', 'seo_specialist'] },
+      { to: '/modules/content', label: 'Content', icon: FileText, perm: 'modules.view', roles: ['super_admin', 'admin', 'seo_specialist'] },
       { to: '/modules/onpage', label: 'On-page', icon: Code2, perm: 'modules.view' },
-      { to: '/modules/offpage', label: 'Off-page', icon: Link2, perm: 'modules.view', roles: ['admin', 'seo_specialist'] },
-      { to: '/modules/aeo', label: 'AEO', icon: MessageSquareQuote, perm: 'modules.view', roles: ['admin', 'seo_specialist'] },
-      { to: '/modules/geo', label: 'GEO', icon: Sparkles, perm: 'modules.view', roles: ['admin', 'seo_specialist'] },
-      { to: '/modules/ai-compliance', label: 'AI content compliance', icon: ShieldCheck, perm: 'modules.view', roles: ['admin', 'seo_specialist'] },
-      { to: '/modules/ai-visibility', label: 'AI visibility', icon: Bot, perm: 'modules.view', roles: ['admin', 'seo_specialist'] },
+      { to: '/modules/offpage', label: 'Off-page', icon: Link2, perm: 'modules.view', roles: ['super_admin', 'admin', 'seo_specialist'] },
+      { to: '/modules/aeo', label: 'AEO', icon: MessageSquareQuote, perm: 'modules.view', roles: ['super_admin', 'admin', 'seo_specialist'] },
+      { to: '/modules/geo', label: 'GEO', icon: Sparkles, perm: 'modules.view', roles: ['super_admin', 'admin', 'seo_specialist'] },
+      { to: '/modules/ai-compliance', label: 'AI content compliance', icon: ShieldCheck, perm: 'modules.view', roles: ['super_admin', 'admin', 'seo_specialist'] },
+      { to: '/modules/ai-visibility', label: 'AI visibility', icon: Bot, perm: 'modules.view', roles: ['super_admin', 'admin', 'seo_specialist'] },
     ],
   },
   {
@@ -97,7 +97,7 @@ export const NAV: NavSection[] = [
     items: [
       { to: '/team/employees', label: 'Employees', icon: Users, perm: 'employees.view' },
       { to: '/team/roles', label: 'Roles & permissions', icon: KeyRound, perm: 'roles.manage' },
-      { to: '/team/allocations', label: 'Allocation history', icon: ArrowLeftRight, perm: 'issues.view', roles: ['admin', 'seo_specialist'] },
+      { to: '/team/allocations', label: 'Allocation history', icon: ArrowLeftRight, perm: 'employees.view', roles: ['super_admin', 'admin', 'seo_specialist'] },
     ],
   },
   {
@@ -109,7 +109,7 @@ export const NAV: NavSection[] = [
       { to: '/settings/crawl', label: 'Crawl configuration', icon: Settings2, perm: 'settings.view' },
       { to: '/settings/notifications', label: 'Alerts & notifications', icon: Bell, perm: 'notifications.configure' },
       { to: '/ai-compliance/rules', label: 'Custom AI rules', icon: ListChecks, perm: 'rules.view' },
-      { to: '/issues/exclusions', label: 'Exclusions', icon: Ban, perm: 'issues.view', roles: ['admin', 'seo_specialist'] },
+      { to: '/issues/exclusions', label: 'Exclusions', icon: Ban, perm: 'issues.manage_exclusions', roles: ['super_admin', 'admin', 'seo_specialist'] },
       { to: '/audit', label: 'Audit log', icon: ScrollText, perm: 'audit.view' },
       { to: '/system', label: 'System health', icon: Activity, perm: 'system.view' },
       { to: '/diagnostics', label: 'API diagnostics', icon: Terminal, perm: 'diagnostics.view' },

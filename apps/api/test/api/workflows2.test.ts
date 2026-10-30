@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO, makeHarness } from './helpers';
+import { FIXTURE, makeHarness } from './helpers';
 
 /** Server-side coverage for workflows previously exercised only through the browser mock adapter. */
 describe('issue detail, allocation trail and bulk allocation', () => {
   it('issue detail carries a complete Fix Card; the allocation trail records reallocation', async () => {
     const h = await makeHarness();
-    const seo = h.as(await h.token(DEMO.seoLead));
+    const seo = h.as(await h.token(FIXTURE.seoLead));
     const issue = (await seo.get('/api/issues?status=NEW&pageSize=50')).body.items.find((i: { isTemplateGroup?: boolean }) => !i.isTemplateGroup);
     const detail = (await seo.get(`/api/issues/${issue.id}`)).body;
     expect(detail.fixCard.whatsWrong).toBeTruthy();
@@ -22,7 +22,7 @@ describe('issue detail, allocation trail and bulk allocation', () => {
 
   it('bulk (re)allocation of a template-level group moves every child with the parent', async () => {
     const h = await makeHarness();
-    const admin = h.as(await h.token(DEMO.admin));
+    const admin = h.as(await h.token(FIXTURE.admin));
     const [g] = (await admin.get('/api/issues/groups')).body as { id: string; parent: { id: string; allocatedTeam?: string; taskId?: string } }[];
     expect(g.parent.taskId).toBeTruthy();
     const target = g.parent.allocatedTeam === 'seo' ? 'development' : 'seo';
@@ -44,7 +44,7 @@ describe('issue detail, allocation trail and bulk allocation', () => {
 describe('opportunities and content planning', () => {
   it('a brief can only be generated from an approved keyword gap (PDF §13)', async () => {
     const h = await makeHarness();
-    const seo = h.as(await h.token(DEMO.seoLead));
+    const seo = h.as(await h.token(FIXTURE.seoLead));
     const gap = (await seo.get('/api/keyword-gaps')).body.items.find((g: { status: string }) => g.status === 'new');
     expect((await seo.post(`/api/briefs/from-gap/${gap.id}`)).body.error.code).toBe('NOT_APPROVED');
     await seo.patch(`/api/keyword-gaps/${gap.id}`, { status: 'approved' });
@@ -54,18 +54,18 @@ describe('opportunities and content planning', () => {
     expect((await seo.get('/api/keyword-gaps')).body.items.find((g: { id: string }) => g.id === gap.id).status).toBe('brief_created');
   });
 
-  it('keyword gaps are labelled DEMO when the backlink API is not connected', async () => {
+  it('keyword gaps are labelled FIXTURE when the backlink API is not connected', async () => {
     const h = await makeHarness();
-    const seo = h.as(await h.token(DEMO.seoLead));
+    const seo = h.as(await h.token(FIXTURE.seoLead));
     const res = (await seo.get('/api/keyword-gaps')).body;
-    expect(res.note).toMatch(/DEMO data/);
+    expect(res.note).toMatch(/sample data/);
   });
 });
 
 describe('human approvals (PDF §17: proposals, never silent changes)', () => {
   it('disavow decisions are recorded once and never submitted to Google', async () => {
     const h = await makeHarness();
-    const admin = h.as(await h.token(DEMO.admin));
+    const admin = h.as(await h.token(FIXTURE.admin));
     const cand = (await admin.get('/api/disavow')).body.find((d: { approval: string }) => d.approval === 'pending');
     const res = await admin.post(`/api/disavow/${cand.id}/decide`, { decision: 'approved' });
     expect(res.body.approval).toBe('approved');
@@ -76,9 +76,9 @@ describe('human approvals (PDF §17: proposals, never silent changes)', () => {
 
   it('a developer cannot decide a QA-gate hold; a reviewer must record what they verified', async () => {
     const h = await makeHarness();
-    const seo = h.as(await h.token(DEMO.seoLead));
+    const seo = h.as(await h.token(FIXTURE.seoLead));
     const held = (await seo.get('/api/ai-flags')).body.find((f: { qaHold: boolean; qaHoldStatus?: string }) => f.qaHold && f.qaHoldStatus === 'held');
-    const dev = h.as(await h.token(DEMO.developer));
+    const dev = h.as(await h.token(FIXTURE.developer));
     expect((await dev.post(`/api/ai-flags/${held.id}/decide`, { decision: 'approved', note: 'looks fine to me ok' })).status).toBe(403);
     expect((await seo.post(`/api/ai-flags/${held.id}/decide`, { decision: 'approved', note: 'short' })).status).toBe(400);
     const ok = await seo.post(`/api/ai-flags/${held.id}/decide`, { decision: 'approved', note: 'Checked the BPA-free claim against the supplier certificate on file.' });
@@ -87,7 +87,7 @@ describe('human approvals (PDF §17: proposals, never silent changes)', () => {
 
   it('approving a Fix Card proposal records an audit entry and changes nothing on the live site', async () => {
     const h = await makeHarness();
-    const seo = h.as(await h.token(DEMO.seoLead));
+    const seo = h.as(await h.token(FIXTURE.seoLead));
     const issue = (await seo.get('/api/issues?pageSize=1')).body.items[0];
     const before = (await seo.get(`/api/issues/${issue.id}`)).body.issue;
     const res = await seo.post(`/api/issues/${issue.id}/approve-proposal`, { note: 'redirect /old to /new' });
@@ -121,18 +121,18 @@ describe('custom rules run inside the crawl pipeline (PDF §10.2)', () => {
 describe('reports & notifications', () => {
   it('the daily digest carries every PDF §12.1 section', async () => {
     const h = await makeHarness();
-    const seo = h.as(await h.token(DEMO.seoLead));
+    const seo = h.as(await h.token(FIXTURE.seoLead));
     const d = (await seo.get('/api/reports/daily')).body;
     for (const k of ['health', 'newCriticals', 'newMediumsByModule', 'aiCompliance', 'verifiedFixed', 'opportunities', 'allocation', 'watchlist']) expect(d).toHaveProperty(k);
     expect(d.health.trend7d.length).toBeGreaterThan(0);
     expect(d.allocation).toHaveProperty('unallocatedPast24h');
-    expect(d.meta.dataNotes.join(' ')).toMatch(/DEMO/);
+    expect(d.meta.dataNotes.join(' ')).toMatch(/not connected/);
   });
 
   it('notifications belong to their recipient; mark-all-read only touches mine', async () => {
     const h = await makeHarness();
-    const seo = h.as(await h.token(DEMO.seoLead));
-    const admin = h.as(await h.token(DEMO.admin));
+    const seo = h.as(await h.token(FIXTURE.seoLead));
+    const admin = h.as(await h.token(FIXTURE.admin));
     const unread = async (who: typeof seo) => ((await who.get('/api/notifications')).body as { readAt?: string }[]).filter((n) => !n.readAt).length;
     const mine = (await seo.get('/api/notifications')).body as { recipientId: string }[];
     expect(mine.length).toBeGreaterThan(0);

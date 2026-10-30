@@ -5,7 +5,7 @@ import { createContainer, type Container } from '../../src/container';
 import type { FetchLike } from '../../src/connectors/http';
 import { classifyCwv, computeTiers, cruxCwv, ga4Tiers, gscSearch, runAllSyncs } from '../../src/sync';
 import { json, mockFetch, serviceAccountJson, SECRETS, text } from '../connectors/helpers';
-import { DEMO, makeHarness } from '../api/helpers';
+import { FIXTURE, makeHarness } from '../api/helpers';
 
 /**
  * Connector data syncs (PDF §3.1 tiers, §6.3 striking distance, §4.4 CrUX, §15 data sources).
@@ -19,8 +19,8 @@ const CREDS = {
 };
 const NOW = new Date('2026-10-12T06:00:00.000Z');
 
-async function container(fetchImpl: FetchLike, opts: { demo?: boolean; connected?: ('ga4' | 'gsc' | 'psi_crux')[] } = {}): Promise<Container> {
-  const env = loadEnv({ NODE_ENV: 'test', SEED_DEMO_DATA: opts.demo ? 'true' : 'false', SESSION_SECRET: 's'.repeat(40), LOG_LEVEL: 'silent', ...CREDS });
+async function container(fetchImpl: FetchLike, opts: { fixtures?: boolean; connected?: ('ga4' | 'gsc' | 'psi_crux')[] } = {}): Promise<Container> {
+  const env = loadEnv({ NODE_ENV: 'test', SEED_TEST_FIXTURES: opts.fixtures ? 'true' : 'false', SESSION_SECRET: 's'.repeat(40), LOG_LEVEL: 'silent', ...CREDS });
   const c = await createContainer({ env, fetchImpl, clock: () => NOW });
   // A passed connection test is what makes an integration "connected" (registry gate) — record one per integration.
   for (const id of opts.connected ?? ['ga4', 'gsc', 'psi_crux']) {
@@ -113,13 +113,13 @@ describe('GA4 sync → page value and tiers', () => {
     expect((await c.repos.integrationTests.get('ga4'))?.lastSuccessfulSyncAt).toBe(NOW.toISOString());
   });
 
-  it('never touches DEMO inventory', async () => {
+  it('never touches FIXTURE inventory', async () => {
     const f = mockFetch((url) => (url.includes('oauth2') ? tokenOk() : json(200, { rowCount: 1, rows: [ga4Row('/products/x', 'Organic Search', 1, 1)] })));
-    const c = await container(f, { demo: true });
-    const demoBefore = (await c.repos.sitePages.list()).filter((p) => p.source === 'demo');
+    const c = await container(f, { fixtures: true });
+    const sampleBefore = (await c.repos.sitePages.list()).filter((p) => p.source === 'sample');
     await ga4Tiers(c.ctx, { fetchImpl: f });
-    const demoAfter = (await c.repos.sitePages.list()).filter((p) => p.source === 'demo');
-    expect(demoAfter).toEqual(demoBefore);
+    const sampleAfter = (await c.repos.sitePages.list()).filter((p) => p.source === 'sample');
+    expect(sampleAfter).toEqual(sampleBefore);
   });
 });
 
@@ -135,14 +135,14 @@ describe('Search Console sync', () => {
     void url;
   };
 
-  it('replaces the DEMO visibility series and striking list with live data, keeps the latest 28 days', async () => {
+  it('replaces the FIXTURE visibility series and striking list with live data, keeps the latest 28 days', async () => {
     const f = mockFetch((url, init) => (url.includes('oauth2') ? tokenOk() : gsc(url, JSON.parse(String(init?.body)))));
-    const c = await container(f, { demo: true });
+    const c = await container(f, { fixtures: true });
     const res = await gscSearch(c.ctx, { fetchImpl: f });
     expect(res.ran && res.ok).toBe(true);
     const m = await c.repos.metrics.get();
     expect(m.visibility).toHaveLength(28);
-    expect(m.visibility.every((p) => p.source === 'live')).toBe(true); // never mixed with DEMO points
+    expect(m.visibility.every((p) => p.source === 'live')).toBe(true); // never mixed with FIXTURE points
     expect(m.striking).toHaveLength(1);
     expect(m.striking[0]).toMatchObject({ query: 'led lamp wholesale', position: 8.2, impressions: 900, ctr: 1.3, source: 'live' });
     expect(f.calls.some((x) => x.url.includes(encodeURIComponent('sc-domain:deodap.in')))).toBe(true);
@@ -187,13 +187,13 @@ describe('CrUX sync', () => {
       if (b.url.includes('/collections/')) return json(404, { error: { code: 404, message: 'chrome ux report data not found' } });
       return record(2600, 210, 0.3);
     });
-    const c = await container(f, { demo: true });
+    const c = await container(f, { fixtures: true });
     await addPage(c, '/collections/diwali', 'collection', { tier: 1 });
     await addPage(c, '/products/led-lamp', 'product', { tier: 1 });
     const res = await cruxCwv(c.ctx, { fetchImpl: f });
     expect(res.ran && res.ok).toBe(true);
     const cwv = (await c.repos.metrics.get()).cwv;
-    expect(cwv.every((x) => x.source === 'live')).toBe(true); // DEMO series replaced, not mixed
+    expect(cwv.every((x) => x.source === 'live')).toBe(true); // FIXTURE series replaced, not mixed
     expect(cwv.find((x) => x.template === 'origin')?.status).toBe('good');
     expect(cwv.find((x) => x.template === 'home')?.status).toBe('poor');
     expect(cwv.find((x) => x.template === 'product')?.status).toBe('poor'); // CLS 0.3
@@ -269,9 +269,9 @@ describe('gating, failure handling and secrecy', () => {
 
   it('POST /api/integrations/:id/sync requires integrations.manage and rejects unknown ids', async () => {
     const h = await makeHarness();
-    const dev = h.as(await h.token(DEMO.developer));
+    const dev = h.as(await h.token(FIXTURE.developer));
     expect((await dev.post('/api/integrations/ga4/sync')).status).toBe(403);
-    const admin = h.as(await h.token(DEMO.admin));
+    const admin = h.as(await h.token(FIXTURE.admin));
     expect((await admin.post('/api/integrations/slack/sync')).status).toBe(400);
     const notConnected = await admin.post('/api/integrations/ga4/sync');
     expect(notConnected.status).toBe(200);

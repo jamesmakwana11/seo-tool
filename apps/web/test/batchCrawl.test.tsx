@@ -28,7 +28,6 @@ function batchOf(ids: string[]): CrawlBatch {
 }
 
 vi.mock('@/api/client', () => ({
-  API_MODE: 'http',
   api: {
     listCrawlBatches: async () => (fake.batch ? [fake.batch] : []),
     startCrawlBatch: async (input: CrawlBatchInput) => { fake.started.push(input); fake.batch = batchOf(input.websiteIds); return fake.batch; },

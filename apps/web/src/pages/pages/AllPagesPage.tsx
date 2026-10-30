@@ -80,7 +80,7 @@ export default function AllPagesPage() {
         </Panel>
       ) : (
         <div className="space-y-5">
-          {run.source !== 'live' && <Notice tone="demo" demoData>This crawl is sample data: pages carry only the fields the sample recorded, so many checks cannot be judged.</Notice>}
+          {run.source !== 'live' && <Notice tone="caution">This crawl is sample data: pages carry only the fields the sample recorded, so many checks cannot be judged.</Notice>}
           {summary.error && <Notice tone="crit" title="Pages could not be loaded">{errorMessage(summary.error)}</Notice>}
           <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
             <Panel title="Page scores" subtitle={summary.data ? `${fmtNum(summary.data.total)} URLs in ${run.id}. Each page starts at 100: −15 per problem to fix, −5 per improvement.` : undefined}>

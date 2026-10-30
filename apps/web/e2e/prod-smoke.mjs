@@ -1,5 +1,5 @@
 /**
- * Production smoke test — runs against a deployed server (real sign-in, no DEV role preview, no DEMO seed).
+ * Production smoke test — runs against a deployed server (real sign-in).
  *
  *   BASE_URL=https://your-host ADMIN_EMAIL=… ADMIN_PASSWORD=… node e2e/prod-smoke.mjs [--write]
  *

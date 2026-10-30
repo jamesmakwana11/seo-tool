@@ -21,7 +21,7 @@ export default {
         low: { DEFAULT: '#6B8FE8', tint: '#EFF3FD', ink: '#3E66C9' }, // information
         opp: { DEFAULT: '#3A9FB0', tint: '#ECF7F9', ink: '#24788A' },
         ok: { DEFAULT: '#27AE79', tint: '#E9F7F1', ink: '#1A7D55' },
-        demo: { DEFAULT: '#A0650A', tint: '#FDF3DF' },
+        caution: { DEFAULT: '#A0650A', tint: '#FDF3DF' },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

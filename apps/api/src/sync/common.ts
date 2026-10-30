@@ -177,11 +177,11 @@ export function normalizePath(input: string, siteHost?: string): string | undefi
 /** Templates for which a sync may create a SitePage that the crawler has not seen yet. */
 const CREATABLE: PageTemplate[] = ['home', 'collection', 'product', 'blog_article', 'blog_index', 'page'];
 
-/** Live (non-DEMO) site pages indexed by normalised path. DEMO inventory is never written with live data. */
+/** Live (non-sample) site pages indexed by normalised path. sample inventory is never written with live data. */
 export async function livePagesByPath(ctx: Ctx): Promise<Map<string, SitePage[]>> {
   const out = new Map<string, SitePage[]>();
   for (const p of await ctx.repos.sitePages.list()) {
-    if (p.source === 'demo') continue;
+    if (p.source === 'sample') continue;
     const key = normalizePath(p.path || p.url);
     if (!key) continue;
     { const list = out.get(key); if (list) list.push(p); else out.set(key, [p]); }
@@ -217,9 +217,9 @@ export async function upsertLivePage(ctx: Ctx, byPath: Map<string, SitePage[]>, 
 
 // ---------------------------------------------------------------------------------------------- metrics series
 
-/** True when a series still holds DEMO data (doc-level DEMO flag or any DEMO point) — it must be replaced, not merged. */
-export function seriesIsDemo(m: MetricsDoc, series: { source: DataSource }[]): boolean {
-  return m.source === 'demo' || series.some((p) => p.source === 'demo');
+/** True when a series still holds sample data (doc-level sample flag or any sample point) — it must be replaced, not merged. */
+export function seriesIsSample(m: MetricsDoc, series: { source: DataSource }[]): boolean {
+  return m.source === 'sample' || series.some((p) => p.source === 'sample');
 }
 
 export const ymd = (d: Date) => d.toISOString().slice(0, 10);

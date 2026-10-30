@@ -160,10 +160,10 @@ export function computeTiers(pages: SitePage[], cfg: Pick<SentinelConfig, 'tiers
   return out;
 }
 
-/** Recomputes tiers on the live page inventory (DEMO pages untouched) and persists changes. */
+/** Recomputes tiers on the live page inventory (sample pages untouched) and persists changes. */
 export async function recomputeTiers(ctx: Ctx): Promise<{ counts: Record<PageTier, number>; changed: number }> {
   const cfg = await ctx.repos.config.get();
-  const pages = (await ctx.repos.sitePages.list()).filter((p) => p.source !== 'demo');
+  const pages = (await ctx.repos.sitePages.list()).filter((p) => p.source !== 'sample');
   const assigned = computeTiers(pages, cfg);
   const counts: Record<PageTier, number> = { 1: 0, 2: 0, 3: 0 };
   let changed = 0;

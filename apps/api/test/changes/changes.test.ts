@@ -12,7 +12,7 @@ import { SYSTEM_ACTOR, type Ctx } from '../../src/services/context';
 function harness(over: Record<string, string> = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-changes-unit-'));
   let now = new Date('2026-10-01T00:00:00Z');
-  const env = loadEnv({ NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'u'.repeat(40), LOG_LEVEL: 'silent', CHANGE_SNAPSHOT_DIR: dir, ...over });
+  const env = loadEnv({ NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'u'.repeat(40), LOG_LEVEL: 'silent', CHANGE_SNAPSHOT_DIR: dir, ...over });
   const ctx = {
     env, clock: () => now, log: { info: () => undefined, warn: () => undefined, error: () => undefined },
     repos: { permissions: { get: async () => undefined } },

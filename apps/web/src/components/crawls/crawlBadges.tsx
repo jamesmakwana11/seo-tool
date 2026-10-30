@@ -1,7 +1,7 @@
 import type { CrawlRun, CrawlStatus, CrawlType, VerificationAttempt } from '@sentinel/shared';
 import { Badge, type Tone } from '@/components/ui/primitives';
 
-export const CRAWL_TYPE_LABELS: Record<CrawlType, string> = { full: 'Full crawl', smart: 'Smart crawl', reverify: 'Re-verification crawl' };
+export const CRAWL_TYPE_LABELS: Record<CrawlType, string> = { full: 'Full crawl', smart: 'Smart crawl', reverify: 'Re-verification crawl', sync: 'Sync (changed pages)' };
 export const CRAWL_TRIGGER_LABELS: Record<CrawlRun['trigger'], string> = { schedule: 'Schedule', manual: 'Manual', webhook: 'Webhook', verification: 'Verification' };
 
 const STATUS_TONE: Record<CrawlStatus, Tone> = { scheduled: 'neutral', queued: 'neutral', running: 'signal', completed: 'ok', failed: 'crit', cancelled: 'neutral' };
@@ -12,7 +12,7 @@ const STATUS_LABEL: Record<CrawlStatus, string> = { scheduled: 'Scheduled', queu
  * "Simulated — no URLs fetched" rather than a green Completed.
  */
 export function CrawlStatusBadge({ run }: { run: Pick<CrawlRun, 'status' | 'source'> }) {
-  if (run.source === 'simulated' && run.status === 'completed') return <Badge tone="demo" title="Simulated run: mock mode makes no HTTP requests and produces no findings.">Simulated — no URLs fetched</Badge>;
+  if (run.source === 'simulated' && run.status === 'completed') return <Badge tone="caution" title="Simulated run: mock mode makes no HTTP requests and produces no findings.">Simulated — no URLs fetched</Badge>;
   return <Badge tone={STATUS_TONE[run.status]} icon={run.status === 'running' ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-signal" aria-hidden /> : undefined}>{STATUS_LABEL[run.status]}</Badge>;
 }
 

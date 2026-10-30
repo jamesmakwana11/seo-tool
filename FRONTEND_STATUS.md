@@ -1,18 +1,24 @@
 # FRONTEND_STATUS — DeoDap SEO Sentinel (Phase 1)
 
+> **Update 30 Oct 2026.** The web app now always talks to the API server. The in-browser adapter, its sample data, the
+> development role preview and all sample-data labels were removed at the owner's request. The web tests use a fixture
+> adapter (`apps/web/test/support/fixtureApi.ts`). New: **Website sync** in the Crawl Center and on the Dashboard (Sync Now,
+> Auto Sync every 12 hours, last and next sync, history) — see `docs/WEBSITE_SYNC.md`. The sections below record Phase 1 as
+> it was evaluated.
+
 _Last updated: 14 Oct 2026 · Phase 1 gate evaluated: **PASS with documented limitations** · Phase 2 backend now exists (see `BACKEND_STATUS.md`); no database._
 
 > **Phase 2 update.** The UI now also runs against the real API (`VITE_API_MODE=http`, HTTP client in `apps/web/src/api/http/`): the same
-> 540-visit smoke passes with 0 failures against the server. Added since the Phase 1 gate: a server DEMO-data banner (`serverDemoData`),
+> 540-visit smoke passes with 0 failures against the server. Added since the Phase 1 gate: a server sample-data banner (`server sample-data flag`),
 > the development role preview in dev builds of http mode, and **Sync data now** on GA4 / Search Console / CrUX integration cards (failed
-> or skipped syncs are shown as errors, never as success). The http build excludes the mock adapter and DEMO seed (main chunk 386 kB).
+> or skipped syncs are shown as errors, never as success). The http build excludes the mock adapter and sample seed (main chunk 386 kB).
 
 ## 1. What Phase 1 is (and is not)
 
-`apps/web` is a complete React/TypeScript single-page app running against an **in-browser DEMO adapter**
+`apps/web` is a complete React/TypeScript single-page app running against an **in-browser sample adapter**
 (`apps/web/src/api/mock/mockApi.ts`) that implements the full `SentinelApi` contract (`packages/shared/src/api.ts`).
 
-- All data is **deterministic DEMO data** (`packages/shared/src/seed/*`), labelled DEMO/SIMULATED on every screen.
+- All data is **deterministic sample data** (`packages/shared/src/seed/*`), labelled sample/SIMULATED on every screen.
 - State lives **in browser memory only** — reloading the page restores the seed. Nothing is persisted.
 - Nothing is connected to live analytics, Search Console, Shopify, backlink APIs, AI engines or notification channels.
   Crawls started from the UI are **SIMULATED** (no HTTP requests). Deliveries report `skipped_not_configured`.
@@ -21,7 +27,7 @@ _Last updated: 14 Oct 2026 · Phase 1 gate evaluated: **PASS with documented lim
   end-to-end. The backend (Phase 2) must enforce them independently server-side.
 
 Run it: `npm install` at the repo root, then `npm run dev:web` (http://localhost:5173). Sign in with the **Development role preview**
-buttons (Admin / SEO Specialist / Developer) or any demo email with password `Sentinel@Demo1`.
+buttons (Admin / SEO Specialist / Developer) or any sample account email with password `<fixture password>`.
 
 ## 2. Screens implemented
 
@@ -76,10 +82,10 @@ Teams (1into2 SEO / Content / Development) are separate from roles throughout.
 
 | Evidence | What it proves |
 |---|---|
-| `packages/shared/test/rules.test.ts` — **62/62 pass** | Check library transcription counts per PDF table; severity matrix (check × tier, thresholds from config); SLA (same-day IST / 7 / 30); escalation (Tier-1 promotion, SLA breach, ≥3 template grouping, 24h unallocated clock); priority formula + tier tie-break; health score weights/normalisation/Tier-1 5×; task transitions & role rules (dev can't self-review, only system verifies); every DEMO issue yields a complete Fix Card; root-cause inference; CTR draft variants; AI-content heuristics; all PDF §10.2 example rules; seed integrity |
+| `packages/shared/test/rules.test.ts` — **62/62 pass** | Check library transcription counts per PDF table; severity matrix (check × tier, thresholds from config); SLA (same-day IST / 7 / 30); escalation (Tier-1 promotion, SLA breach, ≥3 template grouping, 24h unallocated clock); priority formula + tier tie-break; health score weights/normalisation/Tier-1 5×; task transitions & role rules (dev can't self-review, only system verifies); every sample issue yields a complete Fix Card; root-cause inference; CTR draft variants; AI-content heuristics; all PDF §10.2 example rules; seed integrity |
 | `apps/web/test/mockApi.test.ts` — **20/20 pass** | Auth (bad creds, inactive accounts, reset round trip, no account enumeration); permission enforcement (developer blocked from allocate/settings/crawl/roles, team-scoped task visibility, admin lock-out protection); one-tap allocation → task with Fix Card description, P1 from Critical, SLA due date, trail + audit; reallocation notifies both team leads; bulk template allocation; full lifecycle with invalid transitions, required notes, developer submit ≠ verified, SEO review, simulated verification fail → back to work; connector checks stay `pending_data`; manual attestation never verifies; not-an-issue requires reason + exclusion; report delivery never claimed; integrations never "connected", secrets rejected; dry run required before enabling, LLM rules need provider; weights must sum to 100%; simulated crawl labelled; brief only from approved gap |
 | `apps/web/test/components.test.tsx` — **4/4 pass** | Health dial renders 7 weighted arcs; badges carry text; SLA breach label; Fix Card renders every PDF §11.1 section incl. root cause and human-approval notice |
-| `apps/web/e2e/smoke.mjs` — **540 visits, 0 failures** | 60 routes × 3 roles × widths 1440/768/390: no page errors, no console errors, no horizontal overflow, every page has a heading or an explicit access-denied/other-team message, every page shows a DEMO/SIMULATED indicator. Interactions: one-tap allocation creates a task; keyboard focus visible; global search finds an issue; developer denied Roles page and nav entry hidden |
+| `apps/web/e2e/smoke.mjs` — **540 visits, 0 failures** | 60 routes × 3 roles × widths 1440/768/390: no page errors, no console errors, no horizontal overflow, every page has a heading or an explicit access-denied/other-team message, every page shows a sample/SIMULATED indicator. Interactions: one-tap allocation creates a task; keyboard focus visible; global search finds an issue; developer denied Roles page and nav entry hidden |
 | `apps/web/e2e/a11y.mjs` — **0 violations** | axe-core WCAG 2.0/2.1 A + AA on 19 key screens (login, dashboard, health, issues, issue detail, kanban, task list, task detail, modules, crawls, opportunities, brief editor, daily digest, rule builder, thresholds, employees, notifications) |
 
 Additional manual verification during build: agents exercised disavow approval, QA-gate approval (note validation), opportunity
@@ -110,7 +116,7 @@ issue detail, task detail, Kanban.
 
 ## 7. Known issues & limitations (frontend)
 
-- **DEMO data only.** Health history, CWV, indexation, visibility, backlinks, AI visibility, keyword gaps and competitors are sample
+- **sample data only.** Health history, CWV, indexation, visibility, backlinks, AI visibility, keyword gaps and competitors are sample
   data. Health history does not change when you fix issues during a session (the current score does).
 - **Persistence:** none. Reload resets all changes. By design until the database phase is authorised.
 - Only the latest completed smart crawl carries URL-level results and a sitemap diff; older runs show empty states.
@@ -119,7 +125,7 @@ issue detail, task detail, Kanban.
 - API gaps noted while building (to address in Phase 2 API design): no task title/description edit endpoint; no per-view task
   count endpoint (overview pages several queries); link-prospect status is read-only; past report snapshots are not stored (exports
   regenerate from current data); weekly report `backlinkDelta` for competitors is 0 (no competitor link series); digest lines don't
-  carry template-group flags; `listBacklinks/getAiVisibility/getLocalHealth` return `available:true` with a DEMO note in mock mode.
+  carry template-group flags; `listBacklinks/getAiVisibility/getLocalHealth` return `available:true` with a sample note in mock mode.
 - Main JS chunk > 500 kB (recharts + seed in the mock adapter). Acceptable for an internal tool; the seed moves server-side in Phase 2.
 
 ## 8. Phase 1 completion gate (prompt §8)

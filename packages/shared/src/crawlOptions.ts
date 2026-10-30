@@ -10,7 +10,7 @@ import { PAGE_AUDIT_TODO_LABELS } from './pageAudit';
  * Pages one Smart Crawl may fetch (highest priority first: homepage, collections, top products, changed and
  * re-verify URLs, then what they link to). A Full Crawl has no such cap.
  */
-export const SMART_CRAWL_PAGE_BUDGET = 1000;
+export const SMART_CRAWL_PAGE_BUDGET = 10000;
 
 /**
  * Bounds for the numeric settings. Pages and depth have NO upper bound: null means "crawl every page" / "follow links

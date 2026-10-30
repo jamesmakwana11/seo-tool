@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { AuditModule, CrawlType, IntegrationId, Role } from '@sentinel/shared';
+import type { AuditModule, CrawlType, IntegrationId } from '@sentinel/shared';
 import { badRequest } from '../lib/errors';
 import type { Container } from '../container';
 import { need, type Actor } from '../services/context';
@@ -48,12 +48,11 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
 
   // -------------------------------------------------------------- auth
   add({ method: 'post', path: '/api/auth/login', description: 'Sign in', public: true, handle: (req) => auth.login(str(req.body.email, 'email'), str(req.body.password, 'password')) });
-  add({ method: 'post', path: '/api/auth/preview', description: 'DEVELOPMENT role preview', public: true, handle: (req) => auth.previewAs(str(req.body.role, 'role') as Role) });
   add({ method: 'post', path: '/api/auth/logout', description: 'Sign out', public: true, raw: false, handle: async (req) => { const h = req.header('Authorization'); await auth.logout(h?.startsWith('Bearer ') ? h.slice(7) : undefined); return { ok: true }; } });
   add({ method: 'get', path: '/api/auth/me', description: 'Current session user', handle: async (req) => (await auth.authenticate(req.token)).user });
   add({ method: 'post', path: '/api/auth/request-reset', description: 'Request a password reset', public: true, handle: (req) => auth.requestPasswordReset(str(req.body.email, 'email')) });
   add({ method: 'post', path: '/api/auth/reset', description: 'Complete a password reset', public: true, handle: (req) => auth.resetPassword(str(req.body.token, 'token'), str(req.body.newPassword, 'newPassword')) });
-  add({ method: 'patch', path: '/api/auth/profile', description: 'Update own profile', handle: async (req) => auth.updateProfile(actorOf(req), req.body ?? {}, actorOf(req).demo) });
+  add({ method: 'patch', path: '/api/auth/profile', description: 'Update own profile', handle: async (req) => auth.updateProfile(actorOf(req), req.body ?? {}) });
 
   // -------------------------------------------------------------- dashboard & health
   add({ method: 'get', path: '/api/dashboard', permission: 'dashboard.view', description: 'Dashboard aggregates', handle: (req) => insights.dashboard(actorOf(req)) });
@@ -69,9 +68,9 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
   // -------------------------------------------------------------- issues
   add({ method: 'get', path: '/api/issues', permission: 'issues.view', description: 'Issues board', handle: (req) => issues.list(actorOf(req), issueFilter(req.query)) });
   add({ method: 'get', path: '/api/issues/groups', permission: 'issues.view', description: 'Template-level issue groups', handle: (req) => issues.listGroups(actorOf(req)) });
-  add({ method: 'get', path: '/api/issues/exclusions', permission: 'issues.view', description: 'Not-an-issue exclusions', handle: (req) => issues.listExclusions(actorOf(req)) });
+  add({ method: 'get', path: '/api/issues/exclusions', permission: 'issues.manage_exclusions', description: 'Not-an-issue exclusions', handle: (req) => issues.listExclusions(actorOf(req)) });
   add({ method: 'delete', path: '/api/issues/exclusions/:id', permission: 'issues.manage_exclusions', description: 'Remove an exclusion', handle: async (req) => { await issues.removeExclusion(actorOf(req), prm(req, 'id')); return { ok: true }; } });
-  add({ method: 'get', path: '/api/issues/allocation-history', permission: 'issues.view', description: 'Allocation history', handle: (req) => issues.allocationHistory(actorOf(req)) });
+  add({ method: 'get', path: '/api/issues/allocation-history', permission: 'employees.view', description: 'Allocation history', handle: (req) => issues.allocationHistory(actorOf(req)) });
   add({ method: 'get', path: '/api/issues/:id', permission: 'issues.view', description: 'Issue detail + Fix Card', handle: (req) => issues.get(actorOf(req), prm(req, 'id')) });
   add({ method: 'post', path: '/api/issues/:id/allocate', permission: 'issues.allocate', description: 'One-tap allocation', handle: (req) => issues.allocate(actorOf(req), prm(req, 'id'), str(req.body.team, 'team') as never, optStr(req.body.reason)) });
   add({ method: 'post', path: '/api/issues/groups/:groupId/allocate', permission: 'issues.allocate', description: 'Bulk allocate a template group', handle: (req) => issues.bulkAllocate(actorOf(req), prm(req, 'groupId'), str(req.body.team, 'team') as never, optStr(req.body.reason)) });
@@ -237,7 +236,8 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
     handle: async (req) => { const to = await handleOAuthCallback(req, c.env); req.res!.setHeader('Cache-Control', 'no-store'); req.res!.redirect(302, to); },
   });
   add({ method: 'get', path: '/api/monitor', permission: 'crawls.view', description: 'Incremental monitoring: last run, open errors and recent changes (new pages, SEO changes, errors, resolved)', handle: (req) => monitor.get(actorOf(req)) });
-  add({ method: 'post', path: '/api/monitor/run', permission: 'crawls.run', description: 'Run an incremental check now: changed sitemap entries, Shopify updates and webhooks → conditional requests to those pages only', handle: (req) => monitor.run(actorOf(req)) });
+  add({ method: 'post', path: '/api/monitor/run', permission: 'crawls.run', description: 'Sync Now: find new, changed and removed URLs (sitemaps, Shopify updates, webhooks, ETag / content checks) and crawl only those', handle: (req) => monitor.run(actorOf(req)) });
+  add({ method: 'patch', path: '/api/monitor/settings', permission: 'crawls.configure', description: 'Auto Sync on / off (body: autoSync)', handle: (req) => monitor.updateSettings(actorOf(req), req.body ?? {}) });
   add({ method: 'put', path: '/api/shopify/app-credentials', permission: 'integrations.manage', description: 'Save the Shopify app Client ID, Client secret (stored encrypted, never returned) and app URL for this website', handle: (req) => shopify.saveAppCredentials(actorOf(req), (req.body ?? {}) as Record<string, unknown>) });
   add({ method: 'delete', path: '/api/shopify/app-credentials', permission: 'integrations.manage', description: 'Remove the Shopify app credentials entered in Sentinel', handle: (req) => shopify.removeAppCredentials(actorOf(req)) });
   add({ method: 'post', path: '/api/shopify/disconnect', permission: 'integrations.manage', description: 'Drop the Shopify token from server memory', handle: (req) => shopify.disconnect(actorOf(req)) });
@@ -318,7 +318,7 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
   add({ method: 'put', path: '/api/alert-rules', permission: 'notifications.configure', description: 'Update real-time alert routing', handle: (req) => admin.updateAlertRules(actorOf(req), req.body) });
 
   // -------------------------------------------------------------- people & permissions
-  add({ method: 'get', path: '/api/employees', permission: 'employees.view', description: 'Employees', handle: (req) => admin.listEmployees(actorOf(req)) });
+  add({ method: 'get', path: '/api/employees', permission: 'employees.view', description: 'Employees (with issues.view only: names and roles for the issue board)', handle: (req) => admin.listEmployees(actorOf(req)) });
   add({ method: 'post', path: '/api/employees', permission: 'employees.manage', description: 'Invite an employee', handle: (req) => admin.createEmployee(actorOf(req), req.body) });
   add({ method: 'patch', path: '/api/employees/:id', permission: 'employees.manage', description: 'Update an employee', handle: (req) => admin.updateEmployee(actorOf(req), prm(req, 'id'), req.body ?? {}) });
   add({ method: 'get', path: '/api/permissions', permission: 'employees.view', description: 'Permission matrix', handle: (req) => admin.getPermissionMatrix(actorOf(req)) });

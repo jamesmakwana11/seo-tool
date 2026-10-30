@@ -3,7 +3,7 @@ import type { StrikingDistanceQuery } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, DemoBadge, EmptyState, Notice, PageHeader, Panel, Tabs } from '@/components/ui/primitives';
+import { Async, Badge, EmptyState, Notice, PageHeader, Panel, Tabs } from '@/components/ui/primitives';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useUrlFilters } from '@/components/ui/filters';
 import { SourceBadge } from '@/components/domain/badges';
@@ -21,7 +21,6 @@ export default function KeywordResearchPage() {
       <PageHeader
         title="Keyword research"
         description="Daily quick wins from Search Console: queries in striking distance (positions 5–20 with meaningful impressions) and top-5 queries whose CTR is below the position benchmark, with rewrite suggestions (PDF §6.3)."
-        meta={<DemoBadge />}
       />
       <Tabs<Tab>
         className="mb-5"
@@ -58,7 +57,7 @@ function StrikingTab() {
     <Async q={q} rows={8}>
       {(rows) => (
         <div className="space-y-3">
-          <Notice tone="demo" demoData>Search Console is not connected — these queries are DEMO data. Live striking-distance lists need the Google Search Console API connection (Settings → Integrations).</Notice>
+          <Notice tone="caution">Search Console is not connected. Live striking-distance lists need the Google Search Console API connection (Settings → Integrations).</Notice>
           <DataTable
             rows={rows}
             columns={columns}
@@ -84,7 +83,7 @@ function CtrTab() {
     <Async q={q} rows={8} empty={(rows) => rows.length === 0 && <Panel><EmptyState title="No CTR rewrites needed" description="Every top-5 query is at or above its position CTR benchmark." /></Panel>}>
       {(rows) => (
         <div className="space-y-5">
-          <Notice tone="demo" title="Heuristic estimate — not measured CTR">
+          <Notice tone="caution" title="Heuristic estimate — not measured CTR">
             Variant scores (0–100) rank drafts by length, keyword placement and value cues such as No MOQ and COD. They are not predicted or measured click-through rates. Measure real CTR in Search Console 2–4 weeks after a change goes live.
           </Notice>
           {rows.map((c) => (

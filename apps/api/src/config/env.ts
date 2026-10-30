@@ -28,8 +28,8 @@ const schema = z.object({
   /** How long start-up waits for the database (a sleeping / restarting database). */
   DATABASE_WAIT_SECONDS: z.coerce.number().int().min(0).max(600).default(60),
   SESSION_TTL_HOURS: z.coerce.number().min(0).default(0),
-  /** Load the deterministic DEMO seed into the in-memory repositories on start (development default). */
-  SEED_DEMO_DATA: bool(true),
+  /** Automated tests only: load the fixed test dataset into empty repositories. Ignored unless NODE_ENV=test. */
+  SEED_TEST_FIXTURES: bool(false),
   /**
    * Websites that must always be in the website list: created at start-up when missing (never changed or removed once
    * they exist; with DATABASE_URL they are stored like any added website). Comma- or newline-separated entries
@@ -37,8 +37,6 @@ const schema = z.object({
    * wordpress or custom). "none" = no seeding. In production the default is DEFAULT_SEED_WEBSITES.
    */
   SEED_WEBSITES: z.string().optional(),
-  /** DEVELOPMENT ONLY: allow /auth/preview role switching with mock users. Refused when NODE_ENV=production. */
-  ALLOW_DEV_ROLE_PREVIEW: bool(true),
   /** DEVELOPMENT ONLY: return the password-reset token in the API response when no email adapter is configured. */
   DEV_EXPOSE_RESET_TOKEN: bool(true),
   /** Run the in-process scheduler (crawls, nightly escalations, 08:00 IST digest). */
@@ -51,10 +49,17 @@ const schema = z.object({
    * refuses to start unless this is explicitly true, so nobody deploys it believing data is persisted.
    */
   ALLOW_EPHEMERAL_STORAGE: bool(false),
-  /** First admin account, created on a clean start when no employees exist. The password is read once, hashed, never logged. */
+  /** First account (Super Admin), created on a clean start when no employees exist. The password is read once, hashed, never logged. */
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_NAME: z.string().min(2).optional(),
   ADMIN_INITIAL_PASSWORD: z.string().optional(),
+  /**
+   * An Admin-role account (Overview and SEO operations only), created at start-up when no employee has this email.
+   * An existing account is never changed (its password may have been changed since). Read once, hashed, never logged.
+   */
+  SITE_ADMIN_EMAIL: z.string().email().optional(),
+  SITE_ADMIN_NAME: z.string().min(2).optional(),
+  SITE_ADMIN_INITIAL_PASSWORD: z.string().optional(),
   /** Directory with the built web app (apps/web/dist). When set, the API also serves the SPA from the same origin. */
   WEB_DIST_DIR: z.string().optional(),
   /** Express "trust proxy" — hops in front of the app (1 behind a single platform load balancer). */
@@ -176,16 +181,18 @@ const schema = z.object({
   IMAGE_AUDIT_MAX_CONCURRENT: z.coerce.number().int().min(1).max(11).default(2),
   IMAGE_AUDIT_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(4),
   /** Pages a smart crawl may fetch (its priority budget). */
-  /** Pages a Smart Crawl fetches (highest priority first). At most SMART_CRAWL_PAGE_BUDGET (1,000). */
-  CRAWLER_SMART_MAX_PAGES: z.coerce.number().int().min(10).max(1000).default(1000),
+  /** Pages a Smart Crawl fetches (highest priority first). At most SMART_CRAWL_PAGE_BUDGET (10,000). */
+  CRAWLER_SMART_MAX_PAGES: z.coerce.number().int().min(10).max(10000).default(10000),
   /** Finished crawls whose page rows stay available for paging and export (older ones are deleted from disk). */
   CRAWLER_KEEP_RESULTS: z.coerce.number().int().min(1).max(50).default(3),
   /** Change Monitor: compare every crawl with the last valid crawl (snapshots on disk, no database). */
   CHANGE_MONITOR_ENABLED: bool(true),
-  /** Incremental monitoring (sitemap / Shopify / webhook signals → targeted conditional requests): minutes between runs; 0 = off. */
-  MONITOR_INTERVAL_MINUTES: z.coerce.number().int().min(0).max(1440).default(60),
-  /** Most pages one incremental run requests; the rest wait for the next run. */
-  MONITOR_MAX_CHECKS: z.coerce.number().int().min(1).max(2000).default(200),
+  /** Auto Sync: minutes between automatic website syncs (default 720 = every 12 hours); 0 = Auto Sync off on this server. */
+  MONITOR_INTERVAL_MINUTES: z.coerce.number().int().min(0).max(10080).default(720),
+  /** Stored pages content-checked per sync (ETag / Last-Modified + SEO fingerprint), least recently checked first. */
+  MONITOR_MAX_CHECKS: z.coerce.number().int().min(1).max(2000).default(300),
+  /** Website sync: URLs crawled per sync at most (the rest wait for the next sync). */
+  SYNC_MAX_URLS: z.coerce.number().int().min(10).max(10000).default(2000),
   /**
    * Folder for Change Monitor snapshots (default: the system temp folder /sentinel-changes). On Render the filesystem is
    * EPHEMERAL: history is lost on every restart / deploy unless this points at a mounted persistent disk.
@@ -296,18 +303,14 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
     throw new Error(`Invalid environment configuration: ${names}`);
   }
   const env = parsed.data;
+  // The test dataset (fixed accounts with published passwords) exists for automated tests only.
+  if (env.NODE_ENV !== 'test') env.SEED_TEST_FIXTURES = false;
   if (env.NODE_ENV === 'production') {
     if (!env.SESSION_SECRET) throw new Error('SESSION_SECRET (≥32 chars) is required in production.');
-    // The DEMO seed contains preview accounts whose passwords are published in the repository: never load it in production.
-    if (env.SEED_DEMO_DATA && clean.SEED_DEMO_DATA !== undefined) {
-      throw new Error('SEED_DEMO_DATA=true is not allowed in production (the DEMO accounts have publicly known passwords). Remove it or set it to false.');
-    }
-    env.SEED_DEMO_DATA = false;
     env.SEED_WEBSITES ??= DEFAULT_SEED_WEBSITES;
     if (!env.DATABASE_URL && !env.ALLOW_EPHEMERAL_STORAGE) {
       throw new Error('No database is configured: all data would be lost on every restart. Set DATABASE_URL to a PostgreSQL database (see DEPLOYMENT.md), or ALLOW_EPHEMERAL_STORAGE=true to run with temporary storage anyway (staging only).');
     }
-    env.ALLOW_DEV_ROLE_PREVIEW = false;
     env.DEV_EXPOSE_RESET_TOKEN = false;
   }
   // CRAWLER_ALLOW_LIVE=true without CRAWLER_BASE_URL is allowed: the primary website then cannot be crawled (its Crawl
@@ -315,6 +318,9 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
   // crawler is bound to that website's own URL. The crawler never falls back to a built-in website.
   if ((env.ADMIN_EMAIL || env.ADMIN_INITIAL_PASSWORD) && !(env.ADMIN_EMAIL && env.ADMIN_INITIAL_PASSWORD)) {
     throw new Error('ADMIN_EMAIL and ADMIN_INITIAL_PASSWORD must be set together.');
+  }
+  if ((env.SITE_ADMIN_EMAIL || env.SITE_ADMIN_INITIAL_PASSWORD) && !(env.SITE_ADMIN_EMAIL && env.SITE_ADMIN_INITIAL_PASSWORD)) {
+    throw new Error('SITE_ADMIN_EMAIL and SITE_ADMIN_INITIAL_PASSWORD must be set together.');
   }
   return env;
 }

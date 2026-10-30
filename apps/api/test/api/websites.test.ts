@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO, makeHarness } from './helpers';
+import { FIXTURE, makeHarness } from './helpers';
 
 /** Multi-website workspaces: each website's data is isolated; the X-Website-Id header selects the workspace. */
 describe('websites', () => {
   it('adds a website (validated, duplicate domains refused) that starts empty and never mixes data', async () => {
     const h = await makeHarness();
-    const tok = await h.token(DEMO.seoLead);
+    const tok = await h.token(FIXTURE.seoLead);
     const seo = h.as(tok);
     const site = (id: string) => ({ get: (p: string) => h.agent.get(p).set({ Authorization: `Bearer ${tok}`, 'X-Website-Id': id }), patch: (p: string, b: unknown) => h.agent.patch(p).set({ Authorization: `Bearer ${tok}`, 'X-Website-Id': id }).send(b as object) });
 
@@ -26,7 +26,7 @@ describe('websites', () => {
     expect(list.find((w) => w.id === id)).toMatchObject({ hasAuditData: false, integrationsConnected: 0 });
     expect(list.find((w) => w.id === id)!.healthScore).toBeUndefined();
 
-    // The new workspace is empty; the DEMO workspace is untouched.
+    // The new workspace is empty; the FIXTURE workspace is untouched.
     expect((await site(id).get('/api/issues')).body.total).toBe(0);
     expect((await site(id).get('/api/crawls')).body).toHaveLength(0);
     expect((await site(id).get('/api/dashboard')).body.hasAuditData).toBe(false);
@@ -47,7 +47,7 @@ describe('websites', () => {
 
   it('developers cannot add websites', async () => {
     const h = await makeHarness();
-    const dev = h.as(await h.token(DEMO.developer));
+    const dev = h.as(await h.token(FIXTURE.developer));
     expect((await dev.post('/api/websites', { name: 'Nope', url: 'nope.example.com', platform: 'custom' })).status).toBe(403);
   });
 });

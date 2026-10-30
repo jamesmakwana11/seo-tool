@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, MailCheck } from 'lucide-react';
-import { api, API_MODE } from '@/api/client';
+import { api } from '@/api/client';
 import { errorMessage } from '@/api/hooks';
 import { Button, Field, Input, Notice } from '@/components/ui/primitives';
 import { EMAIL_RE } from '@/components/misc/password';
@@ -46,10 +46,10 @@ export default function ForgotPasswordPage() {
               </p>
             </div>
           ) : (
-            <Notice tone={API_MODE === 'mock' ? 'demo' : 'med'}><span role="status">{result.note}</span></Notice>
+            <Notice tone="med"><span role="status">{result.note}</span></Notice>
           )}
           {result.devResetToken && (
-            <div className="demo-hatch rounded-ctl border border-demo/30 p-3">
+            <div className="caution-hatch rounded-ctl border border-caution/30 p-3">
               <p className="text-sm font-semibold text-[#8A5408]">Development only — never shown in production</p>
               <p className="mt-0.5 text-xs text-[#8A5408]">This server cannot send email, so the reset link is shown here instead.</p>
               <Link to={`/reset-password?token=${encodeURIComponent(result.devResetToken)}`} className="mt-2 inline-block text-sm font-medium text-signal hover:underline">Open development reset link</Link>

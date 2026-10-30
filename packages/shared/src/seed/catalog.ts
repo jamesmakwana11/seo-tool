@@ -33,13 +33,13 @@ export interface Catalog {
   productCategory: Map<string, string>; // product url -> collection handle
 }
 
-/** Builds the DEMO site inventory and computes page-value tiers per PDF §3.1. */
+/** Builds the sample site inventory and computes page-value tiers per PDF §3.1. */
 export function buildCatalog(r: Rng, now: Date): Catalog {
   const pages: SitePage[] = [];
   const home: SitePage = {
     id: 'pg-home', url: `${BASE}/`, path: '/', template: 'home', title: 'DeoDap – Wholesale Shopping India | No MOQ', tier: 1,
     tierReason: 'Homepage is always Tier 1 (PDF §3.1)', revenue90d: 0, organicSessions90d: 182000, impressions28d: 640000, clicks28d: 41000,
-    indexable: true, lastModified: addDays(now, -2).toISOString(), source: 'demo',
+    indexable: true, lastModified: addDays(now, -2).toISOString(), source: 'sample',
   };
   pages.push(home);
 
@@ -57,7 +57,7 @@ export function buildCatalog(r: Rng, now: Date): Catalog {
       id: `pg-col-${i}`, url: `${BASE}/collections/${handle}`, path: `/collections/${handle}`, template: 'collection', title: n,
       tier: 2, tierReason: '', revenue90d: Math.round(r.float(20000, 900000)), organicSessions90d: r.int(200, 40000),
       impressions28d: r.int(500, 120000), clicks28d: r.int(10, 5000), indexable: true, collectionHandle: handle,
-      lastModified: addDays(now, -r.int(1, 260)).toISOString(), source: 'demo',
+      lastModified: addDays(now, -r.int(1, 260)).toISOString(), source: 'sample',
     });
   });
   // Tier: top 20 collections by revenue OR sessions rank
@@ -80,7 +80,7 @@ export function buildCatalog(r: Rng, now: Date): Catalog {
             id: `pg-prod-${pid}`, url: `${BASE}/products/${h}`, path: `/products/${h}`, template: 'product', title: name,
             tier: 3, tierReason: '', revenue90d: Math.round(Math.pow(r.next(), 3) * 450000), organicSessions90d: r.int(0, 9000),
             impressions28d: imp, clicks28d: Math.round(imp * r.float(0, 0.06)), indexable: true, collectionHandle: handle,
-            lastModified: addDays(now, -r.int(0, 400)).toISOString(), source: 'demo',
+            lastModified: addDays(now, -r.int(0, 400)).toISOString(), source: 'sample',
           };
           products.push(prod);
           productCategory.set(prod.url, handle);
@@ -109,7 +109,7 @@ export function buildCatalog(r: Rng, now: Date): Catalog {
       id: `pg-blog-${i}`, url: `${BASE}/blogs/news/${h}`, path: `/blogs/news/${h}`, template: 'blog_article', title: t,
       tier: clicks > 0 ? 2 : 3, tierReason: clicks > 0 ? 'Blog post with clicks (PDF §3.1 Tier 2)' : 'Other indexable (Tier 3)',
       organicSessions90d: clicks * 3, impressions28d: clicks * 40, clicks28d: clicks, indexable: true,
-      lastModified: addDays(now, -r.int(5, 500)).toISOString(), source: 'demo',
+      lastModified: addDays(now, -r.int(5, 500)).toISOString(), source: 'sample',
     } satisfies SitePage;
   });
   pages.push(...blogs);
@@ -119,7 +119,7 @@ export function buildCatalog(r: Rng, now: Date): Catalog {
     pages.push({
       id: `pg-page-${i}`, url: `${BASE}/pages/${h}`, path: `/pages/${h}`, template: 'page', title: t, tier: 3,
       tierReason: 'Other indexable (Tier 3)', indexable: true, impressions28d: r.int(0, 2000), clicks28d: r.int(0, 200),
-      lastModified: addDays(now, -r.int(10, 600)).toISOString(), source: 'demo',
+      lastModified: addDays(now, -r.int(10, 600)).toISOString(), source: 'sample',
     });
   }
 

@@ -3,7 +3,7 @@ import { Check, Link2, Minus } from 'lucide-react';
 import type { AiVisibilityPrompt, AiVisibilityTrendPoint } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
-import { Async, DemoBadge, EmptyState, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
+import { Async, EmptyState, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/DataTable';
 import { TrendChart } from '@/components/ui/charts';
 import { FilterSelect } from '@/components/ui/filters';
@@ -23,7 +23,7 @@ export default function AiVisibilityPage() {
       <PageHeader
         title="AI visibility"
         description="A fixed weekly panel of ~50 buyer-intent prompts run against the major AI engines, logging whether DeoDap is mentioned or cited and which competitors are (AEO-AI-VISIBILITY, PDF §8)."
-        meta={<><DemoBadge /><span className="text-xs text-muted">Sampling requires OpenAI, Gemini and Perplexity API keys</span></>}
+        meta={<><span className="text-xs text-muted">Sampling requires OpenAI, Gemini and Perplexity API keys</span></>}
         actions={<PanelLink to="/modules/aeo">AEO module</PanelLink>}
       />
       <Async q={q} rows={10}>

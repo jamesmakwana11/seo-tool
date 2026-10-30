@@ -2,22 +2,22 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { KeyRound, LogOut } from 'lucide-react';
 import { TEAMS } from '@sentinel/shared';
-import { api, API_MODE } from '@/api/client';
+import { api } from '@/api/client';
 import { errorMessage, useApiMutation } from '@/api/hooks';
 import { useAuth, useUser } from '@/auth/AuthContext';
 import { useEmployees } from '@/hooks/lookups';
 import { useToast } from '@/components/ui/Toast';
-import { Badge, Button, DemoBadge, Field, Input, KV, Mono, Notice, PageHeader, Panel } from '@/components/ui/primitives';
+import { Badge, Button, Field, Input, KV, Mono, Notice, PageHeader, Panel } from '@/components/ui/primitives';
 import { ConfirmDialog } from '@/components/ui/overlay';
 import { RoleBadge, TeamBadge } from '@/components/domain/badges';
 import { PASSWORD_RULE, passwordProblem } from '@/components/misc/password';
 import { fmtDateTime } from '@/lib/format';
 
 export default function ProfilePage() {
-  const user = useUser();
+  useUser();
   return (
     <div>
-      <PageHeader title="Profile & account" description="Your name, job title, password and session." meta={<><DemoBadge />{user.demo && <DemoBadge label="Role preview session" title="Signed in through the development role preview — not production authentication." />}</>} />
+      <PageHeader title="Profile & account" description="Your name, job title, password and session." />
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="space-y-5">
           <DetailsForm />
@@ -112,7 +112,6 @@ function PasswordForm() {
     <Panel title="Change password" subtitle={PASSWORD_RULE}>
       <form onSubmit={submit} noValidate className="space-y-4">
         {formError && <Notice tone="crit">{formError}</Notice>}
-        {API_MODE === 'mock' && <Notice tone="demo">Mock mode keeps passwords in browser memory only — reloading the page restores the DEMO password.</Notice>}
         <Field label="Current password" htmlFor="pw-current" required error={touched ? errs.current : undefined}>
           <Input id="pw-current" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} aria-invalid={touched && !!errs.current} />
         </Field>
@@ -170,8 +169,7 @@ function SessionPanel() {
     <Panel title="Session">
       <KV cols={1} items={[
         { k: 'Signed in as', v: <span>{user.name} · <Mono>{user.email}</Mono></span> },
-        { k: 'Session type', v: user.demo ? <span className="flex flex-wrap items-center gap-2"><DemoBadge label="Development role preview" title="Previewing a role with a mock user — not production authentication." /><span className="text-xs text-muted">Mock user, nothing persists.</span></span> : API_MODE === 'mock' ? <span>Mock sign-in <span className="text-xs text-muted">(browser memory only — Phase 1)</span></span> : 'Password sign-in' },
-        { k: 'API mode', v: API_MODE === 'mock' ? 'In-browser mock adapter (DEMO data)' : 'API server' },
+        { k: 'Session type', v: 'Password sign-in' },
         { k: 'Viewed at', v: `${fmtDateTime(new Date().toISOString())} IST` },
       ]} />
       <div className="mt-4 flex justify-end">

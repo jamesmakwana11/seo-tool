@@ -14,7 +14,7 @@ const SECRET = 's'.repeat(40);
 async function server(over: Record<string, string> = {}, start = new Date('2026-10-16T06:00:00Z')) {
   let now = start.getTime();
   const container = await createContainer({
-    env: loadEnv({ NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: SECRET, LOG_LEVEL: 'silent', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password, ...over }),
+    env: loadEnv({ NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: SECRET, LOG_LEVEL: 'silent', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password, ...over }),
     clock: () => new Date(now),
   });
   return { agent: supertest(createApp(container)), advance: (ms: number) => { now += ms; } };

@@ -67,19 +67,19 @@ export function DeliveryTable({ rows, showKind, empty }: { rows: DeliveryAttempt
   );
 }
 
-export function SourceStateBadge({ state }: { state: 'live' | 'demo' | 'missing' }) {
-  return state === 'live' ? <Badge tone="ok">Live</Badge> : state === 'demo' ? <Badge tone="demo">DEMO</Badge> : <Badge tone="neutral">Missing</Badge>;
+export function SourceStateBadge({ state }: { state: 'live' | 'sample' | 'missing' }) {
+  return state === 'live' ? <Badge tone="ok">Live</Badge> : state === 'sample' ? <Badge tone="caution">Sample</Badge> : <Badge tone="neutral">Missing</Badge>;
 }
 
 export function sourceCounts(meta: ReportMeta) {
   return {
     live: meta.sources.filter((s) => s.state === 'live').length,
-    demo: meta.sources.filter((s) => s.state === 'demo').length,
+    sample: meta.sources.filter((s) => s.state === 'sample').length,
     missing: meta.sources.filter((s) => s.state === 'missing').length,
   };
 }
 
-/** Report provenance: period, generation time, per-source live/demo state, data notes and delivery attempts. */
+/** Report provenance: period, generation time, per-source live/sample state, data notes and delivery attempts. */
 export function ReportMetaPanel({ meta, schedule }: { meta: ReportMeta; schedule?: string }) {
   const n = sourceCounts(meta);
   return (
@@ -90,7 +90,7 @@ export function ReportMetaPanel({ meta, schedule }: { meta: ReportMeta; schedule
           items={[
             { k: 'Period', v: meta.periodStart === meta.periodEnd ? fmtDate(meta.periodEnd) : `${fmtDate(meta.periodStart)} → ${fmtDate(meta.periodEnd)}` },
             { k: 'Generated', v: `${fmtDateTime(meta.generatedAt)} IST` },
-            { k: 'Data sources', v: `${n.live} live · ${n.demo} DEMO${n.missing ? ` · ${n.missing} missing` : ''}` },
+            { k: 'Data sources', v: `${n.live} live · ${n.sample} sample${n.missing ? ` · ${n.missing} missing` : ''}` },
           ]}
         />
         <div>
@@ -104,7 +104,7 @@ export function ReportMetaPanel({ meta, schedule }: { meta: ReportMeta; schedule
           </ul>
         </div>
         {meta.dataNotes.length > 0 && (
-          <Notice tone="demo" title="Data notes">
+          <Notice tone="caution" title="Data notes">
             <ul className="list-disc pl-5">{meta.dataNotes.map((d) => <li key={d}>{d}</li>)}</ul>
           </Notice>
         )}

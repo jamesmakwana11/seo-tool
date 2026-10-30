@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO, makeHarness } from './helpers';
+import { FIXTURE, makeHarness } from './helpers';
 
 describe('config validation', () => {
   it('rejects module weights that do not sum to 100%', async () => {
     const h = await makeHarness();
-    const admin = h.as(await h.token(DEMO.admin));
+    const admin = h.as(await h.token(FIXTURE.admin));
     const cfg = (await admin.get('/api/config')).body;
     const res = await admin.patch('/api/config', { scoring: { ...cfg.scoring, weights: { ...cfg.scoring.weights, technical: 0.9 } } });
     expect(res.status).toBe(400);
@@ -13,7 +13,7 @@ describe('config validation', () => {
 
   it('accepts a valid SLA change and records it in the audit log', async () => {
     const h = await makeHarness();
-    const admin = h.as(await h.token(DEMO.admin));
+    const admin = h.as(await h.token(FIXTURE.admin));
     const cfg = (await admin.get('/api/config')).body;
     const res = await admin.patch('/api/config', { sla: { ...cfg.sla, mediumDays: 5 } });
     expect(res.status).toBe(200);
@@ -32,7 +32,7 @@ describe('custom rules — dry-run gate before enabling (PDF §10.2)', () => {
 
   it('a rule cannot be created already enabled', async () => {
     const h = await makeHarness();
-    const admin = h.as(await h.token(DEMO.admin));
+    const admin = h.as(await h.token(FIXTURE.admin));
     const res = await admin.post('/api/rules', { ...draft, enabled: true });
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('DRY_RUN_REQUIRED');
@@ -40,7 +40,7 @@ describe('custom rules — dry-run gate before enabling (PDF §10.2)', () => {
 
   it('a rule cannot be enabled until a successful dry run has run', async () => {
     const h = await makeHarness();
-    const admin = h.as(await h.token(DEMO.admin));
+    const admin = h.as(await h.token(FIXTURE.admin));
     const created = await admin.post('/api/rules', draft);
     expect(created.status).toBe(200);
     const id = created.body.id;
@@ -56,7 +56,7 @@ describe('custom rules — dry-run gate before enabling (PDF §10.2)', () => {
 
   it('an LLM-judged rule cannot be enabled without a provider', async () => {
     const h = await makeHarness();
-    const admin = h.as(await h.token(DEMO.admin));
+    const admin = h.as(await h.token(FIXTURE.admin));
     const llm = { ...draft, name: 'LLM delivery-promise check', method: 'llm_judged' as const, phrases: undefined, phraseMode: undefined, llmInstruction: 'Flag any description promising delivery timelines.' };
     const created = await admin.post('/api/rules', llm);
     expect(created.status).toBe(200);
@@ -69,7 +69,7 @@ describe('custom rules — dry-run gate before enabling (PDF §10.2)', () => {
 
   it('rejects a ReDoS-prone regex pattern', async () => {
     const h = await makeHarness();
-    const admin = h.as(await h.token(DEMO.admin));
+    const admin = h.as(await h.token(FIXTURE.admin));
     const res = await admin.post('/api/rules', { ...draft, method: 'regex', pattern: '(a+)+$', phrases: undefined, phraseMode: undefined });
     expect(res.status).toBe(400);
   });

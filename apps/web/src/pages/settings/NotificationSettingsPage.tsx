@@ -5,7 +5,7 @@ import { TEAMS, TEAM_IDS, type AlertRule, type Channel, type SentinelConfig, typ
 import { api } from '@/api/client';
 import { errorMessage, useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Button, Checkbox, DemoBadge, Field, Input, Notice, PageHeader, Panel, Select, Toggle } from '@/components/ui/primitives';
+import { Async, Badge, Button, Checkbox, Field, Input, Notice, PageHeader, Panel, Select, Toggle } from '@/components/ui/primitives';
 import { ConfigSection, IntegrationStateBadge, NumberField, sameJson } from '@/components/settings/ConfigSection';
 import { DeliveryTable } from '@/components/reports/ReportParts';
 
@@ -33,7 +33,6 @@ export default function NotificationSettingsPage() {
       <PageHeader
         title="Notifications & alerts"
         description="Real-time alerts bypass the digest and go straight to the dev + SEO channel (PDF §12.2). Digest and rollup schedules follow PDF §12.1 and §12.5."
-        meta={<DemoBadge />}
       />
       <div className="space-y-5">
         <ChannelStatus />

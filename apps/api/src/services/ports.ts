@@ -92,6 +92,8 @@ export interface CrawlPlan {
   collectTexts?: boolean;
   /** Run id (names the crawl's work directory). */
   runId?: string;
+  /** Incremental sync: the crawl whose results the fetched pages are merged into. */
+  sync?: { baseRunId: string; reasons: Record<string, number>; deferred?: number };
   /** Live coverage counts, memory of every crawl process, phase and diagnostics (Go engine). */
   onLive?: (live: { coverage?: CrawlCoverageCounts; memory?: CrawlMemory; phase?: CrawlRun['phase']; warning?: { code: string; message: string } }) => void;
 }

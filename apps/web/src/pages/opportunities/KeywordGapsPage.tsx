@@ -4,7 +4,7 @@ import type { KeywordGap, SearchIntent } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Button, DemoBadge, EmptyState, Notice, PageHeader, Panel, Stat, type Tone } from '@/components/ui/primitives';
+import { Async, Badge, Button, EmptyState, Notice, PageHeader, Panel, Stat, type Tone } from '@/components/ui/primitives';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ChipGroup, ClearFilters, FilterSelect, useUrlFilters } from '@/components/ui/filters';
 import { SourceBadge } from '@/components/domain/badges';
@@ -27,7 +27,6 @@ export default function KeywordGapsPage() {
       <PageHeader
         title="Competitor keyword gaps"
         description="Weekly pull of keywords where at least two competitors rank in the top 10 and DeoDap doesn't, filtered by relevance to live categories, classified by intent, with low-difficulty quick wins flagged. Approved gaps generate content briefs (PDF §13)."
-        meta={<DemoBadge />}
       />
       <Async q={q} rows={10}>
         {(d) => (
@@ -35,7 +34,7 @@ export default function KeywordGapsPage() {
             {!d.available ? (
               <Notice tone="med" title="Keyword gap data not available">{d.note ?? 'Keyword gaps require an Ahrefs or Semrush API subscription.'}</Notice>
             ) : d.note ? (
-              <Notice tone="demo">{d.note}</Notice>
+              <Notice tone="caution">{d.note}</Notice>
             ) : null}
             {d.available && <GapTable gaps={d.items} />}
           </div>
@@ -150,7 +149,7 @@ function GapTable({ gaps }: { gaps: KeywordGap[] }) {
       />
       <Panel>
         <p className="text-sm text-muted">
-          Generated briefs use a template outline in DEMO mode. SERP-based outlines (headings and entities from the current top 10) need the Ahrefs or Semrush SERP API. Approving a gap records the decision in the audit log; it does not publish anything.
+          Generated briefs use a template outline. SERP-based outlines (headings and entities from the current top 10) need the Ahrefs or Semrush SERP API. Approving a gap records the decision in the audit log; it does not publish anything.
         </p>
       </Panel>
     </>

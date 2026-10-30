@@ -4,7 +4,7 @@ import { ROLE_LABELS, TEAMS } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Button, Code, DemoBadge, KV, Mono, Notice, PageHeader, Panel, Toggle } from '@/components/ui/primitives';
+import { Async, Badge, Button, KV, Mono, PageHeader, Panel, Toggle } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/DataTable';
 import { fmtDateTime } from '@/lib/format';
 
@@ -16,7 +16,6 @@ export default function DiagnosticsPage() {
       <PageHeader
         title="API diagnostics"
         description="For developers: which API adapter the app is using, the endpoint contract, and the most recent requests."
-        meta={<DemoBadge />}
         actions={<Button icon={<RefreshCw className="h-4 w-4" />} loading={q.isFetching && !q.isLoading} onClick={() => void q.refetch()}>Refresh</Button>}
       />
       <Async q={q} rows={10}>
@@ -25,15 +24,10 @@ export default function DiagnosticsPage() {
             <Panel title="Adapter">
               <div className="space-y-4">
                 <KV cols={3} items={[
-                  { k: 'Mode', v: <Badge tone={d.mode === 'mock' ? 'demo' : 'ok'}>{d.mode === 'mock' ? 'mock (in-browser DEMO)' : 'http'}</Badge> },
+                  { k: 'Mode', v: <Badge tone="ok">http</Badge> },
                   { k: 'Version', v: <Mono>{d.version}</Mono> },
-                  { k: 'Base URL', v: d.baseUrl ? <Mono>{d.baseUrl}</Mono> : <span className="text-muted">None — requests never leave the browser</span> },
+                  { k: 'Base URL', v: d.baseUrl ? <Mono>{d.baseUrl}</Mono> : <span className="text-muted">—</span> },
                 ]} />
-                <Notice tone="signal" title="Switching to the real backend">
-                  <p>Phase 1 runs the in-browser mock adapter: every call goes through the same <Mono>SentinelApi</Mono> contract, with permission checks and validation, but data is DEMO and resets on reload. When the Phase 2 API server exists, start the web app with:</p>
-                  <div className="mt-2"><Code language="shell">{'VITE_API_MODE=http npm run dev   # proxies /api → http://localhost:4000'}</Code></div>
-                  <p className="mt-2">Until the http client is built, <Mono>VITE_API_MODE=http</Mono> fails fast at start-up rather than silently falling back to DEMO data.</p>
-                </Notice>
               </div>
             </Panel>
 
@@ -96,7 +90,7 @@ function SessionPanel() {
           { k: 'User', v: <>{u.name}<span className="block text-xs text-muted">{u.email}</span></> },
           { k: 'Role', v: <>{ROLE_LABELS[u.role]}{u.isSeoLead && <Badge tone="signal" className="ml-1">SEO lead</Badge>}</> },
           { k: 'Teams', v: u.teamIds.map((t) => TEAMS[t].shortName).join(', ') || '—' },
-          { k: 'Session type', v: u.demo ? <Badge tone="demo">Development role preview</Badge> : <Badge>Signed in</Badge> },
+          { k: 'Session type', v: <Badge>Signed in</Badge> },
           { k: 'User id', v: <Mono>{u.id}</Mono> },
         ]} />
         <div>

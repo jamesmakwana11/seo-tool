@@ -6,7 +6,7 @@ import { type CrawlDetail, type CrawledUrl, type SitemapDiff } from '@sentinel/s
 import { api } from '@/api/client';
 import { DetailError } from '@/components/domain/DetailError';
 import { useApiQuery, useRefreshWhenCrawlsFinish, useSiteKey } from '@/api/hooks';
-import { Badge, DemoBadge, EmptyState, KV, LoadingBlock, Mono, Notice, PageHeader, Panel, Tabs } from '@/components/ui/primitives';
+import { Badge, EmptyState, KV, LoadingBlock, Mono, Notice, PageHeader, Panel, Tabs } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/DataTable';
 import { ChipGroup } from '@/components/ui/filters';
 import { SourceBadge } from '@/components/domain/badges';
@@ -57,13 +57,13 @@ function Detail({ d }: { d: CrawlDetail }) {
       <PageHeader
         title={`${run.options ? 'Live crawl' : CRAWL_TYPE_LABELS[run.type]} ${run.id}`}
         description={`${run.options ? `${run.options.startUrl} · ` : ''}${CRAWL_TRIGGER_LABELS[run.trigger]} trigger · started ${fmtDateTime(run.startedAt ?? run.scheduledFor)} IST`}
-        meta={<><DemoBadge /><CrawlStatusBadge run={run} />{!active && <OutcomeBadge run={run} />}{run.source !== 'demo' && <SourceBadge source={run.source} />}</>}
+        meta={<><CrawlStatusBadge run={run} />{!active && <OutcomeBadge run={run} />}{run.source !== 'sample' && <SourceBadge source={run.source} />}</>}
         actions={rowCount > 0 && !simulated ? <ExportButtons run={run} /> : undefined}
       />
 
       <div className="space-y-5">
         {simulated && (
-          <Notice tone="demo" title="Simulated run">
+          <Notice tone="caution" title="Simulated run">
             {run.error ?? 'This run is simulated: mock mode makes no HTTP requests.'} The counts below are what a real run would plan — no URLs were fetched and no findings were produced.
           </Notice>
         )}
@@ -86,7 +86,7 @@ function Detail({ d }: { d: CrawlDetail }) {
               { k: 'Finished', v: run.finishedAt ? `${fmtDateTime(run.finishedAt)} IST` : active ? 'Still running' : '—' },
               { k: 'Duration', v: fmtDuration(run.durationMs) },
               { k: 'URLs planned', v: fmtNum(run.urlsPlanned) },
-              { k: 'URLs crawled', v: simulated ? <span className="text-demo">0 fetched (simulated)</span> : fmtNum(run.urlsCrawled) },
+              { k: 'URLs crawled', v: simulated ? <span className="text-caution">0 fetched (simulated)</span> : fmtNum(run.urlsCrawled) },
               { k: 'URLs failed', v: simulated ? '—' : <span className={run.urlsFailed ? 'font-medium text-crit-ink' : ''}>{fmtNum(run.urlsFailed)}</span> },
               { k: 'JS-rendered sample', v: simulated ? '—' : fmtNum(run.jsRenderedSample) },
               { k: 'New / resolved / recurring issues', v: simulated || active ? '—' : `${run.newIssues} / ${run.resolvedIssues} / ${run.recurringIssues}` },
@@ -119,7 +119,7 @@ function Detail({ d }: { d: CrawlDetail }) {
           items={[
             { value: 'urls', label: detailed ? 'Pages' : 'URLs', count: rowCount },
             ...(detailed ? [{ value: 'issues' as Tab, label: 'Issues' }] : []),
-            ...(!simulated && run.source !== 'demo' && run.type !== 'reverify' ? [{ value: 'changes' as Tab, label: 'Changes' }] : []),
+            ...(!simulated && run.source !== 'sample' && run.type !== 'reverify' ? [{ value: 'changes' as Tab, label: 'Changes' }] : []),
             ...(run.engine === 'go' ? [{ value: 'coverage' as Tab, label: 'Coverage' }] : []),
             { value: 'sitemap', label: 'Sitemap diff' },
             { value: 'reverify', label: 'Re-verification', count: d.verification.length },
@@ -142,7 +142,7 @@ function Detail({ d }: { d: CrawlDetail }) {
 // ------------------------------------------------------------------ URLs
 
 const REASON_LABELS: Record<CrawledUrl['reason'], string> = {
-  homepage: 'Homepage', collection: 'Collection', top_product: 'Top product', changed_48h: 'Changed (48h)', reverify: 'Re-verify', full: 'Full crawl', sitemap: 'Sitemap',
+  homepage: 'Homepage', collection: 'Collection', top_product: 'Top product', changed_48h: 'Changed (48h)', reverify: 'Re-verify', full: 'Full crawl', sitemap: 'Sitemap', sync: 'Sync',
 };
 type Show = 'all' | 'changed' | 'failed';
 const isFailed = (u: CrawledUrl) => u.status === null || u.status >= 400;
@@ -159,7 +159,7 @@ function UrlsTab({ urls, simulated }: { urls: CrawledUrl[]; simulated: boolean }
       <Panel>
         <EmptyState
           title="No URL-level results recorded for this run"
-          description={simulated ? 'Simulated runs fetch nothing, so there are no URL results.' : 'The DEMO data keeps per-URL results for the most recent completed smart crawl only. Open that run from the Crawl Center history.'}
+          description={simulated ? 'Simulated runs fetch nothing, so there are no URL results.' : 'Per-URL results are kept for the most recent crawls only (CRAWLER_KEEP_RESULTS). Open a recent run from the Crawl Center history.'}
         />
       </Panel>
     );
@@ -200,7 +200,7 @@ function UrlsTab({ urls, simulated }: { urls: CrawledUrl[]; simulated: boolean }
 // ------------------------------------------------------------------ Sitemap diff
 
 function SitemapTab({ diff }: { diff?: SitemapDiff }) {
-  if (!diff) return <Panel><EmptyState title="No sitemap diff recorded for this run" description="Sitemap diffs are stored for completed smart and full crawls. In DEMO data only the latest completed smart crawl has one." /></Panel>;
+  if (!diff) return <Panel><EmptyState title="No sitemap diff recorded for this run" description="Sitemap diffs are stored for completed smart and full crawls." /></Panel>;
   const empty = (t: string) => <p className="text-sm text-muted">{t}</p>;
   return (
     <div className="space-y-5">

@@ -5,7 +5,7 @@ import { CHECKS_BY_ID, MODULE_LABELS, type Issue, type IssueGroup, type PageTemp
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, DemoBadge, EmptyState, LoadingBlock, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
+import { Async, Badge, EmptyState, LoadingBlock, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
 import { IssueStatusBadge, SeverityBadge, SlaCountdown, SourceBadge, TeamBadge, TierBadge } from '@/components/domain/badges';
 import { fmtDateTime, fmtNum } from '@/lib/format';
 
@@ -22,7 +22,6 @@ export default function IssueGroupsPage() {
       <PageHeader
         title="Template-level issues"
         description="Related page-level issues that share one root cause in a Shopify theme template, grouped into a single fix (PDF §3.3, §11.2)."
-        meta={<DemoBadge />}
         actions={<Link to="/issues" className="inline-flex h-9 items-center rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card transition-colors hover:border-signal/40 hover:text-signal-dark">All issues</Link>}
       />
       <div className="space-y-5">

@@ -10,7 +10,7 @@ import { loadEnv } from '../../src/config/env';
 import { createContainer } from '../../src/container';
 import { createApp, indexHtmlFor, publicBasePath } from '../../src/http/app';
 import { signQuery } from '../../src/shopify/oauth';
-import { DEMO } from '../api/helpers';
+import { FIXTURE } from '../api/helpers';
 import { API_KEY, API_SECRET, createMockShopify, SHOP, STOREFRONT, TOKEN } from './mockShopify';
 
 /**
@@ -27,12 +27,12 @@ async function setup(env: Record<string, string>, webDist?: string) {
   const logs: string[] = [];
   const log = pino({ level: 'debug' }, new Writable({ write(chunk, _e, cb) { logs.push(String(chunk)); cb(); } }));
   const container = await createContainer({
-    env: loadEnv({ NODE_ENV: 'test', SEED_DEMO_DATA: 'true', SESSION_SECRET: 'shopify-subpath-secret-at-least-32-chars!', LOG_LEVEL: 'debug', CRAWLER_BASE_URL: STOREFRONT, CRAWLER_ALLOW_LIVE: 'true', ...(webDist ? { WEB_DIST_DIR: webDist } : {}), ...env }),
+    env: loadEnv({ NODE_ENV: 'test', SEED_TEST_FIXTURES: 'true', SESSION_SECRET: 'shopify-subpath-secret-at-least-32-chars!', LOG_LEVEL: 'debug', CRAWLER_BASE_URL: STOREFRONT, CRAWLER_ALLOW_LIVE: 'true', ...(webDist ? { WEB_DIST_DIR: webDist } : {}), ...env }),
     fetchImpl: mock.fetchImpl, log: log as never,
   });
   const agent = supertest(createApp(container));
   const bodies: string[] = [];
-  const token = (await agent.post('/api/auth/login').send({ email: DEMO.admin, password: DEMO.password })).body.token as string;
+  const token = (await agent.post('/api/auth/login').send({ email: FIXTURE.admin, password: FIXTURE.password })).body.token as string;
   const auth = { Authorization: `Bearer ${token}` };
   const rec = <T extends { text?: string; headers: Record<string, string> }>(r: T) => { bodies.push(r.text ?? '', JSON.stringify(r.headers)); return r; };
   return {

@@ -1,7 +1,7 @@
 import type { Backlink } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
-import { Async, Badge, DemoBadge, EmptyState, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
+import { Async, Badge, EmptyState, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/DataTable';
 import { ChipGroup, ClearFilters, FilterSelect, useUrlFilters } from '@/components/ui/filters';
 import { SourceBadge } from '@/components/domain/badges';
@@ -22,7 +22,7 @@ export default function BacklinksPage() {
       <PageHeader
         title="Backlink analysis"
         description="Every referring link in the latest backlink snapshot: new and lost links, anchor types, domain rating and toxic signals (PDF §7.1)."
-        meta={<><DemoBadge /><span className="text-xs text-muted">Requires the Ahrefs or Semrush API</span></>}
+        meta={<><span className="text-xs text-muted">Requires the Ahrefs or Semrush API</span></>}
         actions={<PanelLink to="/modules/offpage">Off-page overview</PanelLink>}
       />
       <Async q={q} rows={10}>

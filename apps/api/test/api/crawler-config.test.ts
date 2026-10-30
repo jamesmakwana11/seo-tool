@@ -14,7 +14,7 @@ import type { CrawlEngine, CrawlPlan } from '../../src/services/ports';
  * No page is fetched in these tests: the crawl step is a stub (or never reached), so no network is used.
  */
 const ADMIN = { email: 'owner@example.com', password: 'Fixture-Pass-2026' };
-const BASE = { NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'z'.repeat(40), LOG_LEVEL: 'silent', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password };
+const BASE = { NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'z'.repeat(40), LOG_LEVEL: 'silent', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password };
 const PROD = { NODE_ENV: 'production', SESSION_SECRET: 'p'.repeat(40), ALLOW_EPHEMERAL_STORAGE: 'true', LOG_LEVEL: 'silent' };
 
 async function harness(env: Record<string, string>, engine?: CrawlEngine) {

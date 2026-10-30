@@ -1,11 +1,12 @@
 import {
   ALL_PERMISSIONS, CHECKS_BY_ID, INTEGRATION_CATALOG, ROLE_LABELS, TEAMS, globalSearch, hasPermission, paginate, setPriorityConfig,
+  permissionsOf,
   type AlertRule, type ApiDiagnostics, type Employee, type EmployeeInput, type IntegrationId, type PermissionMatrix, type Role,
   type SentinelConfig, type SystemComponentHealth,
 } from '@sentinel/shared';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { randomToken, sha256 } from '../lib/passwords';
-import { audit, need, type Actor, type Ctx } from './context';
+import { audit, can, need, type Actor, type Ctx } from './context';
 import type { AuthService } from './auth';
 
 const CHANNELS = ['in_app', 'email', 'whatsapp', 'slack'];
@@ -53,7 +54,7 @@ export function createAdminService(ctx: Ctx, auth: AuthService, diag: Diagnostic
     async updateConfig(actor: Actor, patch: Partial<SentinelConfig>) {
       await need(ctx, actor, 'settings.manage');
       if (!patch || typeof patch !== 'object') throw badRequest('Send a configuration patch object.');
-      if (patch.automation && actor.role !== 'admin') throw forbidden('Only Admins can change live-site automation opt-ins.');
+      if (patch.automation && actor.role !== 'super_admin' && actor.role !== 'admin') throw forbidden('Only Admins can change live-site automation opt-ins.');
       const cur = await r.config.get();
       const next: SentinelConfig = { ...cur, ...patch, updatedAt: iso(), updatedBy: actor.name };
       validateConfig(next);
@@ -78,7 +79,13 @@ export function createAdminService(ctx: Ctx, auth: AuthService, diag: Diagnostic
     },
 
     // ---------------------------------------------------------------- people & permissions
-    async listEmployees(actor: Actor) { await need(ctx, actor, 'employees.view'); return r.employees.list(); },
+    async listEmployees(actor: Actor) {
+      if (await can(ctx, actor, 'employees.view')) return r.employees.list();
+      // Roles without the Team section (Admin) still need names on the issue board and verification results:
+      // a directory of names and roles only — no email, title or capacity.
+      await need(ctx, actor, 'issues.view');
+      return (await r.employees.list()).map((e) => ({ id: e.id, name: e.name, role: e.role, teamIds: e.teamIds, status: e.status, isSeoLead: e.isSeoLead }) as Employee);
+    },
     async createEmployee(actor: Actor, input: EmployeeInput) {
       await need(ctx, actor, 'employees.manage');
       validateEmployee(input);
@@ -103,7 +110,7 @@ export function createAdminService(ctx: Ctx, auth: AuthService, diag: Diagnostic
       if (!e) throw notFound('Employee');
       const merged = { ...e, ...input } as EmployeeInput;
       validateEmployee(merged);
-      if (e.id === actor.id && input.role && input.role !== 'admin' && e.role === 'admin') throw conflict('You cannot remove your own Admin role.');
+      if (e.id === actor.id && input.role && input.role !== e.role && (e.role === 'super_admin' || e.role === 'admin')) throw conflict(`You cannot remove your own ${ROLE_LABELS[e.role]} role.`);
       if (e.id === actor.id && input.status && input.status !== 'active') throw conflict('You cannot deactivate your own account.');
       if (input.email && input.email.trim().toLowerCase() !== e.email) {
         const email = input.email.trim().toLowerCase();
@@ -127,9 +134,9 @@ export function createAdminService(ctx: Ctx, auth: AuthService, diag: Diagnostic
         const bad = m[role].filter((p) => !ALL_PERMISSIONS.includes(p));
         if (bad.length) throw badRequest(`Unknown permission(s): ${bad.join(', ')}`);
       }
-      if (!m.admin.includes('roles.manage')) throw conflict('Admin must keep "roles.manage" so the matrix can still be edited.');
       const before = await r.permissions.get();
-      const next = Object.fromEntries((Object.keys(ROLE_LABELS) as Role[]).map((k) => [k, [...new Set(m[k])]])) as PermissionMatrix;
+      // Super Admin always keeps every permission (so the matrix can always be edited again).
+      const next = Object.fromEntries((Object.keys(ROLE_LABELS) as Role[]).map((k) => [k, k === 'super_admin' ? permissionsOf(m, k) : [...new Set(m[k])]])) as PermissionMatrix;
       await r.permissions.set(next);
       await audit(ctx, actor, 'roles.update', 'employee', 'permission-matrix', 'Updated role permission matrix', { before, after: next });
       return next;
@@ -188,7 +195,7 @@ export function createAdminService(ctx: Ctx, auth: AuthService, diag: Diagnostic
       const components: SystemComponentHealth[] = [
         { id: 'crawler', name: 'Crawler & Renderer', subsystem: 'A', status: !crawlReady.ready ? 'not_configured' : last?.status === 'failed' ? 'degraded' : 'operational', detail: !crawlReady.ready ? `Not ready: ${crawlReady.reason}` : last ? `Last live crawl ${last.id} ${last.status}${last.error ? `: ${last.error}` : ''}. JS rendering (headless) is not implemented — raw HTML only.` : `Ready for ${crawlReady.baseUrl}; no live crawl has run yet. JS rendering (headless) is not implemented — raw HTML only.`, lastCheckedAt: at },
         { id: 'connectors', name: 'Data connectors', subsystem: 'B', status: failing.length ? 'degraded' : connected ? 'operational' : 'not_configured', detail: `${connected} of ${ints.length} integrations connected (verified by a successful connection test)${failing.length ? `; failing: ${failing.map((f) => f.name).join(', ')}` : ''}.`, lastCheckedAt: at },
-        { id: 'analysis', name: 'Analysis engine', subsystem: 'C', status: 'operational', detail: `${Object.values(CHECKS_BY_ID).filter((c) => c.crawlerEvaluable).length} crawler-evaluable checks; connector-based checks need their data sources.${m.source === 'demo' ? ' DEMO findings are loaded alongside any live results.' : ''}`, lastCheckedAt: at },
+        { id: 'analysis', name: 'Analysis engine', subsystem: 'C', status: 'operational', detail: `${Object.values(CHECKS_BY_ID).filter((c) => c.crawlerEvaluable).length} crawler-evaluable checks; connector-based checks need their data sources.${m.source === 'sample' ? ' sample findings are loaded alongside any live results.' : ''}`, lastCheckedAt: at },
         { id: 'classifier', name: 'Severity classifier', subsystem: 'D', status: 'operational', detail: 'Shared rules engine (check × page tier), SLA, escalation and template grouping.', lastCheckedAt: at },
         { id: 'recommendations', name: 'Recommendation engine', subsystem: 'E', status: 'operational', detail: `${Object.keys(CHECKS_BY_ID).length} checks with Fix Card playbook. LLM rewrite drafts: ${ctx.llm.isConfigured() ? 'provider configured' : 'no LLM provider configured'}.`, lastCheckedAt: at },
         { id: 'workflow', name: 'Reporting & workflow', subsystem: 'F', status: channels.some((c) => c.configured) ? 'operational' : 'degraded', detail: `Delivery channels configured: ${channels.filter((c) => c.configured).map((c) => c.channel).join(', ') || 'none'}. Scheduler: ${extra.schedulerRunning() ? 'running' : 'off (SCHEDULER_ENABLED=false)'}.`, lastCheckedAt: at },

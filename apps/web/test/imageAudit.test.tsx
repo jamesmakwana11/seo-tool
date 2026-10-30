@@ -28,7 +28,6 @@ const ITEMS: ImageAuditItem[] = [
 const BADGE_PAGES = ['https://shop.test/products/a', 'https://shop.test/products/b', 'https://shop.test/products/c'];
 
 vi.mock('@/api/client', () => ({
-  API_MODE: 'http',
   api: {
     getImageAuditStatus: async (): Promise<ImageAuditStatusResponse> => ({
       runs: [{ runId: 'CRL-0007', type: 'full', startedAt: '2026-10-17T03:00:00Z', outcome: 'completed', pages: 120 }],

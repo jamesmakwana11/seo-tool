@@ -15,7 +15,7 @@ afterEach(async () => { await container?.services.crawls.idle(); await site?.clo
 async function setup(initial?: Parameters<typeof startFixtureSite>[0]) {
   site = await startFixtureSite(initial);
   const env = loadEnv({
-    NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'y'.repeat(40), LOG_LEVEL: 'silent',
+    NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'y'.repeat(40), LOG_LEVEL: 'silent',
     CRAWLER_BASE_URL: site.origin, CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_USER_AGENT: 'DeoDapSEOSentinel/1.0 (+test)', CRAWLER_ALLOW_LIVE: 'false', // loopback is allowed without live
   });
   container = await createContainer({ env }); // real fetch — loopback only
@@ -23,7 +23,7 @@ async function setup(initial?: Parameters<typeof startFixtureSite>[0]) {
 }
 
 describe('live crawl → issues (loopback fixture)', () => {
-  it('a full crawl with a product-template schema defect produces live issues, not demo', async () => {
+  it('a full crawl with a product-template schema defect produces live issues, not sample data', async () => {
     const { container: c } = await setup({ productTemplateNoOffers: true });
     const run = await c.services.crawls.start(SYSTEM_ACTOR, 'full', 'manual');
     await c.services.crawls.idle();
@@ -55,7 +55,7 @@ describe('Shopify webhook → smart crawl (PDF §16: pages changed in the last 4
     site = await startFixtureSite();
     const secret = 'whsec-test-secret';
     const env = loadEnv({
-      NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'w'.repeat(40), LOG_LEVEL: 'silent', SHOPIFY_WEBHOOK_SECRET: secret,
+      NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'w'.repeat(40), LOG_LEVEL: 'silent', SHOPIFY_WEBHOOK_SECRET: secret,
       SHOPIFY_STORE_DOMAIN: new URL(site.origin).host, CRAWLER_BASE_URL: site.origin, CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_ALLOW_LIVE: 'false',
     });
     container = await createContainer({ env });

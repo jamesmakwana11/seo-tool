@@ -9,13 +9,14 @@ import type { ReactNode } from 'react';
 /**
  * The issue-allocation section ("Allocate this fix" + "Fix with … Team" buttons) is gone from every screen that showed
  * it — issue detail, template-level issues, daily digest — while Acknowledge, Not an issue, status, recommendations and
- * the estimated time stay. Rendered against the in-browser mock API (DEMO data).
+ * the estimated time stay. Rendered against the test fixture API (fixed sample data).
  */
 const holder = vi.hoisted(() => ({ api: undefined as unknown as Record<string, unknown> }));
-vi.mock('@/api/client', () => ({ API_MODE: 'mock', api: new Proxy({}, { get: (_t, k) => holder.api[k as string] }) }));
+vi.mock('@/api/client', () => ({ api: new Proxy({}, { get: (_t, k) => holder.api[k as string] }) }));
 vi.mock('@/auth/AuthContext', () => ({ useAuth: () => ({ can: () => true, user: { id: 'EMP-0001', name: 'Admin', role: 'admin', teamIds: [] } }) }));
 
-import { createMockApi } from '../src/api/mock/mockApi';
+import { FIXTURE_PASSWORD } from '@sentinel/shared';
+import { createMockApi } from './support/fixtureApi';
 import { ToastProvider } from '../src/components/ui/Toast';
 import IssueDetailPage from '../src/pages/issues/IssueDetailPage';
 import IssueGroupsPage from '../src/pages/issues/IssueGroupsPage';
@@ -26,7 +27,7 @@ beforeAll(async () => {
   globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
   sessionStorage.clear();
   const api = createMockApi({ latencyMs: [0, 0], now: () => new Date('2026-10-12T06:00:00Z') });
-  await api.previewAs('admin');
+  await api.login('aarav.admin@team.deodap.local', FIXTURE_PASSWORD);
   holder.api = api as unknown as Record<string, unknown>;
 });
 afterEach(cleanup);

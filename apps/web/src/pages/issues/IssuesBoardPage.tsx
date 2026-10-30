@@ -6,7 +6,7 @@ import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { useEmployees } from '@/hooks/lookups';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Button, DemoBadge, EmptyState, Input, PageHeader, Panel } from '@/components/ui/primitives';
+import { Async, Button, EmptyState, Input, PageHeader, Panel } from '@/components/ui/primitives';
 import { BulkFixDialog } from '@/components/seo/BulkFixDialog';
 import { ChipGroup, ClearFilters, FilterSelect, useUrlFilters } from '@/components/ui/filters';
 import { IssueTable } from '@/components/domain/IssueTable';
@@ -46,7 +46,6 @@ export default function IssuesBoardPage() {
       <PageHeader
         title="Issues board"
         description="Every finding with severity, page tier and allocation. Filter by severity, module, allocated team, allocator and status (PDF §12.3). Nothing closes without automated re-verification."
-        meta={<DemoBadge />}
         actions={
           <>
             <Link to="/issues/groups" className="inline-flex h-9 items-center gap-1.5 rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card transition-colors hover:border-signal/40 hover:text-signal-dark"><Layers className="h-4 w-4" /> Template-level issues</Link>

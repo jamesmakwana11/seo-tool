@@ -9,7 +9,7 @@ import type { SeedData } from './seed/index';
 import type { Website, WebsiteInput, WebsitePlatform, WebsiteSummary } from './types';
 import { computeHealthScore } from './rules/healthScore';
 
-export const DEMO_WEBSITE_ID = 'site-deodap';
+export const PRIMARY_WEBSITE_ID = 'site-deodap';
 export const WEBSITE_HEADER = 'X-Website-Id';
 
 export const WEBSITE_PLATFORMS: { id: WebsitePlatform; label: string }[] = [
@@ -59,10 +59,10 @@ export function validateWebsiteInput(input: WebsiteInput, existing: Website[], e
   return { name, url: `${u.protocol}//${u.host}/`, domain, platform: input.platform, sitemapUrl };
 }
 
-export function demoWebsite(now: Date): Website {
+export function fixtureWebsite(now: Date): Website {
   return {
-    id: DEMO_WEBSITE_ID, name: 'DeoDap', url: 'https://deodap.in/', domain: 'deodap.in', platform: 'shopify', sitemapUrl: 'https://deodap.in/sitemap.xml',
-    createdAt: now.toISOString(), updatedAt: now.toISOString(), createdByName: 'Sentinel (DEMO seed)', source: 'demo',
+    id: PRIMARY_WEBSITE_ID, name: 'DeoDap', url: 'https://deodap.in/', domain: 'deodap.in', platform: 'shopify', sitemapUrl: 'https://deodap.in/sitemap.xml',
+    createdAt: now.toISOString(), updatedAt: now.toISOString(), createdByName: 'Sentinel (test dataset)', source: 'sample',
   };
 }
 

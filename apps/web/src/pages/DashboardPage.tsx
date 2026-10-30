@@ -3,13 +3,14 @@ import { Link } from 'react-router-dom';
 import { ArrowUpRight, BellRing, CircleCheck, Clock, FilePlus2, OctagonAlert, PenLine, Plus, Radar, TrendingDown, Users } from 'lucide-react';
 import { MODULE_LABELS, TEAMS, TEAM_IDS, type DashboardData, type MonitorEvent } from '@sentinel/shared';
 import { api } from '@/api/client';
-import { useApiMutation, useApiQuery } from '@/api/hooks';
+import { useApiQuery } from '@/api/hooks';
 import { useUser } from '@/auth/AuthContext';
-import { Async, DemoBadge, EmptyState, KpiCard, MetricTabs, Notice, PageHeader, Panel, Segmented } from '@/components/ui/primitives';
+import { Async, EmptyState, KpiCard, MetricTabs, Notice, PageHeader, Panel, Segmented } from '@/components/ui/primitives';
 import { ChartLegend, DonutChart, PillBars, SEVERITY_COLORS, SegmentRows, TrendChart } from '@/components/ui/charts';
 import { HealthScoreSummary, ModulePerformanceBars } from '@/components/domain/HealthScore';
 import { IssueStatusBadge, SeverityBadge, SlaCountdown } from '@/components/domain/badges';
 import { fmtDateTime, fmtMs, fmtNum, fmtRelative } from '@/lib/format';
+import { syncBusy, useSyncNow, useSyncStatus } from '@/components/crawls/WebsiteSync';
 
 export default function DashboardPage() {
   const user = useUser();
@@ -19,7 +20,6 @@ export default function DashboardPage() {
       <PageHeader
         title={user.role === 'developer' ? 'Development overview' : 'Overview'}
         description="What broke or degraded on this website, how serious it is, and who is fixing it."
-        meta={<DemoBadge />}
         actions={<Link to="/reports/daily" className="inline-flex h-9 items-center gap-1 rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card transition-colors hover:border-signal/40 hover:text-signal-dark">Today's digest <ArrowUpRight className="h-4 w-4" /></Link>}
       />
       {user.role === 'developer' && <DeveloperWork />}
@@ -65,14 +65,14 @@ function Body({ d }: { d: DashboardData }) {
   const lastC = crawls.at(-1);
   const prevC = crawls.at(-2);
   const crawlPct = lastC && prevC && prevC.crawled ? ((lastC.crawled - prevC.crawled) / prevC.crawled) * 100 : undefined;
-  const demo = d.dataNotes.length > 0;
+  const notConnected = d.dataNotes.length > 0;
   return (
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0 space-y-5">
-        {demo && (
-          <Notice tone="demo" title="Sample data">
+        {notConnected && (
+          <Notice tone="caution" title="Data sources not connected">
             <details>
-              <summary className="cursor-pointer">{d.dataNotes.length} data source{d.dataNotes.length > 1 ? 's are' : ' is'} not connected, so the figures below are DEMO data. Show details</summary>
+              <summary className="cursor-pointer">{d.dataNotes.length} data source{d.dataNotes.length > 1 ? 's are' : ' is'} not connected, so the figures that depend on them are incomplete. Show details</summary>
               <ul className="mt-1 list-disc pl-5">{d.dataNotes.map((n) => <li key={n}>{n}</li>)}</ul>
             </details>
           </Notice>
@@ -244,10 +244,9 @@ function HealthTrendCard() {
 }
 
 type SearchMetric = 'clicks' | 'impressions' | 'avgPosition';
-/** Search Console clicks / impressions / position with metric tabs. Labelled DEMO unless it comes from a connected source. */
+/** Search Console clicks / impressions / position with metric tabs. Labelled when it does not come from a connected source. */
 function SearchPerformance({ d }: { d: DashboardData }) {
   const [m, setM] = useState<SearchMetric>('clicks');
-  const demo = d.visibility.some((v) => v.source === 'demo');
   const vals = d.visibility.map((v) => v[m]);
   const last7 = vals.slice(-7).reduce((a, b) => a + b, 0);
   const prev7 = vals.slice(-14, -7).reduce((a, b) => a + b, 0);
@@ -257,7 +256,7 @@ function SearchPerformance({ d }: { d: DashboardData }) {
     <section className="min-w-0 rounded-panel border border-line bg-surface p-5 shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <MetricTabs value={m} onChange={setM} items={[{ value: 'clicks', label: 'Clicks' }, { value: 'impressions', label: 'Impressions' }, { value: 'avgPosition', label: 'Avg. position' }]} />
-        <div className="flex items-center gap-2">{demo && <DemoBadge />}{pct !== undefined && <span className={`text-xs font-semibold ${better ? 'text-ok-ink' : 'text-crit-ink'}`}>{pct >= 0 ? '+' : ''}{pct.toFixed(1)}% vs previous 7 days</span>}</div>
+        <div className="flex items-center gap-2">{pct !== undefined && <span className={`text-xs font-semibold ${better ? 'text-ok-ink' : 'text-crit-ink'}`}>{pct >= 0 ? '+' : ''}{pct.toFixed(1)}% vs previous 7 days</span>}</div>
       </div>
       <p className="mt-1 text-xs text-muted">Organic search, last 30 days{m === 'avgPosition' ? ' · lower is better' : ''}</p>
       <div className="mt-3">
@@ -363,25 +362,28 @@ const MONITOR_LABEL: Record<MonitorEvent['kind'], string> = { new_page: 'New pag
 const FIELD_LABEL: Record<NonNullable<MonitorEvent['field']>, string> = { title: 'Title', metaDescription: 'Meta description', canonical: 'Canonical', robots: 'Meta robots', h1: 'H1', status: 'HTTP status' };
 const pathOf = (u: string) => { try { return new URL(u).pathname; } catch { return u; } };
 
-/** Incremental monitoring between crawls: new pages, SEO changes, errors and resolved errors (each recorded once). */
+/** Website sync: Sync Now, last / next sync, and the changes found between crawls (each recorded once). */
 function MonitorRail() {
   const canRun = useUser().permissions.includes('crawls.run');
-  const q = useApiQuery(['monitor'], () => api.getMonitor());
-  const run = useApiMutation(() => api.runMonitor(), { success: (r) => (r.lastRun ? `Checked ${r.lastRun.checked} page(s) — ${r.lastRun.events} new change(s)` : 'Check finished'), invalidate: [['monitor']] });
+  const q = useSyncStatus();
+  const run = useSyncNow();
   const m = q.data;
+  const busy = syncBusy(m);
   const meta = (e: MonitorEvent) => `${fmtRelative(e.at)} · ${MONITOR_LABEL[e.kind]}${e.field && e.kind === 'seo_change' ? ` · ${FIELD_LABEL[e.field]}` : ''}${e.kind === 'error' || e.kind === 'resolved' ? ` · HTTP ${e.status ?? 'no response'}` : ''}`;
   return (
     <section className="rounded-panel border border-line bg-surface p-4 shadow-card" data-testid="monitor-rail">
       <div className="mb-2 flex items-center gap-2 px-2">
-        <h2 className="text-[14px] font-semibold text-ink">Site monitoring</h2>
-        {m?.available && canRun && <button type="button" onClick={() => run.mutate()} disabled={run.isPending || m.running} className="ml-auto text-[12px] font-medium text-signal hover:underline disabled:text-faint">{run.isPending || m.running ? 'Checking…' : 'Check now'}</button>}
+        <h2 className="text-[14px] font-semibold text-ink">Website sync</h2>
+        {m?.available && canRun && m.sync.baseline && <button type="button" onClick={() => run.mutate()} disabled={run.isPending || busy} className="ml-auto text-[12px] font-medium text-signal hover:underline disabled:text-faint">{run.isPending || busy ? 'Syncing…' : 'Sync now'}</button>}
       </div>
       {!m ? <p className="px-2 text-sm text-muted">Loading…</p> : !m.available ? <p className="px-2 text-sm text-muted">{m.reason}</p> : (
         <>
           <p className="px-2 pb-1 text-[11.5px] text-muted">
-            {m.lastRun ? `Last check ${fmtRelative(m.lastRun.at)} · ${m.lastRun.checked} page(s) requested, ${m.lastRun.notModified} unchanged (304)` : 'Not checked yet'}
-            {m.intervalMinutes > 0 ? ` · every ${m.intervalMinutes} min` : ''}{m.openErrors ? ` · ${m.openErrors} open error(s)` : ''}
+            {m.sync.lastSyncAt ? `Last sync ${fmtRelative(m.sync.lastSyncAt)}` : 'Not synced yet'}
+            {m.sync.autoSync && m.sync.nextSyncAt ? ` · next ${fmtRelative(m.sync.nextSyncAt)}` : m.sync.autoSync && m.sync.schedulerOff ? ' · Auto Sync waits for the server scheduler' : ' · Auto Sync off'}
+            {m.lastSync?.state === 'done' ? ` · ${m.lastSync.crawled} page(s) updated` : ''}{m.openErrors ? ` · ${m.openErrors} open error(s)` : ''}
           </p>
+          {!m.sync.baseline && <p className="px-2 text-sm text-muted">Run one Full or Smart crawl; syncs then keep it current.</p>}
           {m.events.length ? (
             <div className="rail-timeline space-y-0.5">
               {m.events.slice(0, 6).map((e) => (
@@ -390,7 +392,8 @@ function MonitorRail() {
                   title={pathOf(e.url)} meta={meta(e)} />
               ))}
             </div>
-          ) : <p className="px-2 text-sm text-muted">No changes detected since the last crawl.</p>}
+          ) : m.sync.baseline ? <p className="px-2 text-sm text-muted">No changes found since the last crawl.</p> : null}
+          <Link to="/crawls" className="mt-2 block px-2 text-[12px] font-medium text-signal hover:underline">Sync settings and history</Link>
         </>
       )}
     </section>

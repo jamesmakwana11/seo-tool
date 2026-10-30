@@ -135,7 +135,7 @@ function issue(partial: Partial<Issue>): Issue {
     issueClass: 'medium', status: 'NEW', delta: 'new', template: 'product', affectedUrls: ['https://deodap.in/products/a'], affectedCount: 1,
     highestTier: 2, tierBreakdown: { 1: 0, 2: 1, 3: 0 }, businessImpact: '', detectedAt: NOW.toISOString(), firstSeenAt: NOW.toISOString(),
     lastSeenAt: NOW.toISOString(), slaDueAt: slaDueAt('medium', NOW, cfg).toISOString(), occurrences: 1, recommendedTeam: 'development',
-    allocation: [], severityHistory: [], evidence: [{ id: 'e', kind: 'note', label: 'x', content: 'x', capturedAt: NOW.toISOString(), source: 'demo' }], source: 'demo',
+    allocation: [], severityHistory: [], evidence: [{ id: 'e', kind: 'note', label: 'x', content: 'x', capturedAt: NOW.toISOString(), source: 'sample' }], source: 'sample',
     ...partial,
   };
 }
@@ -267,11 +267,14 @@ describe('Task workflow (prompt §6)', () => {
 });
 
 describe('Permissions', () => {
-  it('developer cannot allocate or manage settings; admin can do everything', () => {
+  it('developer cannot allocate or manage settings; super admin can do everything; admin cannot manage roles', () => {
     expect(hasPermission(DEFAULT_PERMISSIONS, 'developer', 'issues.allocate')).toBe(false);
     expect(hasPermission(DEFAULT_PERMISSIONS, 'developer', 'settings.manage')).toBe(false);
     expect(hasPermission(DEFAULT_PERMISSIONS, 'seo_specialist', 'issues.allocate')).toBe(true);
-    expect(hasPermission(DEFAULT_PERMISSIONS, 'admin', 'roles.manage')).toBe(true);
+    expect(hasPermission(DEFAULT_PERMISSIONS, 'super_admin', 'roles.manage')).toBe(true);
+    expect(hasPermission({ ...DEFAULT_PERMISSIONS, super_admin: [] }, 'super_admin', 'settings.manage')).toBe(true);
+    expect(hasPermission(DEFAULT_PERMISSIONS, 'admin', 'roles.manage')).toBe(false);
+    expect(hasPermission(DEFAULT_PERMISSIONS, 'admin', 'crawls.run')).toBe(true);
     expect(hasPermission(DEFAULT_PERMISSIONS, 'seo_specialist', 'roles.manage')).toBe(false);
   });
 });
@@ -326,7 +329,7 @@ describe('AI-content heuristics & custom rules (PDF §10)', () => {
     expect(clusters).toEqual([['a', 'b']]);
   });
   it('supports all PDF §10.2 example rules', () => {
-    const base = { id: 'R', createdById: 'x', createdAt: '', updatedAt: '', source: 'demo' as const };
+    const base = { id: 'R', createdById: 'x', createdAt: '', updatedAt: '', source: 'sample' as const };
     const [lowest, nomoq, hinglish, festival] = EXAMPLE_RULES.map((r) => ({ ...r, ...base }) as CustomRule);
     const page = (text: string, template: 'product' | 'collection' = 'collection') => ({ url: 'u', template, tier: 1 as const, text });
     expect(evaluateRule(lowest, page('Get the lowest price in India today')).flagged).toBe(true);
@@ -342,15 +345,15 @@ describe('AI-content heuristics & custom rules (PDF §10)', () => {
   });
 });
 
-describe('DEMO seed integrity', () => {
+describe('test fixture integrity', () => {
   const s = createSeed(NOW);
   it('is deterministic', () => {
     const s2 = createSeed(NOW);
     expect(s2.issues.map((i) => i.id + i.severity)).toEqual(s.issues.map((i) => i.id + i.severity));
   });
-  it('labels every record as demo', () => {
-    expect(s.issues.every((i) => i.source === 'demo')).toBe(true);
-    expect(s.tasks.every((t) => t.source === 'demo')).toBe(true);
+  it('labels every record as sample data', () => {
+    expect(s.issues.every((i) => i.source === 'sample')).toBe(true);
+    expect(s.tasks.every((t) => t.source === 'sample')).toBe(true);
   });
   it('applies tier rules: top 20 collections, top 200 products (by revenue or sessions)', () => {
     const t1c = s.catalog.collections.filter((c) => c.tier === 1).length;

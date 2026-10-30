@@ -6,7 +6,7 @@ import type { CrawlOutcome } from '../../src/services/ports';
 
 /** Direct test of the crawl→issue pipeline (delta detection, severity, auto-resolution) on a clean live store. */
 async function liveContainer() {
-  const env = loadEnv({ NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'x'.repeat(40), LOG_LEVEL: 'silent' });
+  const env = loadEnv({ NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'x'.repeat(40), LOG_LEVEL: 'silent' });
   const c = await createContainer({ env, fetchImpl: failingFetch });
   // A small site inventory so tier lookup and auto-resolution have URLs to reason about.
   for (const path of ['/', '/collections/diwali', '/products/led-lamp']) {

@@ -640,7 +640,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
         const d = await client().request<{ shop: { name: string } }>('query SentinelShop { shop { name } }');
         conn.shopName = d.shop.name;
       } catch { /* name is cosmetic */ }
-      await audit(ctx, { id: actorId, name: actorName, role: 'admin', teamIds: [], permissions: [], demo: false }, 'shopify.connect', 'shopify', shop, `Connected Shopify store ${shop} (OAuth; scopes ${grant.scopes.join(', ')})`);
+      await audit(ctx, { id: actorId, name: actorName, role: 'admin', teamIds: [], permissions: [] }, 'shopify.connect', 'shopify', shop, `Connected Shopify store ${shop} (OAuth; scopes ${grant.scopes.join(', ')})`);
       try {
         await persistToken();
       } catch (e) {

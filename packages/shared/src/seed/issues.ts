@@ -25,7 +25,7 @@ export interface IssueSpec {
   key?: string;
 }
 
-/** DEMO issue scenarios. Each mirrors a check row in PDF §4–§10 with realistic DeoDap context. */
+/** sample issue scenarios. Each mirrors a check row in PDF §4–§10 with realistic DeoDap context. */
 export function issueSpecs(cat: Catalog, r: Rng, now: Date): IssueSpec[] {
   const t1p = cat.products.filter((p) => p.tier === 1);
   const t2p = cat.products.filter((p) => p.tier === 2);
@@ -48,7 +48,7 @@ export function issueSpecs(cat: Catalog, r: Rng, now: Date): IssueSpec[] {
     {
       key: 'price-mismatch', checkId: 'TECH-SCHEMA-ERRORS', title: `Product schema price mismatch on ${priceMismatchPages.length} product pages`,
       summary: 'JSON-LD offers.price shows the pre-discount price while the visible price is discounted. Google flags this as misleading markup; price/rating rich results are at risk of removal.',
-      impact: `${priceMismatchPages.filter((p) => p.tier <= 2).length} of the affected pages are Tier 1–2 with combined ~42k monthly impressions (DEMO figures).`,
+      impact: `${priceMismatchPages.filter((p) => p.tier <= 2).length} of the affected pages are Tier 1–2 with combined ~42k monthly impressions (sample figures).`,
       pages: priceMismatchPages,
       template: 'product', ctx: { isWarning: false }, status: 'NEW', delta: 'new', daysAgo: 0,
       evidence: [
@@ -64,22 +64,22 @@ export function issueSpecs(cat: Catalog, r: Rng, now: Date): IssueSpec[] {
       pages: mixProducts(40, 6), template: 'product', ctx: { hasBacklinks: true }, status: 'ASSIGNED', delta: 'new', daysAgo: 1,
       allocateTo: 'seo', allocatedBy: 'emp-ritesh', occurrences: 4,
       evidence: [
-        { kind: 'http_response', label: 'HTTP response (sample)', url: t1p[1]?.url, content: 'HTTP/2 404\ncontent-type: text/html; charset=utf-8\nx-shopid: 0000000 (DEMO)' },
+        { kind: 'http_response', label: 'HTTP response (sample)', url: t1p[1]?.url, content: 'HTTP/2 404\ncontent-type: text/html; charset=utf-8\nx-shopid: 0000000 (sample)' },
         { kind: 'note', label: 'Shopify webhook correlation', content: '38 of 40 URLs match products/update webhooks setting status=draft in the last 24h.', data: { shopifyDraftedCount: 38 } },
       ],
     },
     {
       key: 'render-block', checkId: 'PERF-RENDER-BLOCKING', title: 'New render-blocking script from a wishlist app on all templates',
       summary: 'A new synchronous <script> in <head> appeared in today\'s script diff on home, collection and product templates.',
-      impact: 'Lab LCP degraded by ~620ms on mobile product pages (DEMO).',
+      impact: 'Lab LCP degraded by ~620ms on mobile product pages (sample).',
       pages: [cat.home, ...take(t1c, 3), ...take(t1p, 5)], template: 'product', ctx: { metric: 620 }, status: 'IN_PROGRESS', delta: 'new', daysAgo: 2,
       allocateTo: 'development', allocatedBy: 'emp-ritesh',
-      evidence: [{ kind: 'diff', label: 'Script-list diff vs yesterday', content: '+ <script src="https://cdn.wishlist-app.example/loader.js"></script>  (render-blocking, 148 KB)', data: { app: 'Wishlist Plus (DEMO app name)', scriptHost: 'cdn.wishlist-app.example' } }],
+      evidence: [{ kind: 'diff', label: 'Script-list diff vs yesterday', content: '+ <script src="https://cdn.wishlist-app.example/loader.js"></script>  (render-blocking, 148 KB)', data: { app: 'Wishlist Plus (sample app name)', scriptHost: 'cdn.wishlist-app.example' } }],
     },
     {
       key: 'noindex', checkId: 'TECH-NOINDEX', title: 'noindex added to 3 previously indexed collections',
       summary: 'Three Tier 2 collections that were indexed last week now return X-Robots-Tag: noindex.',
-      impact: 'Collections drop from Google on the next crawl; combined ~6k monthly impressions (DEMO).',
+      impact: 'Collections drop from Google on the next crawl; combined ~6k monthly impressions (sample).',
       pages: take(t2c, 3), template: 'collection', status: 'FIXED', delta: 'unchanged', daysAgo: 3, allocateTo: 'development', allocatedBy: 'emp-neha',
       evidence: [{ kind: 'http_response', label: 'Response headers', url: t2c[0]?.url, content: 'HTTP/2 200\nx-robots-tag: noindex', data: { xRobotsTag: 'noindex' } }],
     },
@@ -121,7 +121,7 @@ export function issueSpecs(cat: Catalog, r: Rng, now: Date): IssueSpec[] {
       summary: '/collections/x/tag and ?filter.* URLs are being crawled and 340 are indexed as near-duplicates.', impact: 'Crawl budget waste; index bloat.',
       pages: take(t1c, 5), extraUrls: Array.from({ length: 20 }, (_, i) => `https://deodap.in/collections/kitchen-tools/steel?page=${i + 1}`),
       template: 'collection', ctx: { metric: 340 }, status: 'NEW', delta: 'recurring', daysAgo: 2, occurrences: 3,
-      evidence: [{ kind: 'metric', label: 'GSC indexed parameter URLs (DEMO)', content: '340 indexed · 2,140 crawled last 7 days' }],
+      evidence: [{ kind: 'metric', label: 'GSC indexed parameter URLs (sample)', content: '340 indexed · 2,140 crawled last 7 days' }],
     },
     {
       key: 'broken-internal', checkId: 'TECH-BROKEN-INTERNAL', title: '22 internal links pointing to 404s',
@@ -171,7 +171,7 @@ export function issueSpecs(cat: Catalog, r: Rng, now: Date): IssueSpec[] {
       key: 'mobile', checkId: 'TECH-MOBILE', title: 'Spec tables overflow the 390px viewport on 6 product pages',
       summary: 'Content wider than screen detected at 390px.', impact: 'Mobile usability failure on product pages.',
       pages: take(t2p, 6, 150), template: 'product', status: 'NEW', delta: 'new', daysAgo: 1,
-      evidence: [{ kind: 'screenshot', label: 'Render at 390px', content: 'Screenshot capture requires the headless renderer (DEMO placeholder).' }],
+      evidence: [{ kind: 'screenshot', label: 'Render at 390px', content: 'Screenshot capture requires the headless renderer (sample placeholder).' }],
     },
     {
       key: 'js-menu', checkId: 'TECH-JS-RENDER', title: 'Mega-menu links only present after JavaScript rendering',
@@ -205,7 +205,7 @@ export function issueSpecs(cat: Catalog, r: Rng, now: Date): IssueSpec[] {
     },
     {
       key: 'schema-sync', checkId: 'TECH-SCHEMA-SYNC', title: 'Monthly guideline sync: Offer return-policy and shipping details recommended',
-      summary: 'Google merchant-listing documentation recommends hasMerchantReturnPolicy and shippingDetails on Offer; live Product markup has neither. (DEMO changelog item — the real feed requires the guideline-sync source.)',
+      summary: 'Google merchant-listing documentation recommends hasMerchantReturnPolicy and shippingDetails on Offer; live Product markup has neither. (sample changelog item — the real feed requires the guideline-sync source.)',
       impact: 'Ineligible for some merchant-listing enhancements.', pages: take(t1p, 10, 40), template: 'product', status: 'NEW', delta: 'new', daysAgo: 6,
       evidence: [{ kind: 'link', label: 'Source document', url: 'https://developers.google.com/search/docs/appearance/structured-data/merchant-listing', content: 'Google Search Central — Merchant listing structured data' }],
     },
@@ -219,7 +219,7 @@ export function issueSpecs(cat: Catalog, r: Rng, now: Date): IssueSpec[] {
       key: 'decay', checkId: 'CONT-DECAY', title: 'Tier 1 collection lost 34% organic clicks (28d vs prior 28d)',
       summary: '"Kitchen Tools" clicks fell from 5,120 to 3,380.', impact: 'Highest-ROI refresh candidate.',
       pages: take(t1c, 1), template: 'collection', status: 'ASSIGNED', delta: 'worsening', daysAgo: 2, allocateTo: 'content', allocatedBy: 'emp-ritesh',
-      evidence: [{ kind: 'metric', label: 'GSC clicks (DEMO)', content: 'Prior 28d: 5,120 · Last 28d: 3,380 (−34%)' }],
+      evidence: [{ kind: 'metric', label: 'GSC clicks (sample)', content: 'Prior 28d: 5,120 · Last 28d: 3,380 (−34%)' }],
     },
     {
       key: 'cannibal', checkId: 'CONT-CANNIBAL', title: 'Two URLs alternating for "wholesale kitchen products"',
@@ -231,7 +231,7 @@ export function issueSpecs(cat: Catalog, r: Rng, now: Date): IssueSpec[] {
       key: 'intent', checkId: 'CONT-INTENT', title: 'Product page ranking for an informational "how to choose" query',
       summary: 'SERP for "how to choose water bottle" is dominated by guides.', impact: 'A buying guide would win the click.',
       pages: take(bottlePages, 1), template: 'product', status: 'NEW', delta: 'new', daysAgo: 2,
-      evidence: [{ kind: 'note', label: 'SERP composition (DEMO)', content: '8/10 results are blog/guide pages' }],
+      evidence: [{ kind: 'note', label: 'SERP composition (sample)', content: '8/10 results are blog/guide pages' }],
     },
     {
       key: 'freshness', checkId: 'CONT-FRESHNESS', title: '5 Tier 1 collections not updated in 180+ days',
@@ -319,19 +319,19 @@ export function issueSpecs(cat: Catalog, r: Rng, now: Date): IssueSpec[] {
       key: 'low-ctr', checkId: 'ONP-LOW-CTR', title: '4 top-5 queries with CTR below position benchmark',
       summary: 'E.g. "wholesale water bottles" at position 3 with 2.1% CTR (benchmark ~10%).', impact: 'Lost clicks without a ranking change.',
       pages: take(bottlePages, 2), template: 'product', status: 'NEW', delta: 'new', daysAgo: 0,
-      evidence: [{ kind: 'metric', label: 'GSC (DEMO)', content: 'pos 3.1 · 18,400 impr · 2.1% CTR' }],
+      evidence: [{ kind: 'metric', label: 'GSC (sample)', content: 'pos 3.1 · 18,400 impr · 2.1% CTR' }],
     },
     {
       key: 'serp-feature', checkId: 'ONP-SERP-FEATURE', title: 'Lost featured snippet for "dropshipping products india"',
       summary: 'Snippet held for 41 days, lost yesterday to a competitor guide.', impact: 'Tier 1 money keyword.',
       pages: [cat.home], template: 'home', status: 'NEW', delta: 'new', daysAgo: 0,
-      evidence: [{ kind: 'note', label: 'SERP feature history (DEMO)', content: 'Featured snippet: held 41d → lost' }],
+      evidence: [{ kind: 'note', label: 'SERP feature history (sample)', content: 'Featured snippet: held 41d → lost' }],
     },
     {
       key: 'lost-links', checkId: 'OFF-BACKLINKS', title: 'Lost 3 backlinks from DR>40 domains',
       summary: 'Links removed during a partner site redesign.', impact: 'Reclaimable equity.',
       pages: [cat.home, t1c[0]].filter(Boolean) as SitePage[], status: 'ASSIGNED', delta: 'new', daysAgo: 2, allocateTo: 'seo', allocatedBy: 'emp-ritesh',
-      evidence: [{ kind: 'note', label: 'Backlink diff (DEMO)', content: 'news-site.example (DR 58), blog.example (DR 44), directory.example (DR 41)' }],
+      evidence: [{ kind: 'note', label: 'Backlink diff (sample)', content: 'news-site.example (DR 58), blog.example (DR 44), directory.example (DR 41)' }],
     },
     {
       key: 'toxic', checkId: 'OFF-TOXIC', title: '23 new toxic referring domains this week',
@@ -348,7 +348,7 @@ export function issueSpecs(cat: Catalog, r: Rng, now: Date): IssueSpec[] {
     {
       key: 'nap', checkId: 'OFF-LOCAL', title: 'NAP inconsistent on 3 directories',
       summary: 'Old warehouse address on 3 citation sites.', impact: 'Local/brand trust.', pages: [cat.home], status: 'NEW', delta: 'unchanged', daysAgo: 6,
-      evidence: [{ kind: 'note', label: 'Directories', content: 'Directory A, B, C list an outdated address (DEMO)' }],
+      evidence: [{ kind: 'note', label: 'Directories', content: 'Directory A, B, C list an outdated address (sample)' }],
     },
     {
       key: 'answer-block', checkId: 'AEO-ANSWER-BLOCK', title: '28 Tier 1–2 pages lack a direct answer block',
@@ -377,7 +377,7 @@ export function issueSpecs(cat: Catalog, r: Rng, now: Date): IssueSpec[] {
       key: 'ai-vis', checkId: 'AEO-AI-VISIBILITY', title: 'DeoDap dropped out of answers for 4 buyer-intent prompts',
       summary: 'Weekly panel: mention rate fell from 34% to 28%.', impact: 'Competitors recommended instead.',
       pages: [cat.home], status: 'NEW', delta: 'worsening', daysAgo: 1,
-      evidence: [{ kind: 'metric', label: 'AI panel (DEMO)', content: 'Mention rate 34% → 28%' }],
+      evidence: [{ kind: 'metric', label: 'AI panel (sample)', content: 'Mention rate 34% → 28%' }],
     },
     {
       key: 'eeat', checkId: 'GEO-EEAT', title: 'Blog posts have no named author or bio',
@@ -404,9 +404,9 @@ export function issueSpecs(cat: Catalog, r: Rng, now: Date): IssueSpec[] {
     },
     {
       key: 'brand-facts', checkId: 'GEO-BRAND-FACTS', title: 'Founding year differs between site and LinkedIn',
-      summary: 'About page vs LinkedIn company page disagree (DEMO).', impact: 'Conflicting facts confuse knowledge graphs.',
+      summary: 'About page vs LinkedIn company page disagree (sample).', impact: 'Conflicting facts confuse knowledge graphs.',
       pages: [cat.pages.find((p) => p.path === '/pages/about-us') ?? cat.home], status: 'NEW', delta: 'unchanged', daysAgo: 8,
-      evidence: [{ kind: 'note', label: 'Facts', content: 'Site: year A · LinkedIn: year B (DEMO values)' }],
+      evidence: [{ kind: 'note', label: 'Facts', content: 'Site: year A · LinkedIn: year B (sample values)' }],
     },
     {
       key: 'structure', checkId: 'GEO-STRUCTURE', title: 'Long guides without headings every 300 words',
@@ -505,9 +505,9 @@ export function buildIssue(spec: IssueSpec, cfg: SentinelConfig, now: Date, r: R
   const detected = addHours(addDays(now, -(spec.daysAgo ?? 0)), -r.int(1, 5));
   const id = `ISS-${pad(++issueCounter)}`;
   const evidence: Evidence[] = (spec.evidence ?? []).map((e, i) => ({
-    ...e, id: `${id}-ev${i + 1}`, capturedAt: detected.toISOString(), source: 'demo',
+    ...e, id: `${id}-ev${i + 1}`, capturedAt: detected.toISOString(), source: 'sample',
   }));
-  if (!evidence.length) evidence.push({ id: `${id}-ev1`, kind: 'note', label: 'Detection', content: check.detects, capturedAt: detected.toISOString(), source: 'demo' });
+  if (!evidence.length) evidence.push({ id: `${id}-ev1`, kind: 'note', label: 'Detection', content: check.detects, capturedAt: detected.toISOString(), source: 'sample' });
   const module: AuditModule = check.module;
   return {
     id, checkId: spec.checkId, module, title: spec.title, summary: spec.summary,
@@ -518,7 +518,7 @@ export function buildIssue(spec: IssueSpec, cfg: SentinelConfig, now: Date, r: R
     businessImpact: spec.impact, detectedAt: detected.toISOString(),
     firstSeenAt: addDays(detected, -((spec.occurrences ?? 1) - 1) * 14).toISOString(), lastSeenAt: addHours(now, -2).toISOString(),
     slaDueAt: slaDueAt(decision.severity, detected, cfg).toISOString(), occurrences: spec.occurrences ?? 1,
-    recommendedTeam: check.ownerTeam, allocation: [], severityHistory: [], evidence, source: 'demo',
+    recommendedTeam: check.ownerTeam, allocation: [], severityHistory: [], evidence, source: 'sample',
   };
 }
 

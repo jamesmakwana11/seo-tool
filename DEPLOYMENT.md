@@ -12,7 +12,7 @@ One container runs everything: the Express API serves the built React app from t
 
 | Piece | Where | Notes |
 | --- | --- | --- |
-| Web app (React/Vite) | `apps/web/dist`, served by the API at `/` | Built with `VITE_API_MODE=http`; SPA fallback for deep links |
+| Web app (React/Vite) | `apps/web/dist`, served by the API at `/` | `npm run build:prod`; SPA fallback for deep links |
 | API (Express) | `apps/api/dist/server.js` | `/api/*`, JSON errors, structured JSON logs (pino) on stdout |
 | Crawler | `bin/sentinel-crawler` (Go) started by the API per crawl, with `bin/sentinel-textcore` (Rust) for duplicate analysis | Only requests `CRAWLER_BASE_URL` / registered website hosts, and only when `CRAWLER_ALLOW_LIVE=true`. Falls back to the built-in Node.js crawler when the binaries are missing |
 | Lighthouse / rendered checks | a separate Node process driving Chromium, one at a time | Only in images built with `INSTALL_CHROMIUM=true`; refused when memory is short |
@@ -87,7 +87,8 @@ Required in production:
 | `DATABASE_SSL` | optional: `auto` (default — no TLS for a Render-internal or local host, verified TLS otherwise), `require`, `no-verify`, `disable` |
 | `DATABASE_WAIT_SECONDS` | optional: how long start-up waits for the database (default 60) |
 | `ALLOW_EPHEMERAL_STORAGE` | only without a database: `true` acknowledges that all data is lost on restart (staging only) |
-| `ADMIN_EMAIL`, `ADMIN_INITIAL_PASSWORD` | first admin (password ≥ 10 chars, letters + numbers); optional `ADMIN_NAME` |
+| `ADMIN_EMAIL`, `ADMIN_INITIAL_PASSWORD` | first account, a **Super Admin** (password ≥ 10 chars, letters + numbers); optional `ADMIN_NAME`. On a server started before the Super Admin role, this account becomes Super Admin |
+| `SITE_ADMIN_EMAIL`, `SITE_ADMIN_INITIAL_PASSWORD` | optional **Admin** account (Overview and SEO operations only), created at start-up when no employee has that email; never changed afterwards (at least 8 characters; a warning is logged when it is simpler than the rule above). Optional `SITE_ADMIN_NAME` |
 | `APP_BASE_URL` | the public HTTPS URL, used in alert/digest links |
 
 Crawling and scheduling (needed for real audits):
@@ -106,7 +107,10 @@ Crawling and scheduling (needed for real audits):
 | `CRAWL_KEEP_AWAKE`, `KEEP_AWAKE_URL`, `KEEP_AWAKE_INTERVAL_SECONDS` | while a crawl runs, request the server's own `/healthz` (default on; address `KEEP_AWAKE_URL`, else Render's `RENDER_EXTERNAL_URL`; every 300 s) so an idle-stopping host does not stop it |
 | `CRAWLER_ENGINE` | `auto` (default: Go crawler when installed — always in the Docker image) / `go` / `node` |
 | `CRAWLER_MEMORY_BUDGET_MB` | optional; default 85 % of the container memory limit (API + crawler + text core) |
-| `CRAWLER_SMART_MAX_PAGES` | pages a Smart crawl fetches, highest priority first (default and maximum 1,000; Full crawls have no such budget) |
+| `CRAWLER_SMART_MAX_PAGES` | pages a Smart crawl fetches, highest priority first (default and maximum 10,000; Full crawls have no such budget) |
+| `MONITOR_INTERVAL_MINUTES` | Auto Sync interval (default `720` = every 12 hours; `0` turns Auto Sync off on the server). Each website can switch Auto Sync on or off in the Crawl Center — see `docs/WEBSITE_SYNC.md` |
+| `MONITOR_MAX_CHECKS` | pages checked for changes per sync with conditional requests (default 300, least recently checked first) |
+| `SYNC_MAX_URLS` | URLs crawled per sync at most (default 2000); the rest are synced next time |
 | `IMAGE_AUDIT_MAX_IMAGES` / `IMAGE_AUDIT_CONCURRENCY` | Image Audit: unique images per audit (50,000), images checked at once per audit (4, max 8) — see `docs/IMAGE_AUDIT.md` |
 | `CRAWLER_KEEP_RESULTS` | recent crawls whose page rows stay browsable (default 3, temporary files) |
 | `CRAWLER_GO_BIN`, `TEXTCORE_BIN`, `CRAWLER_WORK_DIR` | set by the image (`/app/bin/…`, `/tmp/sentinel-crawls`) |
@@ -261,8 +265,8 @@ Settings → Integrations): Google Search Console, GA4, PageSpeed/CrUX, Ahrefs o
 Google Business Profile, OpenAI/Gemini/Perplexity, SMTP email, WhatsApp Cloud API, Slack. Variable names are listed in
 `apps/api/.env.example`. Never commit real values; set them only in the hosting platform's secret store.
 
-Forced off in production regardless of env: DEMO seed (its preview accounts have published passwords), DEV role
-preview, exposing reset tokens in API responses.
+Forced off in production regardless of env: exposing reset tokens in API responses. The test fixtures
+(`SEED_TEST_FIXTURES`) load only when `NODE_ENV=test`; a server never starts with sample data or sample accounts.
 
 ## PostgreSQL on Render
 

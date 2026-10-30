@@ -2,7 +2,7 @@ import { Database, RefreshCw } from 'lucide-react';
 import type { SystemComponentHealth, SystemErrorEntry } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
-import { Async, Badge, Button, DemoBadge, Mono, Notice, PageHeader, Panel, Stat, type Tone } from '@/components/ui/primitives';
+import { Async, Badge, Button, Mono, Notice, PageHeader, Panel, Stat, type Tone } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/DataTable';
 import { fmtDateTime, fmtRelative } from '@/lib/format';
 
@@ -29,7 +29,6 @@ export default function SystemHealthPage() {
       <PageHeader
         title="System health"
         description="Status of Sentinel’s six subsystems (A–F) and the platform, plus recent errors and warnings."
-        meta={<DemoBadge />}
         actions={<Button icon={<RefreshCw className="h-4 w-4" />} loading={q.isFetching && !q.isLoading} onClick={() => void q.refetch()}>Re-check</Button>}
       />
       <Async q={q} rows={10}>
@@ -40,7 +39,7 @@ export default function SystemHealthPage() {
           return (
             <div className="space-y-5">
               {!d.storage.persistent ? (
-                <Notice tone="demo" icon={<Database className="h-4 w-4" />} title="Storage is not persistent">
+                <Notice tone="caution" icon={<Database className="h-4 w-4" />} title="Storage is not persistent">
                   {d.storage.note} Kind: <Mono>{d.storage.kind.replace('_', ' ')}</Mono>.
                 </Notice>
               ) : d.storage.error ? (

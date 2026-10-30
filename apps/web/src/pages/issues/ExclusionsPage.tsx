@@ -5,7 +5,7 @@ import { CHECKS_BY_ID, type Exclusion, type Issue } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Button, DemoBadge, EmptyState, Mono, Notice, PageHeader, Panel, ProgressBar } from '@/components/ui/primitives';
+import { Async, Badge, Button, EmptyState, Mono, Notice, PageHeader, Panel, ProgressBar } from '@/components/ui/primitives';
 import { ConfirmDialog } from '@/components/ui/overlay';
 import { DataTable } from '@/components/ui/DataTable';
 import { SeverityBadge } from '@/components/domain/badges';
@@ -19,7 +19,6 @@ export default function ExclusionsPage() {
       <PageHeader
         title="Exclusions & false positives"
         description="False-positive feedback (PDF §17): every Fix Card has “Not an issue” with a reason, and the classifier learns exclusions — for example intentionally noindexed pages."
-        meta={<DemoBadge />}
       />
       <div className="space-y-5">
         <FalsePositiveRate />
@@ -43,7 +42,7 @@ function FalsePositiveRate() {
     refetch: () => { void all.refetch(); void nai.refetch(); },
   };
   return (
-    <Panel title="False-positive rate on Criticals" subtitle="Critical issues marked Not an issue ÷ all Critical issues ever detected" actions={<DemoBadge />}>
+    <Panel title="False-positive rate on Criticals" subtitle="Critical issues marked Not an issue ÷ all Critical issues ever detected">
       <Async q={q} rows={2}>
         {({ total, fp }) => {
           const pct = total ? (fp / total) * 100 : 0;
@@ -60,7 +59,7 @@ function FalsePositiveRate() {
                   Target: <strong>below {FP_TARGET_PCT}%</strong> (PDF acceptance criteria for the daily digest).{' '}
                   {total === 0 ? 'No Critical issues detected yet.' : ok ? 'Within target.' : 'Above target — review the reasons below and tighten the checks or add exclusions.'}
                 </p>
-                <p className="text-xs text-muted">Bar scale: full width = {FP_TARGET_PCT * 2}%. Computed from DEMO issues in this session.</p>
+                <p className="text-xs text-muted">Bar scale: full width = {FP_TARGET_PCT * 2}%. Computed from all issues on this website.</p>
               </div>
             </div>
           );

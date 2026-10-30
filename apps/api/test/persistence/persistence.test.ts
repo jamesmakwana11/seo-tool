@@ -232,7 +232,7 @@ describe.skipIf(!DB_URL)('database start-up', () => {
     const port = 41000 + Math.floor(Math.random() * 2000);
     const env = {
       ...process.env, NODE_ENV: 'development', PORT: String(port), DATABASE_URL: url, SESSION_SECRET: 's'.repeat(40), ADMIN_EMAIL: ADMIN.email,
-      ADMIN_INITIAL_PASSWORD: ADMIN.password, SEED_DEMO_DATA: 'false', LOG_LEVEL: 'warn', CRAWLER_BASE_URL: 'http://127.0.0.1:9/', SCHEDULER_ENABLED: 'false',
+      ADMIN_INITIAL_PASSWORD: ADMIN.password, SEED_TEST_FIXTURES: 'false', LOG_LEVEL: 'warn', CRAWLER_BASE_URL: 'http://127.0.0.1:9/', SCHEDULER_ENABLED: 'false',
       CHANGE_SNAPSHOT_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'proc-')),
     };
     const start = async () => {

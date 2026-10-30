@@ -39,7 +39,7 @@ export function WebsiteFormDialog({ open, onClose, website, onSaved }: { open: b
           <Input id="ws-name" data-autofocus value={form.name} maxLength={80} placeholder="e.g. DeoDap Wholesale" onChange={(e) => setForm({ ...form, name: e.target.value })} aria-invalid={!!fe('name')} />
         </Field>
         <Field label="Website URL" htmlFor="ws-url" required hint="The home page. One workspace per domain — www. and the bare domain count as the same site." error={fe('url')}>
-          <Input id="ws-url" type="url" inputMode="url" value={form.url} placeholder="https://example.com" onChange={(e) => setForm({ ...form, url: e.target.value })} aria-invalid={!!fe('url')} disabled={website?.source === 'demo'} />
+          <Input id="ws-url" type="url" inputMode="url" value={form.url} placeholder="https://example.com" onChange={(e) => setForm({ ...form, url: e.target.value })} aria-invalid={!!fe('url')} disabled={website?.source === 'sample'} />
         </Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Platform" htmlFor="ws-platform" required error={fe('platform')}>

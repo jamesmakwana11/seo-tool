@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import type { MonthlyReport } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
-import { Async, DemoBadge, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
+import { Async, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
 import { TrendChart } from '@/components/ui/charts';
 import { ReportActions, ReportMetaPanel } from '@/components/reports/ReportParts';
 import { fmtDate, fmtNum } from '@/lib/format';
@@ -17,7 +17,7 @@ export default function MonthlyReportPage() {
       <PageHeader
         title="Monthly executive report"
         description="One-page summary for leadership (PDF §12.5), generated from the audit log so every figure is evidence-backed (PDF §17)."
-        meta={<><DemoBadge />{q.data && <span className="text-xs text-muted">{fmtDate(q.data.meta.periodStart)} → {fmtDate(q.data.meta.periodEnd)}</span>}</>}
+        meta={<>{q.data && <span className="text-xs text-muted">{fmtDate(q.data.meta.periodStart)} → {fmtDate(q.data.meta.periodEnd)}</span>}</>}
         actions={<ReportActions kind="monthly" print />}
       />
       <Async q={q} rows={12}>{(r) => <Body r={r} />}</Async>
@@ -25,7 +25,7 @@ export default function MonthlyReportPage() {
   );
 }
 
-/** Hides app chrome (sidebar, top bar, demo banner stays) when printing so the report fits one page. Scoped to this page. */
+/** Hides app chrome (sidebar, top bar) when printing so the report fits one page. Scoped to this page. */
 function PrintStyles() {
   return (
     <style>{`@media print {

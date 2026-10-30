@@ -37,7 +37,6 @@ const preview: ShopifyApplyPreview = {
 };
 
 vi.mock('@/api/client', () => ({
-  API_MODE: 'http',
   api: {
     startSeoBulkFix: async () => { fake.calls.push('start'); return job('scanning'); },
     getSeoBulkFix: async () => job(fake.state as SeoBulkJob['state']),

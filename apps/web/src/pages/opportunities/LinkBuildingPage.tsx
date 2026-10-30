@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import type { LinkProspect } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
-import { Async, Badge, DemoBadge, EmptyState, Notice, PageHeader, Panel, type Tone } from '@/components/ui/primitives';
+import { Async, Badge, EmptyState, Notice, PageHeader, Panel, type Tone } from '@/components/ui/primitives';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { SourceBadge } from '@/components/domain/badges';
 import { OPP_KIND_LABELS, OppStatusBadge, OpportunityActions, SiteUrl } from '@/components/opportunities/shared';
@@ -21,11 +21,10 @@ export default function LinkBuildingPage() {
       <PageHeader
         title="Link building & digital PR"
         description="Competitor backlink gap — domains linking to two or more competitors but not DeoDap, sorted by DR × relevance with a suggested pitch angle — plus digital PR and seasonal opportunities (PDF §7.2)."
-        meta={<DemoBadge />}
         actions={<Link to="/opportunities/mentions" className="inline-flex h-9 items-center rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card transition-colors hover:border-signal/40 hover:text-signal-dark">Unlinked brand mentions</Link>}
       />
       <div className="space-y-5">
-        <Notice tone="demo" demoData>Prospects are DEMO data. The weekly backlink-gap pull needs an Ahrefs or Semrush API subscription; Sentinel never sends outreach itself — the SEO team does, from the task.</Notice>
+        <Notice tone="caution">The weekly backlink-gap pull needs an Ahrefs or Semrush API subscription; Sentinel never sends outreach itself — the SEO team does, from the task.</Notice>
         <Prospects />
         <PrOpportunities />
       </div>

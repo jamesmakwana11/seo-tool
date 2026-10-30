@@ -45,7 +45,7 @@ describe(`a ${N.toLocaleString('en-US')}-page crawl result`, () => {
   it('is stored, tracked and served without slowing down', async () => {
     const seen = { progressCalls: 0, phases: [] as string[] } as { progressCalls: number; phases: string[]; plan?: CrawlPlan };
     const container = await createContainer({
-      env: loadEnv({ NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'z'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: ORIGIN, ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password }),
+      env: loadEnv({ NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'z'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: ORIGIN, ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password }),
       engine: stubEngine(seen),
     });
     const agent = supertest(createApp(container));

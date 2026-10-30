@@ -57,7 +57,7 @@ What the template sets (all variables are documented in `apps/api/.env.example`)
 
 | Variable | Local value | Meaning |
 | --- | --- | --- |
-| `SEED_DEMO_DATA` | `false` | Clean start — no DEMO data mixed with crawl results |
+| `SEED_TEST_FIXTURES` | `false` | Test suites only (ignored unless `NODE_ENV=test`) |
 | `CRAWLER_ALLOW_LIVE` | `true` | Allows crawling a real (non-localhost) website. Off by default everywhere else |
 | `SCHEDULER_ENABLED` | `false` | Nothing is crawled automatically — every crawl starts from the Start crawl button |
 | `CRAWLER_REQUEST_DELAY_MS` | `250` | Minimum gap between requests to the site |
@@ -90,7 +90,7 @@ npm run dev:web:http
 
 Open <http://localhost:5173> and sign in with your `ADMIN_EMAIL` and `ADMIN_INITIAL_PASSWORD`.
 
-> `npm run dev:web` (without `:http`) starts the in-browser DEMO version instead. It cannot crawl websites.
+> `npm run dev:web` does the same: the web app always talks to the API.
 
 ## 5. Crawl
 
@@ -216,7 +216,7 @@ the response times, retries, slow-downs and the memory of each process.
 
 **Smart and full crawls.** A *Smart crawl* fetches the most important URLs first (homepage, URLs to re-verify, pages
 changed in the last 48 h, collections, top products, then what they link to) up to its page budget of **1,000 pages**
-(`CRAWLER_SMART_MAX_PAGES`, default and maximum 1,000). When eligible URLs are left, the crawl ends as *Partially
+(`CRAWLER_SMART_MAX_PAGES`, default and maximum 10,000). When eligible URLs are left, the crawl ends as *Partially
 completed* and reports how many are pending ("page limit reached") — they are never counted as crawled, audited or
 passed. A *Full crawl* has no page budget: it processes every eligible URL it discovers (only an optional server cap
 `CRAWLER_MAX_PAGES`, the memory budget and cancellation stop it, each reported as such).
@@ -271,7 +271,7 @@ skipped by default. Run it with, for example, `STRESS_PAGES=20000` set in the en
 | `CRAWLER_ALLOW_LIVE is not "true"` | Set `CRAWLER_ALLOW_LIVE=true` in `apps/api/.env` and restart the API |
 | `CRAWLER_BASE_URL is not set` | The API was started without it. Locally: copy `apps/api/local-crawl.env.example` (not `.env.example`) to `apps/api/.env`, keep `CRAWLER_BASE_URL=https://deodap.in`, and start the API with `npm run dev:api:env` (plain `npm run dev:api` does not read `.env`). On Render: add `CRAWLER_BASE_URL` under Environment — see DEPLOYMENT.md |
 | `Invalid environment configuration: CRAWLER_BASE_URL` | Use the full address with `https://`, e.g. `https://deodap.in` — no quotes, no user name or password |
-| `This website holds the labelled DEMO dataset` | Use `SEED_DEMO_DATA=false`, or add the site under Manage websites |
+| `This website holds the sample test dataset` | Only in test runs (`NODE_ENV=test` with `SEED_TEST_FIXTURES=true`); add the site under Manage websites |
 | `Refusing to crawl …: blocked: … resolves to …` | The site resolves to a private / internal address — such sites are never crawled |
 | `Could not reach the API server` | Terminal 1 is not running, or not on port 4000 |
 | `ADMIN_EMAIL and ADMIN_INITIAL_PASSWORD must be set together` | Fill in both in `apps/api/.env` |

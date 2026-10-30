@@ -1,5 +1,5 @@
-import { PREVIEW_USER_BY_ROLE, ROLE_LABELS, type AuthResult, type Role, type SessionUser } from '@sentinel/shared';
-import { ApiError, badRequest, conflict, forbidden, unauthorized } from '../lib/errors';
+import { type AuthResult, type SessionUser } from '@sentinel/shared';
+import { ApiError, badRequest, unauthorized } from '../lib/errors';
 import { hashPassword, passwordPolicyError, randomToken, sha256, signToken, verifyPassword, verifyToken } from '../lib/passwords';
 import { emailTransportReady } from '../notifications/adapters';
 import { actorFromEmployee, audit, toSessionUser, SYSTEM_ACTOR, type Actor, type Ctx } from './context';
@@ -7,9 +7,9 @@ import { actorFromEmployee, audit, toSessionUser, SYSTEM_ACTOR, type Actor, type
 /**
  * sid: session id · sub: employee id · exp: expiry in ms, 0 = no automatic expiry (signed in until sign-out) ·
  * cv: fingerprint of the account's password hash (a password change or reset ends every older session, also after a
- * restart) · demo: role-preview session.
+ * restart).
  */
-interface TokenPayload { sid: string; sub: string; exp: number; cv?: string; demo?: boolean }
+interface TokenPayload { sid: string; sub: string; exp: number; cv?: string }
 
 /** Short fingerprint of a stored password hash — never the hash itself. */
 const credentialVersion = (hash: string) => sha256(`session-cv:${hash}`).slice(0, 16);
@@ -21,8 +21,7 @@ const credentialVersion = (hash: string) => sha256(`session-cv:${hash}`).slice(0
  */
 export function createAuthService(ctx: Ctx) {
   const r = ctx.repos;
-  /** Attach server data provenance so every screen can label DEMO data honestly. */
-  const withEnv = async (u: SessionUser): Promise<SessionUser> => ({ ...u, serverDemoData: (await r.metrics.get()).source === 'demo' });
+  const withEnv = async (u: SessionUser): Promise<SessionUser> => u;
 
   /** The current credential fingerprint of an employee (undefined for accounts without a password, e.g. previews). */
   async function cvOf(email: string): Promise<string | undefined> {
@@ -30,19 +29,19 @@ export function createAuthService(ctx: Ctx) {
     return cred ? credentialVersion(cred.hash) : undefined;
   }
 
-  async function issue(employeeId: string, demo: boolean): Promise<AuthResult> {
+  async function issue(employeeId: string): Promise<AuthResult> {
     const e = (await r.employees.get(employeeId))!;
     const now = ctx.clock();
     // SESSION_TTL_HOURS = 0 (default): the session lasts until the user signs out. A positive value caps it.
     const ttlMs = ctx.env.SESSION_TTL_HOURS > 0 ? ctx.env.SESSION_TTL_HOURS * 3600_000 : 0;
     const expiresAt = ttlMs ? new Date(now.getTime() + ttlMs) : undefined;
     const sid = randomToken(18);
-    await r.sessions.insert({ id: sid, employeeId, demo, createdAt: now.toISOString(), ...(expiresAt ? { expiresAt: expiresAt.toISOString() } : {}) });
+    await r.sessions.insert({ id: sid, employeeId, createdAt: now.toISOString(), ...(expiresAt ? { expiresAt: expiresAt.toISOString() } : {}) });
     const cv = await cvOf(e.email);
-    const token = signToken({ sid, sub: employeeId, exp: expiresAt?.getTime() ?? 0, ...(cv ? { cv } : {}), ...(demo ? { demo } : {}) } satisfies TokenPayload, ctx.sessionSecret);
+    const token = signToken({ sid, sub: employeeId, exp: expiresAt?.getTime() ?? 0, ...(cv ? { cv } : {}) } satisfies TokenPayload, ctx.sessionSecret);
     e.lastActiveAt = now.toISOString();
     await r.employees.update(e);
-    return { token, user: await withEnv(toSessionUser(e, await r.permissions.get(), demo)), ...(expiresAt ? { expiresAt: expiresAt.toISOString() } : {}) };
+    return { token, user: await withEnv(toSessionUser(e, await r.permissions.get())), ...(expiresAt ? { expiresAt: expiresAt.toISOString() } : {}) };
   }
 
   return {
@@ -57,19 +56,8 @@ export function createAuthService(ctx: Ctx) {
       const e = await r.employees.get(cred.employeeId);
       if (!e) throw unauthorized();
       if (e.status !== 'active') throw new ApiError(403, 'ACCOUNT_INACTIVE', `This account is ${e.status}. Ask an admin to activate it.`);
-      const res = await issue(e.id, false);
-      await audit(ctx, actorFromEmployee(e, await r.permissions.get(), false), 'auth.login', 'auth', e.id, `${e.name} signed in`);
-      return res;
-    },
-
-    /** DEVELOPMENT ONLY role preview (prompt §4.3). Refused unless ALLOW_DEV_ROLE_PREVIEW and not production. */
-    async previewAs(role: Role): Promise<AuthResult> {
-      if (!ctx.env.ALLOW_DEV_ROLE_PREVIEW || ctx.env.NODE_ENV === 'production') throw forbidden('Development role preview is disabled on this server.');
-      if (!ROLE_LABELS[role]) throw badRequest('Unknown role.');
-      const e = await r.employees.get(PREVIEW_USER_BY_ROLE[role]);
-      if (!e || e.status !== 'active') throw conflict(`No active preview user for ${ROLE_LABELS[role]} (DEMO data not loaded?).`, 'PREVIEW_USER_MISSING');
-      const res = await issue(e.id, true);
-      await audit(ctx, actorFromEmployee(e, await r.permissions.get(), true), 'auth.preview', 'auth', e.id, `DEVELOPMENT role preview as ${ROLE_LABELS[role]} (${e.name})`);
+      const res = await issue(e.id);
+      await audit(ctx, actorFromEmployee(e, await r.permissions.get()), 'auth.login', 'auth', e.id, `${e.name} signed in`);
       return res;
     },
 
@@ -81,7 +69,7 @@ export function createAuthService(ctx: Ctx) {
       const now = ctx.clock().toISOString();
       if (sess && !sess.revokedAt) await r.sessions.update({ ...sess, revokedAt: now });
       // Signed out after a restart (record not in memory): keep the revocation so the token cannot be taken back.
-      else if (!sess) await r.sessions.insert({ id: p.sid, employeeId: p.sub, demo: !!p.demo, createdAt: now, revokedAt: now });
+      else if (!sess) await r.sessions.insert({ id: p.sid, employeeId: p.sub, createdAt: now, revokedAt: now });
     },
 
     /** Resolve a bearer token to an Actor; throws 401 when invalid/expired/revoked/inactive. */
@@ -101,11 +89,11 @@ export function createAuthService(ctx: Ctx) {
         // Sessions are kept in memory, so a server restart (redeploy, Render spin-down) forgets them. A correctly signed
         // token for the same, still active account with the same password is taken back instead of signing the user out.
         if (!p.cv || p.cv !== cv) throw unauthorized('Your session is no longer valid. Sign in again.');
-        sess = { id: p.sid, employeeId: p.sub, demo: !!p.demo, createdAt: ctx.clock().toISOString(), ...(p.exp ? { expiresAt: new Date(p.exp).toISOString() } : {}) };
+        sess = { id: p.sid, employeeId: p.sub, createdAt: ctx.clock().toISOString(), ...(p.exp ? { expiresAt: new Date(p.exp).toISOString() } : {}) };
         await r.sessions.insert(sess);
       }
       const matrix = await r.permissions.get();
-      return { actor: actorFromEmployee(e, matrix, sess.demo), user: await withEnv(toSessionUser(e, matrix, sess.demo)) };
+      return { actor: actorFromEmployee(e, matrix), user: await withEnv(toSessionUser(e, matrix)) };
     },
 
     async requestPasswordReset(email: string) {
@@ -151,7 +139,7 @@ export function createAuthService(ctx: Ctx) {
       return { ok: true as const };
     },
 
-    async updateProfile(actor: Actor, input: { name?: string; title?: string; currentPassword?: string; newPassword?: string }, demo: boolean): Promise<SessionUser> {
+    async updateProfile(actor: Actor, input: { name?: string; title?: string; currentPassword?: string; newPassword?: string }): Promise<SessionUser> {
       const e = await r.employees.get(actor.id);
       if (!e) throw unauthorized();
       if (input.newPassword !== undefined) {
@@ -169,7 +157,7 @@ export function createAuthService(ctx: Ctx) {
       if (input.title !== undefined) e.title = input.title.trim();
       await r.employees.update(e);
       await audit(ctx, actor, 'employee.profile_update', 'employee', e.id, 'Updated own profile');
-      return withEnv(toSessionUser(e, await r.permissions.get(), demo));
+      return withEnv(toSessionUser(e, await r.permissions.get()));
     },
 
     /** Create credentials for a newly invited employee and send (or expose in dev) a set-password token. */

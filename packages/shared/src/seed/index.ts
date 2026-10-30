@@ -31,7 +31,7 @@ export interface SeedData {
   config: SentinelConfig;
   permissions: PermissionMatrix;
   employees: Employee[];
-  passwords: Record<string, string>; // email → password (DEMO credentials only)
+  passwords: Record<string, string>; // email → password (sample credentials only)
   catalog: Catalog;
   siteSize: number;
   issues: Issue[];
@@ -73,22 +73,22 @@ export interface SeedData {
   errors: SystemErrorEntry[];
 }
 
-export const DEMO_PASSWORD = 'Sentinel@Demo1';
+export const FIXTURE_PASSWORD = 'Sentinel@Fixture1';
 
 const EMP: Omit<Employee, 'createdAt' | 'source'>[] = [
-  { id: 'emp-aarav', name: 'Aarav Mehta', email: 'aarav.admin@demo.deodap.local', role: 'admin', teamIds: ['seo'], title: 'SEO Operations Admin', status: 'active', capacityHoursPerWeek: 20 },
-  { id: 'emp-ritesh', name: 'Ritesh Patel', email: 'ritesh.seo@demo.deodap.local', role: 'seo_specialist', teamIds: ['seo'], title: 'SEO Lead', status: 'active', isSeoLead: true, capacityHoursPerWeek: 35 },
-  { id: 'emp-neha', name: 'Neha Shah', email: 'neha.seo@demo.deodap.local', role: 'seo_specialist', teamIds: ['seo'], title: 'Technical SEO Specialist', status: 'active', capacityHoursPerWeek: 40 },
-  { id: 'emp-karan', name: 'Karan Joshi', email: 'karan.seo@demo.deodap.local', role: 'seo_specialist', teamIds: ['seo'], title: 'SEO Specialist (Off-page)', status: 'active', capacityHoursPerWeek: 40 },
-  { id: 'emp-pooja', name: 'Pooja Desai', email: 'pooja.content@demo.deodap.local', role: 'seo_specialist', teamIds: ['content'], title: 'Content Lead', status: 'active', capacityHoursPerWeek: 35 },
-  { id: 'emp-sneha', name: 'Sneha Iyer', email: 'sneha.content@demo.deodap.local', role: 'seo_specialist', teamIds: ['content'], title: 'SEO Content Writer', status: 'active', capacityHoursPerWeek: 40 },
-  { id: 'emp-rahul', name: 'Rahul Verma', email: 'rahul.content@demo.deodap.local', role: 'seo_specialist', teamIds: ['content'], title: 'Product Content Writer', status: 'active', capacityHoursPerWeek: 40 },
-  { id: 'emp-vikram', name: 'Vikram Rao', email: 'vikram.dev@demo.deodap.local', role: 'developer', teamIds: ['development'], title: 'Shopify Theme Lead', status: 'active', capacityHoursPerWeek: 35 },
-  { id: 'emp-ankit', name: 'Ankit Sharma', email: 'ankit.dev@demo.deodap.local', role: 'developer', teamIds: ['development'], title: 'Shopify Developer', status: 'active', capacityHoursPerWeek: 40 },
-  { id: 'emp-priya', name: 'Priya Nair', email: 'priya.dev@demo.deodap.local', role: 'developer', teamIds: ['development'], title: 'Frontend Developer', status: 'active', capacityHoursPerWeek: 40 },
-  { id: 'emp-manish', name: 'Manish Gupta', email: 'manish.dev@demo.deodap.local', role: 'developer', teamIds: ['development'], title: 'Performance Engineer', status: 'active', capacityHoursPerWeek: 32 },
-  { id: 'emp-divya', name: 'Divya Kapoor', email: 'divya.dev@demo.deodap.local', role: 'developer', teamIds: ['development'], title: 'Junior Developer', status: 'invited', capacityHoursPerWeek: 40 },
-  { id: 'emp-old', name: 'Sameer Khan', email: 'sameer.content@demo.deodap.local', role: 'seo_specialist', teamIds: ['content'], title: 'Former Content Writer', status: 'suspended', capacityHoursPerWeek: 0 },
+  { id: 'emp-aarav', name: 'Aarav Mehta', email: 'aarav.admin@team.deodap.local', role: 'super_admin', teamIds: ['seo'], title: 'SEO Operations Admin', status: 'active', capacityHoursPerWeek: 20 },
+  { id: 'emp-ritesh', name: 'Ritesh Patel', email: 'ritesh.seo@team.deodap.local', role: 'seo_specialist', teamIds: ['seo'], title: 'SEO Lead', status: 'active', isSeoLead: true, capacityHoursPerWeek: 35 },
+  { id: 'emp-neha', name: 'Neha Shah', email: 'neha.seo@team.deodap.local', role: 'seo_specialist', teamIds: ['seo'], title: 'Technical SEO Specialist', status: 'active', capacityHoursPerWeek: 40 },
+  { id: 'emp-karan', name: 'Karan Joshi', email: 'karan.seo@team.deodap.local', role: 'seo_specialist', teamIds: ['seo'], title: 'SEO Specialist (Off-page)', status: 'active', capacityHoursPerWeek: 40 },
+  { id: 'emp-pooja', name: 'Pooja Desai', email: 'pooja.content@team.deodap.local', role: 'seo_specialist', teamIds: ['content'], title: 'Content Lead', status: 'active', capacityHoursPerWeek: 35 },
+  { id: 'emp-sneha', name: 'Sneha Iyer', email: 'sneha.content@team.deodap.local', role: 'seo_specialist', teamIds: ['content'], title: 'SEO Content Writer', status: 'active', capacityHoursPerWeek: 40 },
+  { id: 'emp-rahul', name: 'Rahul Verma', email: 'rahul.content@team.deodap.local', role: 'seo_specialist', teamIds: ['content'], title: 'Product Content Writer', status: 'active', capacityHoursPerWeek: 40 },
+  { id: 'emp-vikram', name: 'Vikram Rao', email: 'vikram.dev@team.deodap.local', role: 'developer', teamIds: ['development'], title: 'Shopify Theme Lead', status: 'active', capacityHoursPerWeek: 35 },
+  { id: 'emp-ankit', name: 'Ankit Sharma', email: 'ankit.dev@team.deodap.local', role: 'developer', teamIds: ['development'], title: 'Shopify Developer', status: 'active', capacityHoursPerWeek: 40 },
+  { id: 'emp-priya', name: 'Priya Nair', email: 'priya.dev@team.deodap.local', role: 'developer', teamIds: ['development'], title: 'Frontend Developer', status: 'active', capacityHoursPerWeek: 40 },
+  { id: 'emp-manish', name: 'Manish Gupta', email: 'manish.dev@team.deodap.local', role: 'developer', teamIds: ['development'], title: 'Performance Engineer', status: 'active', capacityHoursPerWeek: 32 },
+  { id: 'emp-divya', name: 'Divya Kapoor', email: 'divya.dev@team.deodap.local', role: 'developer', teamIds: ['development'], title: 'Junior Developer', status: 'invited', capacityHoursPerWeek: 40 },
+  { id: 'emp-old', name: 'Sameer Khan', email: 'sameer.content@team.deodap.local', role: 'seo_specialist', teamIds: ['content'], title: 'Former Content Writer', status: 'suspended', capacityHoursPerWeek: 0 },
 ];
 
 /** Preview users per role (prompt §4.3 development role preview). */
@@ -98,14 +98,14 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
   const r = rng(seed);
   resetIssueCounter();
   const cfg = defaultConfig(addDays(now, -20));
-  const employees: Employee[] = EMP.map((e, i) => ({ ...e, createdAt: addDays(now, -200 + i * 7).toISOString(), lastActiveAt: e.status === 'active' ? addHours(now, -r.int(1, 30)).toISOString() : undefined, source: 'demo' }));
+  const employees: Employee[] = EMP.map((e, i) => ({ ...e, createdAt: addDays(now, -200 + i * 7).toISOString(), lastActiveAt: e.status === 'active' ? addHours(now, -r.int(1, 30)).toISOString() : undefined, source: 'sample' }));
   for (const t of Object.values(TEAMS)) t.leadId = t.id === 'seo' ? 'emp-ritesh' : t.id === 'content' ? 'emp-pooja' : 'emp-vikram';
   const empName = (id: string) => (id === 'system' ? 'Sentinel (system)' : employees.find((e) => e.id === id)?.name ?? id);
   const members = (team: TeamId) => employees.filter((e) => e.teamIds.includes(team) && e.status === 'active' && e.role !== 'admin');
-  const passwords = Object.fromEntries(employees.map((e) => [e.email, DEMO_PASSWORD]));
+  const passwords = Object.fromEntries(employees.map((e) => [e.email, FIXTURE_PASSWORD]));
 
   const catalog = buildCatalog(r, now);
-  const siteSize = 4812; // DEMO indexable URL count (catalog holds a representative sample)
+  const siteSize = 4812; // sample indexable URL count (catalog holds a representative sample)
 
   // ------------------------------------------------------------- issues
   const specs = issueSpecs(catalog, r, now);
@@ -154,7 +154,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
     log(at, 'system', 'issue.grouped', 'issue', parentId, `Grouped ${children.length} issues into template-level Critical ${parentId}`);
   }
 
-  // Escalations (PDF §3.3): tier promotion demo + SLA breaches
+  // Escalations (PDF §3.3): tier promotion sample + SLA breaches
   const kwMap = issues.find((i) => i.checkId === 'ONP-KEYWORD-MAP');
   const prevTier: Record<string, PageTier> = kwMap ? { [kwMap.id]: 2 } : {};
   for (const a of evaluateEscalations(issues, now, cfg, prevTier)) {
@@ -197,14 +197,14 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
     const verif: VerificationAttempt[] = [];
     if (reached >= 4) {
       const vAt = step(30);
-      const v: VerificationAttempt = { id: `VER-${pad(verifications.length + verif.length + 1)}`, taskId: id, issueId: iss.id, at: vAt.toISOString(), triggeredBy: 'system', method: 'automated_recrawl', outcome: 'passed', checkedUrls: iss.affectedCount, failingUrls: 0, details: `Re-crawled ${iss.affectedCount} URLs: 0 failing. (DEMO simulated verification)`, source: 'demo' };
+      const v: VerificationAttempt = { id: `VER-${pad(verifications.length + verif.length + 1)}`, taskId: id, issueId: iss.id, at: vAt.toISOString(), triggeredBy: 'system', method: 'automated_recrawl', outcome: 'passed', checkedUrls: iss.affectedCount, failingUrls: 0, details: `Re-crawled ${iss.affectedCount} URLs: 0 failing. (sample simulated verification)`, source: 'sample' };
       verif.push(v);
       act('verification_run', 'system', vAt, 'Automated re-verification passed (0 failing URLs).', { outcome: 'passed' });
     }
     if (reached >= 5) act('status_changed', 'system', step(31), 'VERIFIED → CLOSED');
     if (status === 'FIXED') {
       const vAt = step(28);
-      verif.push({ id: `VER-${pad(verifications.length + verif.length + 1)}`, taskId: id, issueId: iss.id, at: vAt.toISOString(), triggeredBy: 'system', method: 'automated_recrawl', outcome: 'pending_data', checkedUrls: 0, failingUrls: 0, details: 'Queued for the next smart crawl — re-verification has not run yet.', source: 'demo' });
+      verif.push({ id: `VER-${pad(verifications.length + verif.length + 1)}`, taskId: id, issueId: iss.id, at: vAt.toISOString(), triggeredBy: 'system', method: 'automated_recrawl', outcome: 'pending_data', checkedUrls: 0, failingUrls: 0, details: 'Queued for the next smart crawl — re-verification has not run yet.', source: 'sample' });
     }
     const progress = { ASSIGNED: 0, IN_PROGRESS: r.int(20, 70), BLOCKED: r.int(20, 50), READY_FOR_REVIEW: 100, FIXED: 100, VERIFIED: 100, CLOSED: 100, NEW: 0, TRIAGED: 0, CANCELLED: 0 }[status];
     const t: Task = {
@@ -216,7 +216,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
       estimatedHours: fc.effortHours, actualHours: reached >= 1 ? Math.round(fc.effortHours * r.float(0.3, 1.2) * 10) / 10 : 0,
       acceptanceCriteria: fc.acceptanceCriteria, comments: [], blockers: [], evidence: [], verification: verif, activity,
       assignmentHistory: [{ at: at.toISOString(), byId, byName: empName(byId), toTeam: team, toAssigneeId: assignee?.id }],
-      relatedIssueIds: iss.childIssueIds ?? [], reopenCount: 0, source: 'demo',
+      relatedIssueIds: iss.childIssueIds ?? [], reopenCount: 0, source: 'sample',
     };
     if (reached >= 2) {
       t.evidence.push(
@@ -246,7 +246,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
     tasks.push(task);
   }
 
-  // Reallocation demo (allocation trail with previous/new team)
+  // Reallocation sample (allocation trail with previous/new team)
   const h1 = issues.find((i) => i.checkId === 'ONP-H1' && i.taskId);
   if (h1) {
     const t = tasks.find((x) => x.id === h1.taskId)!;
@@ -311,7 +311,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
   if (closedTask) closedTask.reopenCount = 0;
   const aic6 = byCheck('AIC-06');
   if (aic6) {
-    // regression demo: verified earlier, reopened once in the past then re-verified
+    // regression sample: verified earlier, reopened once in the past then re-verified
     aic6.reopenCount = 1;
     aic6.activity.splice(1, 0, { id: `${aic6.id}-reo`, type: 'reopened', actorId: 'system', actorName: 'Sentinel (system)', at: addDays(now, -6).toISOString(), message: 'Regression: AggregateRating reappeared on 3 products after a theme update — reopened.' });
   }
@@ -328,7 +328,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
       comments: [], blockers: [], evidence: [], verification: [],
       activity: [{ id: `${id}-a1`, type: 'created', actorId: creator, actorName: empName(creator), at: at.toISOString(), message: 'Created from Opportunities board.' }],
       assignmentHistory: [{ at: at.toISOString(), byId: creator, byName: empName(creator), toTeam: team, toAssigneeId: assignee.id }],
-      relatedIssueIds: [], reopenCount: 0, source: 'demo',
+      relatedIssueIds: [], reopenCount: 0, source: 'sample',
     };
   };
   tasks.push(manual('Write buying guide: How to choose a wholesale water bottle supplier', 'content', 'emp-ritesh', 'IN_PROGRESS', 5, 'From content brief BRF-002 (search-intent mismatch).'));
@@ -353,13 +353,13 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
 
   // ------------------------------------------------------------- health
   const health = computeHealthScore(issues, siteSize, cfg, now);
-  // DEMO history walks BACKWARDS from today's computed score so the series is continuous.
+  // sample history walks BACKWARDS from today's computed score so the series is continuous.
   const healthHistory: HealthPoint[] = [];
   let sc = health.score;
   const mods: Record<string, number> = Object.fromEntries(health.modules.map((m) => [m.module, m.score]));
   for (let d = 0; d < 90; d++) {
     const date = dayStr(addDays(now, -d));
-    healthHistory.unshift({ date, score: Math.round(sc * 10) / 10, modules: Object.fromEntries(Object.entries(mods).map(([k, v]) => [k, Math.round(v * 10) / 10])), source: 'demo' });
+    healthHistory.unshift({ date, score: Math.round(sc * 10) / 10, modules: Object.fromEntries(Object.entries(mods).map(([k, v]) => [k, Math.round(v * 10) / 10])), source: 'sample' });
     sc = Math.min(98, Math.max(40, sc - 0.1 + r.float(-0.7, 0.6)));
     for (const k of Object.keys(mods)) mods[k] = Math.min(99, Math.max(30, mods[k] - 0.11 + r.float(-0.9, 0.8)));
   }
@@ -383,11 +383,11 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
         finishedAt: addHours(start, type === 'full' ? 3.2 : 0.8).toISOString(), urlsPlanned: planned, urlsCrawled: crawled,
         urlsFailed: planned - crawled, jsRenderedSample: type === 'full' ? cfg.crawl.jsRenderSampleSize : 40,
         newIssues: r.int(0, 6), resolvedIssues: r.int(0, 5), recurringIssues: r.int(5, 20), durationMs: (type === 'full' ? 3.2 : 0.8) * 3600000,
-        error: failed ? 'Run aborted after 429 responses from origin (rate limit) — partial results discarded. (DEMO)' : undefined,
+        error: failed ? 'Run aborted after 429 responses from origin (rate limit) — partial results discarded. (sample)' : undefined,
         scope: type === 'full'
           ? [{ label: 'All indexable URLs', count: planned }]
           : [{ label: 'Homepage', count: 1 }, { label: 'Collections', count: catalog.collections.length }, { label: 'Top products by revenue/traffic', count: cfg.crawl.smartTopProducts }, { label: 'Changed in last 48h (sitemap lastmod + webhooks)', count: r.int(20, 90) }, { label: "Re-verify yesterday's issue URLs", count: r.int(60, 160) }],
-        source: 'demo',
+        source: 'sample',
       };
     };
     if (isSunday) crawls.push(make('full', siteSize));
@@ -408,7 +408,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
     inSitemapNotCrawled: issues.find((i) => i.checkId === 'TECH-ORPHAN')?.affectedUrls ?? [],
     crawledNotInSitemap: ['https://deodap.in/collections/kitchen-tools/steel', 'https://deodap.in/collections/home-decor?sort_by=price-ascending'],
     invalidEntries: (issues.find((i) => i.checkId === 'TECH-SITEMAP')?.affectedUrls ?? []).slice(0, 10).map((u, i) => ({ url: u, problem: i < 8 ? 'Returns 404' : 'Carries noindex' })),
-    source: 'demo',
+    source: 'sample',
   };
   const schedules: CrawlSchedule[] = [
     { id: 'SCH-FULL', type: 'full', cron: cfg.crawl.fullCrawlCron, description: 'Weekly full crawl — all indexable URLs, JS rendering on a sample (PDF §2.1)', enabled: true, timezone: 'Asia/Kolkata', nextRunAt: nextWeekday(now, 0, 20.5).toISOString(), lastRunId: crawls.filter((c) => c.type === 'full').at(-1)?.id },
@@ -419,7 +419,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
   const cwvRow = (template: CwvTemplateMetric['template'], device: 'mobile' | 'desktop', lcp: number, inp: number, cls: number, psi: number, psiAvg: number, tp: number, tpPrev: number): CwvTemplateMetric => ({
     template, device, lcpMs: lcp, inpMs: inp, cls,
     status: lcp > cfg.thresholds.lcpPoorMs || inp > cfg.thresholds.inpPoorMs || cls > cfg.thresholds.clsPoor ? 'poor' : lcp > cfg.thresholds.lcpMs || inp > cfg.thresholds.inpMs || cls > cfg.thresholds.cls ? 'needs_improvement' : 'good',
-    psiScore: psi, psi7dAvg: psiAvg, thirdPartyKb: tp, thirdPartyKbWeekAgo: tpPrev, source: 'demo',
+    psiScore: psi, psi7dAvg: psiAvg, thirdPartyKb: tp, thirdPartyKbWeekAgo: tpPrev, source: 'sample',
   });
   const cwv: CwvTemplateMetric[] = [
     cwvRow('origin', 'mobile', 3100, 220, 0.07, 58, 64, 690, 610), cwvRow('origin', 'desktop', 1900, 120, 0.04, 82, 84, 690, 610),
@@ -429,18 +429,18 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
   ];
   const indexation = Array.from({ length: 30 }, (_, i) => {
     const d = addDays(now, -29 + i);
-    return { date: dayStr(d), indexed: 4380 + i * 4 + r.int(-15, 15) - (i > 25 ? 22 : 0), excluded: 1650 - i * 3 + r.int(-20, 20), crawledNotIndexed: 410 + r.int(-12, 18) + (i > 25 ? 28 : 0), source: 'demo' as const };
+    return { date: dayStr(d), indexed: 4380 + i * 4 + r.int(-15, 15) - (i > 25 ? 22 : 0), excluded: 1650 - i * 3 + r.int(-20, 20), crawledNotIndexed: 410 + r.int(-12, 18) + (i > 25 ? 28 : 0), source: 'sample' as const };
   });
   const visibility = Array.from({ length: 30 }, (_, i) => {
     const d = addDays(now, -29 + i);
     const impressions = 21000 + i * 120 + r.int(-1500, 1500);
-    return { date: dayStr(d), impressions, clicks: Math.round(impressions * r.float(0.045, 0.055)), avgPosition: Math.round((18.5 - i * 0.05 + r.float(-0.6, 0.6)) * 10) / 10, source: 'demo' as const };
+    return { date: dayStr(d), impressions, clicks: Math.round(impressions * r.float(0.045, 0.055)), avgPosition: Math.round((18.5 - i * 0.05 + r.float(-0.6, 0.6)) * 10) / 10, source: 'sample' as const };
   });
   const comps = cfg.competitors;
   const aiTrend: AiVisibilityTrendPoint[] = Array.from({ length: 12 }, (_, i) => ({
     week: dayStr(addDays(now, -7 * (11 - i))),
     mentionShare: { DeoDap: Math.round((26 + i * 0.8 + r.float(-3, 3) - (i === 11 ? 6 : 0)) * 10) / 10, [comps[0].name]: Math.round(r.float(30, 38) * 10) / 10, [comps[1].name]: Math.round(r.float(18, 26) * 10) / 10, [comps[2].name]: Math.round(r.float(8, 14) * 10) / 10 },
-    source: 'demo',
+    source: 'sample',
   }));
   const promptSeeds = ['best wholesale supplier for kitchen products India', 'dropshipping sites with no MOQ', 'where to buy household items in bulk India', 'wholesale toys supplier online India', 'cheap wholesale gifts for Diwali', 'best dropshipping supplier for Shopify India', 'wholesale water bottles supplier', 'bulk return gifts for weddings India', 'wholesale mobile accessories India', 'online wholesale market India no minimum order'];
   const engines = ['chatgpt', 'gemini', 'perplexity', 'copilot', 'google_aio'] as const;
@@ -448,7 +448,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
     id: `PRM-${pad(i + 1, 3)}`, prompt: i < promptSeeds.length ? promptSeeds[i] : `${r.pick(['best', 'cheap', 'reliable', 'top'])} wholesale ${r.pick(['kitchen', 'home decor', 'toys', 'stationery', 'cleaning', 'bathroom', 'gift', 'gadget'])} ${r.pick(['supplier', 'website', 'marketplace', 'seller'])} ${r.pick(['India', 'online', 'for resellers', 'with COD'])}`,
     category: r.pick(['kitchen', 'home', 'toys', 'gifts', 'dropshipping', 'general']),
     results: engines.map((e) => { const m = r.chance(0.3); return { engine: e, mentioned: m, cited: m && r.chance(0.5), competitorsMentioned: comps.filter(() => r.chance(0.4)).map((c) => c.name), sampledAt: addDays(now, -r.int(0, 6)).toISOString() }; }),
-    source: 'demo',
+    source: 'sample',
   }));
 
   // ------------------------------------------------------------- off-page
@@ -463,28 +463,28 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
       id: `BL-${pad(i + 1)}`, sourceUrl: `https://${dom}/post-${i + 1}`, sourceDomain: dom, targetUrl: r.pick([catalog.home.url, ...catalog.collections.slice(0, 8).map((c) => c.url)]),
       anchor: isSpam ? 'wholesale products india' : r.pick(['DeoDap', 'deodap.in', 'wholesale kitchen products', 'this supplier', 'DeoDap wholesale', 'click here']),
       domainRating: isSpam ? r.int(1, 9) : i < 3 ? [58, 44, 41][i] : r.int(12, 72), firstSeen: addDays(now, -r.int(0, 120)).toISOString(), lostAt: status === 'lost' ? addDays(now, -2).toISOString() : undefined,
-      status, toxicScore: isSpam ? r.int(70, 98) : r.int(0, 25), toxicSignals: isSpam ? ['Link-farm pattern', 'Foreign-language spam', 'Exact-match commercial anchor'] : [], anchorType: isSpam ? 'exact_match' : 'branded', source: 'demo',
+      status, toxicScore: isSpam ? r.int(70, 98) : r.int(0, 25), toxicSignals: isSpam ? ['Link-farm pattern', 'Foreign-language spam', 'Exact-match commercial anchor'] : [], anchorType: isSpam ? 'exact_match' : 'branded', source: 'sample',
     });
   }
   const refTrend: ReferringDomainTrendPoint[] = Array.from({ length: 30 }, (_, i) => ({
-    date: dayStr(addDays(now, -29 + i)), values: { DeoDap: 812 + i * 2 + r.int(-3, 3), [comps[0].name]: 1430 + i * 3, [comps[1].name]: 960 + i, [comps[2].name]: 530 + i }, source: 'demo',
+    date: dayStr(addDays(now, -29 + i)), values: { DeoDap: 812 + i * 2 + r.int(-3, 3), [comps[0].name]: 1430 + i * 3, [comps[1].name]: 960 + i, [comps[2].name]: 530 + i }, source: 'sample',
   }));
   const prospects: LinkProspect[] = ['indian-retail-news.example', 'small-business-india.example', 'ecommerce-weekly.example', 'reseller-guide.example', 'festive-shopping.example', 'home-kitchen-mag.example', 'toy-trade.example', 'd2c-founders.example'].map((d, i) => {
     const dr = r.int(30, 75); const rel = Math.round(r.float(0.4, 0.95) * 100) / 100;
-    const lp: LinkProspect = { id: `LP-${pad(i + 1, 3)}`, domain: d, domainRating: dr, relevance: rel, linksToCompetitors: comps.slice(0, r.int(2, 3)).map((c) => c.name), pitchAngle: r.pick(['Wholesale price index data story', 'No-MOQ supplier guide for new resellers', 'Diwali bulk-gifting trend data', 'Expert quote on dropshipping in India']), priority: Math.round(dr * rel), status: i === 0 ? 'outreach' : 'new', source: 'demo' };
+    const lp: LinkProspect = { id: `LP-${pad(i + 1, 3)}`, domain: d, domainRating: dr, relevance: rel, linksToCompetitors: comps.slice(0, r.int(2, 3)).map((c) => c.name), pitchAngle: r.pick(['Wholesale price index data story', 'No-MOQ supplier guide for new resellers', 'Diwali bulk-gifting trend data', 'Expert quote on dropshipping in India']), priority: Math.round(dr * rel), status: i === 0 ? 'outreach' : 'new', source: 'sample' };
     return lp;
   }).sort((a, b) => b.priority - a.priority);
-  const mentions: BrandMention[] = Array.from({ length: 9 }, (_, i) => ({ id: `BM-${pad(i + 1, 3)}`, url: `https://${r.pick(domains)}/article-${i + 10}`, domain: r.pick(domains), snippet: r.pick(['…sourced our stock from DeoDap, which has no minimum order…', '…suppliers like DeoDap make it easy to start…', '…DeoDap offers COD on wholesale orders…']), foundAt: addDays(now, -r.int(0, 20)).toISOString(), linked: false, status: i < 2 ? 'outreach' : 'new', source: 'demo' }));
-  const disavow: DisavowCandidate[] = spam.map((d, i) => ({ id: `DV-${pad(i + 1, 3)}`, domain: d, toxicScore: r.int(72, 98), signals: ['Link-farm pattern', 'Exact-match commercial anchors', i % 2 ? 'Foreign-language spam' : 'Thin PBN content'], firstSeen: addDays(now, -r.int(1, 25)).toISOString(), approval: i === 0 ? 'approved' : 'pending', decidedById: i === 0 ? 'emp-ritesh' : undefined, decidedAt: i === 0 ? addDays(now, -3).toISOString() : undefined, source: 'demo' }));
-  const competitors = comps.map((c, i) => ({ domain: c.domain, name: c.name, visibility: Array.from({ length: 8 }, (_, w) => Math.round(30 + i * -6 + w * r.float(-0.5, 1.2))), cwv: ['needs_improvement', 'good', 'poor'][i], referringDomains: [1490, 990, 560][i], contentVelocity: [14, 9, 4][i], source: 'demo' as DataSource }));
-  competitors.unshift({ domain: 'deodap.in', name: 'DeoDap', visibility: Array.from({ length: 8 }, (_, w) => Math.round(22 + w * 0.7)), cwv: 'needs_improvement', referringDomains: 870, contentVelocity: 6, source: 'demo' });
+  const mentions: BrandMention[] = Array.from({ length: 9 }, (_, i) => ({ id: `BM-${pad(i + 1, 3)}`, url: `https://${r.pick(domains)}/article-${i + 10}`, domain: r.pick(domains), snippet: r.pick(['…sourced our stock from DeoDap, which has no minimum order…', '…suppliers like DeoDap make it easy to start…', '…DeoDap offers COD on wholesale orders…']), foundAt: addDays(now, -r.int(0, 20)).toISOString(), linked: false, status: i < 2 ? 'outreach' : 'new', source: 'sample' }));
+  const disavow: DisavowCandidate[] = spam.map((d, i) => ({ id: `DV-${pad(i + 1, 3)}`, domain: d, toxicScore: r.int(72, 98), signals: ['Link-farm pattern', 'Exact-match commercial anchors', i % 2 ? 'Foreign-language spam' : 'Thin PBN content'], firstSeen: addDays(now, -r.int(1, 25)).toISOString(), approval: i === 0 ? 'approved' : 'pending', decidedById: i === 0 ? 'emp-ritesh' : undefined, decidedAt: i === 0 ? addDays(now, -3).toISOString() : undefined, source: 'sample' }));
+  const competitors = comps.map((c, i) => ({ domain: c.domain, name: c.name, visibility: Array.from({ length: 8 }, (_, w) => Math.round(30 + i * -6 + w * r.float(-0.5, 1.2))), cwv: ['needs_improvement', 'good', 'poor'][i], referringDomains: [1490, 990, 560][i], contentVelocity: [14, 9, 4][i], source: 'sample' as DataSource }));
+  competitors.unshift({ domain: 'deodap.in', name: 'DeoDap', visibility: Array.from({ length: 8 }, (_, w) => Math.round(22 + w * 0.7)), cwv: 'needs_improvement', referringDomains: 870, contentVelocity: 6, source: 'sample' });
   const localHealth = {
     napConsistency: [
       { directory: 'Google Business Profile', consistent: true, detail: 'Matches canonical NAP' },
-      { directory: 'Directory A (DEMO)', consistent: false, detail: 'Old warehouse address' },
-      { directory: 'Directory B (DEMO)', consistent: false, detail: 'Old phone number' },
-      { directory: 'Directory C (DEMO)', consistent: false, detail: 'Business name variant "Deo Dap"' },
-      { directory: 'Directory D (DEMO)', consistent: true, detail: 'Matches' },
+      { directory: 'Directory A (sample)', consistent: false, detail: 'Old warehouse address' },
+      { directory: 'Directory B (sample)', consistent: false, detail: 'Old phone number' },
+      { directory: 'Directory C (sample)', consistent: false, detail: 'Business name variant "Deo Dap"' },
+      { directory: 'Directory D (sample)', consistent: true, detail: 'Matches' },
     ],
     gbp: { rating: 4.2, reviews: 1843, reviewVelocity30d: 37, completeness: 82 },
   };
@@ -494,7 +494,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
   const keywordGaps: KeywordGap[] = gapKws.map((k, i) => ({
     id: `KG-${pad(i + 1, 3)}`, keyword: k, volume: r.int(320, 14800), difficulty: r.int(8, 64), intent: k.startsWith('how') || k.startsWith('best') ? 'informational' : i % 3 === 0 ? 'commercial' : 'transactional',
     competitorsRanking: comps.slice(0, r.int(2, 3)).map((c) => ({ domain: c.domain, position: r.int(1, 10) })), deodapPosition: r.chance(0.4) ? r.int(11, 60) : undefined,
-    relevantCategory: r.pick(catalog.collections.slice(0, 15)).title, quickWin: false, status: i < 2 ? 'brief_created' : i === 2 ? 'approved' : 'new', source: 'demo',
+    relevantCategory: r.pick(catalog.collections.slice(0, 15)).title, quickWin: false, status: i < 2 ? 'brief_created' : i === 2 ? 'approved' : 'new', source: 'sample',
   }));
   for (const g of keywordGaps) g.quickWin = (g.difficulty ?? 100) < 25;
   const striking: StrikingDistanceQuery[] = Array.from({ length: 15 }, (_, i) => {
@@ -502,7 +502,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
     const impressions = r.int(400, 9000);
     const pos = Math.round(r.float(5, 20) * 10) / 10;
     const clicks = Math.round(impressions * r.float(0.004, 0.03));
-    const sd: StrikingDistanceQuery = { id: `SD-${pad(i + 1, 3)}`, query: `${p.title.toLowerCase()} ${r.pick(['wholesale', 'online', 'price', 'bulk', 'india'])}`, url: p.url, position: pos, impressions, clicks, ctr: Math.round((clicks / impressions) * 1000) / 10, source: 'demo' };
+    const sd: StrikingDistanceQuery = { id: `SD-${pad(i + 1, 3)}`, query: `${p.title.toLowerCase()} ${r.pick(['wholesale', 'online', 'price', 'bulk', 'india'])}`, url: p.url, position: pos, impressions, clicks, ctr: Math.round((clicks / impressions) * 1000) / 10, source: 'sample' };
     return sd;
   }).sort((a, b) => b.impressions - a.impressions);
   const bottle = catalog.products.find((p) => p.collectionHandle === 'water-bottles')!;
@@ -513,26 +513,26 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
       id: `CTR-${pad(i + 1, 3)}`, query: kw, url: p.url, position: Math.round(r.float(2, 5) * 10) / 10, ctr: Math.round(r.float(1.5, 3.2) * 10) / 10, benchmarkCtr: [9.8, 7.2, 5.1, 4.2][i],
       currentTitle: `${p.title} | DeoDap`, currentMeta: 'Buy online at best price.',
       variants: titles.map((t, j) => ({ label: `Variant ${'ABC'[j]}`, title: t, meta: `Shop ${p.title} with No MOQ, wholesale pricing, COD and fast shipping across India.`, score: heuristicCtrScore(t, kw, 'title'), scoreBasis: 'Heuristic estimate — not a measured CTR' })),
-      source: 'demo',
+      source: 'sample',
     };
   });
   const briefs: ContentBrief[] = [
     { id: 'BRF-001', title: 'Wholesale steel bottles in India: buyer guide', targetKeyword: 'wholesale steel bottles india', cluster: 'Water Bottles', intent: 'commercial', suggestedUrl: '/blogs/news/wholesale-steel-bottles-india-guide', pageType: 'buying_guide', origin: 'keyword_gap', originRef: 'KG-001', status: 'approved', updatedAt: addDays(now, -2).toISOString(),
-      outline: ['Why resellers stock steel bottles', 'Single-wall vs insulated: what sells', 'Capacity guide (500ml–1.5L)', 'Bulk pricing and No-MOQ ordering', 'FAQ'], entities: ['stainless steel 304', 'insulation', 'BPA', 'capacity', 'GST invoice'], faqs: [{ q: 'What is the MOQ for steel bottles?', a: 'DeoDap has no MOQ.' }, { q: 'Are bottles food-grade?' }], internalLinks: [{ from: '/collections/water-bottles', anchor: 'wholesale water bottles' }], source: 'demo' },
+      outline: ['Why resellers stock steel bottles', 'Single-wall vs insulated: what sells', 'Capacity guide (500ml–1.5L)', 'Bulk pricing and No-MOQ ordering', 'FAQ'], entities: ['stainless steel 304', 'insulation', 'BPA', 'capacity', 'GST invoice'], faqs: [{ q: 'What is the MOQ for steel bottles?', a: 'DeoDap has no MOQ.' }, { q: 'Are bottles food-grade?' }], internalLinks: [{ from: '/collections/water-bottles', anchor: 'wholesale water bottles' }], source: 'sample' },
     { id: 'BRF-002', title: 'How to choose a water bottle supplier', targetKeyword: 'how to choose water bottle supplier', cluster: 'Water Bottles', intent: 'informational', suggestedUrl: '/blogs/news/choose-water-bottle-supplier', pageType: 'blog', origin: 'intent_mismatch', status: 'in_production', updatedAt: addDays(now, -5).toISOString(),
-      outline: ['Questions to ask a supplier', 'Material and safety documentation', 'Sampling before bulk orders', 'Shipping and COD'], entities: ['supplier', 'sample order', 'certificate'], faqs: [{ q: 'Should I order samples first?' }], internalLinks: [{ from: '/collections/water-bottles', anchor: 'water bottle range' }], source: 'demo' },
+      outline: ['Questions to ask a supplier', 'Material and safety documentation', 'Sampling before bulk orders', 'Shipping and COD'], entities: ['supplier', 'sample order', 'certificate'], faqs: [{ q: 'Should I order samples first?' }], internalLinks: [{ from: '/collections/water-bottles', anchor: 'water bottle range' }], source: 'sample' },
     { id: 'BRF-003', title: 'Return gifts in bulk for weddings', targetKeyword: 'return gifts bulk india', cluster: 'Festive & Gifts', intent: 'transactional', suggestedUrl: '/collections/wedding-return-gifts', pageType: 'collection', origin: 'seasonal', status: 'draft', updatedAt: addDays(now, -1).toISOString(),
-      outline: ['Intro: wedding season return gifts', 'Gifts under ₹99 / ₹199', 'Customisation & packaging', 'FAQ'], entities: ['return gifts', 'wedding season', 'bulk packing'], faqs: [{ q: 'Can I order 500 pieces?' }], internalLinks: [{ from: '/collections/festive-gifts', anchor: 'festive gifts' }], source: 'demo' },
+      outline: ['Intro: wedding season return gifts', 'Gifts under ₹99 / ₹199', 'Customisation & packaging', 'FAQ'], entities: ['return gifts', 'wedding season', 'bulk packing'], faqs: [{ q: 'Can I order 500 pieces?' }], internalLinks: [{ from: '/collections/festive-gifts', anchor: 'festive gifts' }], source: 'sample' },
     { id: 'BRF-004', title: 'Is DeoDap safe for dropshipping? (PAA gap)', targetKeyword: 'is deodap safe', cluster: 'Dropshipping', intent: 'navigational', suggestedUrl: '/pages/faq#trust', pageType: 'faq', origin: 'paa_gap', status: 'draft', updatedAt: addDays(now, -1).toISOString(),
-      outline: ['Direct answer (40–60 words)', 'Payment & COD', 'Returns', 'Contact & address'], entities: ['DeoDap', 'COD', 'returns policy'], faqs: [{ q: 'Is DeoDap a real company?' }], internalLinks: [], source: 'demo' },
+      outline: ['Direct answer (40–60 words)', 'Payment & COD', 'Returns', 'Contact & address'], entities: ['DeoDap', 'COD', 'returns policy'], faqs: [{ q: 'Is DeoDap a real company?' }], internalLinks: [], source: 'sample' },
     { id: 'BRF-005', title: 'Wholesale Price Index: 500 kitchen products (citation asset)', targetKeyword: 'wholesale kitchen products price', cluster: 'Kitchen', intent: 'informational', suggestedUrl: '/blogs/news/wholesale-price-index-kitchen', pageType: 'buying_guide', origin: 'citation_gap', status: 'draft', updatedAt: addDays(now, -3).toISOString(),
-      outline: ['Methodology', 'Median wholesale price by sub-category', 'Price trend vs last quarter', 'Download table'], entities: ['price index', 'median price', 'kitchen tools'], faqs: [], internalLinks: [{ from: '/collections/kitchen-tools', anchor: 'kitchen tools wholesale' }], source: 'demo' },
+      outline: ['Methodology', 'Median wholesale price by sub-category', 'Price trend vs last quarter', 'Download table'], entities: ['price index', 'median price', 'kitchen tools'], faqs: [], internalLinks: [{ from: '/collections/kitchen-tools', anchor: 'kitchen tools wholesale' }], source: 'sample' },
   ];
   const clusterNames = ['Water Bottles', 'Kitchen', 'Dropshipping', 'Festive & Gifts', 'Toys', 'Home Decor'];
   const clusters: TopicCluster[] = clusterNames.map((n, i) => {
     const pagesIn = catalog.blogs.slice(i * 3, i * 3 + 4).map((b, j) => ({ url: b.url, linksToPillar: j % 3 !== 2, linkedFromPillar: j % 2 === 0 }));
     const integ = Math.round((pagesIn.filter((p) => p.linksToPillar && p.linkedFromPillar).length / Math.max(1, pagesIn.length)) * 100);
-    return { id: `CL-${pad(i + 1, 3)}`, name: n, pillarUrl: i === 5 ? undefined : catalog.collections[i * 3]?.url, pillarStatus: i === 5 ? 'missing' : i === 2 ? 'thin' : 'live', pages: pagesIn, completeness: [72, 64, 48, 55, 40, 22][i], interlinkIntegrity: integ, trafficTrend: Array.from({ length: 8 }, (_, w) => ({ week: dayStr(addDays(now, -7 * (7 - w))), clicks: Math.round(400 + i * 90 + w * r.float(-20, 40)) })), missingSubtopics: [['cleaning bottles', 'capacity guide'], ['knife care'], ['GST for resellers', 'shipping costs'], ['corporate gifting'], ['toy safety standards'], ['pillar page', 'decor trends']][i], source: 'demo' };
+    return { id: `CL-${pad(i + 1, 3)}`, name: n, pillarUrl: i === 5 ? undefined : catalog.collections[i * 3]?.url, pillarStatus: i === 5 ? 'missing' : i === 2 ? 'thin' : 'live', pages: pagesIn, completeness: [72, 64, 48, 55, 40, 22][i], interlinkIntegrity: integ, trafficTrend: Array.from({ length: 8 }, (_, w) => ({ week: dayStr(addDays(now, -7 * (7 - w))), clicks: Math.round(400 + i * 90 + w * r.float(-20, 40)) })), missingSubtopics: [['cleaning bottles', 'capacity guide'], ['knife care'], ['GST for resellers', 'shipping costs'], ['corporate gifting'], ['toy safety standards'], ['pillar page', 'decor trends']][i], source: 'sample' };
   });
   const oppBase: Omit<OpportunityItem, 'id' | 'createdAt' | 'status' | 'source'>[] = [
     ...striking.slice(0, 5).map((s) => ({ kind: 'striking_distance' as const, title: `"${s.query}" at position ${s.position}`, detail: `${s.impressions.toLocaleString('en-IN')} impressions, ${s.ctr}% CTR — quick win`, url: s.url, value: s.impressions })),
@@ -546,22 +546,22 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
     { kind: 'digital_pr', title: 'Data story: Diwali bulk-gifting price trends', detail: 'Use DeoDap order data (aggregated) for a press-worthy index', value: 800 },
     { kind: 'citation_gap', title: 'No citation-worthy original data published', detail: 'Wholesale Price Index brief BRF-005', value: 750 },
   ];
-  const opportunities: OpportunityItem[] = oppBase.map((o, i) => ({ ...o, id: `OPP-${pad(i + 1, 3)}`, status: 'open', createdAt: addDays(now, -r.int(0, 6)).toISOString(), source: 'demo' }));
+  const opportunities: OpportunityItem[] = oppBase.map((o, i) => ({ ...o, id: `OPP-${pad(i + 1, 3)}`, status: 'open', createdAt: addDays(now, -r.int(0, 6)).toISOString(), source: 'sample' }));
 
   // ------------------------------------------------------------- AI compliance & content
-  const rules: CustomRule[] = EXAMPLE_RULES.map((er, i) => ({ ...er, id: `RULE-${pad(i + 1, 3)}`, createdById: 'emp-pooja', createdAt: addDays(now, -40 + i).toISOString(), updatedAt: addDays(now, -10 + i).toISOString(), source: 'demo' }));
+  const rules: CustomRule[] = EXAMPLE_RULES.map((er, i) => ({ ...er, id: `RULE-${pad(i + 1, 3)}`, createdById: 'emp-pooja', createdAt: addDays(now, -40 + i).toISOString(), updatedAt: addDays(now, -10 + i).toISOString(), source: 'sample' }));
   const pageTexts = buildPageTexts(catalog, r, now);
   const aiFlags: AiComplianceFlag[] = issues.filter((i) => i.module === 'ai_compliance' && !i.isTemplateGroup).map((i, n) => ({
     id: `AIF-${pad(n + 1, 3)}`, issueId: i.id, checkId: i.checkId, ruleName: CHECKS_BY_ID[i.checkId].name, url: i.affectedUrls[0], template: i.template ?? 'product',
     passage: i.evidence.find((e) => e.kind === 'text_passage')?.content ?? i.summary, explanation: `${CHECKS_BY_ID[i.checkId].detects} Policy: ${CHECKS_BY_ID[i.checkId].policy}.`,
-    severity: i.severity, rewrite: rewriteFor(i.checkId), qaHold: i.checkId === 'AIC-07', qaHoldStatus: i.checkId === 'AIC-07' ? 'held' : undefined, detectedAt: i.detectedAt, source: 'demo',
+    severity: i.severity, rewrite: rewriteFor(i.checkId), qaHold: i.checkId === 'AIC-07', qaHoldStatus: i.checkId === 'AIC-07' ? 'held' : undefined, detectedAt: i.detectedAt, source: 'sample',
   }));
-  aiFlags.push({ id: `AIF-${pad(aiFlags.length + 1, 3)}`, checkId: 'RULE-001', ruleName: rules[0].name, url: catalog.collections[4].url, template: 'collection', passage: '…the lowest price in India on every kitchen tool…', explanation: 'Custom rule: unsupported lowest-price claim.', severity: 'medium', rewrite: '…wholesale pricing on every kitchen tool, with no minimum order…', qaHold: false, detectedAt: addHours(now, -5).toISOString(), source: 'demo' });
+  aiFlags.push({ id: `AIF-${pad(aiFlags.length + 1, 3)}`, checkId: 'RULE-001', ruleName: rules[0].name, url: catalog.collections[4].url, template: 'collection', passage: '…the lowest price in India on every kitchen tool…', explanation: 'Custom rule: unsupported lowest-price claim.', severity: 'medium', rewrite: '…wholesale pricing on every kitchen tool, with no minimum order…', qaHold: false, detectedAt: addHours(now, -5).toISOString(), source: 'sample' });
   const contentScores: ContentScore[] = [...catalog.collections.slice(0, 25), ...catalog.products.slice(0, 35), ...catalog.blogs.slice(0, 10)].map((p) => {
     const comp = { uniqueness: r.int(20, 100), depth: r.int(15, 100), readability: r.int(40, 95), media: r.int(10, 100), freshness: r.int(10, 100) };
     const score = Math.round(comp.uniqueness * 0.3 + comp.depth * 0.3 + comp.readability * 0.15 + comp.media * 0.15 + comp.freshness * 0.1);
     const wc = r.int(40, 1400);
-    return { url: p.url, template: p.template, tier: p.tier, score, components: comp, wordCount: wc, serpAvgWords: r.int(600, 1800), lastUpdated: p.lastModified, explanation: `Uniqueness ${comp.uniqueness}×0.30 + depth ${comp.depth}×0.30 + readability ${comp.readability}×0.15 + media ${comp.media}×0.15 + freshness ${comp.freshness}×0.10`, source: 'demo' };
+    return { url: p.url, template: p.template, tier: p.tier, score, components: comp, wordCount: wc, serpAvgWords: r.int(600, 1800), lastUpdated: p.lastModified, explanation: `Uniqueness ${comp.uniqueness}×0.30 + depth ${comp.depth}×0.30 + readability ${comp.readability}×0.15 + media ${comp.media}×0.15 + freshness ${comp.freshness}×0.10`, source: 'sample' };
   });
 
   // ------------------------------------------------------------- notifications, deliveries, alerts
@@ -571,7 +571,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
   const deliveries: DeliveryAttempt[] = [];
   let dN = 0;
   for (const a of criticalAlerts) for (const ch of ['slack', 'whatsapp'] as const) deliveries.push({ id: `DLV-${pad(++dN)}`, channel: ch, kind: 'realtime_alert', subject: a.title, at: a.at, outcome: 'skipped_not_configured', retryable: false, error: `${ch === 'slack' ? 'SLACK_WEBHOOK_URL' : 'WHATSAPP_API_TOKEN'} not configured — alert recorded in-app only.`, issueId: a.issueId });
-  for (let d = 6; d >= 0; d--) for (const ch of ['email', 'whatsapp', 'slack'] as const) deliveries.push({ id: `DLV-${pad(++dN)}`, channel: ch, kind: 'daily_digest', subject: `Daily SEO digest — ${dayStr(addDays(now, -d))}`, at: addHours(new Date(Date.UTC(addDays(now, -d).getUTCFullYear(), addDays(now, -d).getUTCMonth(), addDays(now, -d).getUTCDate())), 2.5).toISOString(), outcome: 'skipped_not_configured', retryable: false, error: 'Delivery adapter not configured (DEMO)' });
+  for (let d = 6; d >= 0; d--) for (const ch of ['email', 'whatsapp', 'slack'] as const) deliveries.push({ id: `DLV-${pad(++dN)}`, channel: ch, kind: 'daily_digest', subject: `Daily SEO digest — ${dayStr(addDays(now, -d))}`, at: addHours(new Date(Date.UTC(addDays(now, -d).getUTCFullYear(), addDays(now, -d).getUTCMonth(), addDays(now, -d).getUTCDate())), 2.5).toISOString(), outcome: 'skipped_not_configured', retryable: false, error: 'Delivery adapter not configured (sample)' });
 
   const notifications: Notification[] = [];
   let nN = 0;
@@ -592,7 +592,7 @@ export function createSeed(now = new Date(), seed = 20260812): SeedData {
   audit.sort((a, b) => a.at.localeCompare(b.at));
 
   const errors: SystemErrorEntry[] = [
-    { id: 'ERR-001', at: addDays(now, -12).toISOString(), level: 'error', component: 'crawler', message: 'Smart crawl aborted: origin returned 429 to crawler user agent (DEMO)' },
+    { id: 'ERR-001', at: addDays(now, -12).toISOString(), level: 'error', component: 'crawler', message: 'Smart crawl aborted: origin returned 429 to crawler user agent (sample)' },
     { id: 'ERR-002', at: addHours(now, -26).toISOString(), level: 'warn', component: 'notifications', message: 'Daily digest not delivered: no email/WhatsApp/Slack adapter configured' },
     { id: 'ERR-003', at: addHours(now, -5).toISOString(), level: 'warn', component: 'connectors', message: 'GSC connector not configured — index coverage, CTR and decay checks unavailable for live data' },
   ];

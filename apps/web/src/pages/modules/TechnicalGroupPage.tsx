@@ -302,8 +302,8 @@ function Security() {
         </table>
       </div>
       <div className="p-4">
-        <Notice tone="demo" title="Headless renderer not available in this build">
-          TECH-MOBILE and TECH-JS-RENDER need a headless browser (390px viewport) that runs on the crawler server. Until it is deployed these checks have no live results; any findings shown here are DEMO samples.
+        <Notice tone="caution" title="Headless renderer not available in this build">
+          TECH-MOBILE and TECH-JS-RENDER need a headless browser (390px viewport) that runs on the crawler server. Until it is deployed these checks have no live results.
         </Notice>
       </div>
     </Panel>

@@ -9,6 +9,7 @@ export const TEAMS: Record<TeamId, Team> = {
 export const TEAM_IDS: TeamId[] = ['seo', 'content', 'development'];
 
 export const ROLE_LABELS: Record<Role, string> = {
+  super_admin: 'Super Admin',
   admin: 'Admin',
   seo_specialist: 'SEO Specialist',
   developer: 'Developer',
@@ -35,11 +36,23 @@ export const ALL_PERMISSIONS: Permission[] = [
 ];
 
 /**
- * Default role → permission matrix (prompt §4.3). Admin can edit it at runtime
- * (Roles & Permissions screen); the backend enforces whatever is current.
+ * Admin: the Overview and SEO operations sections only (dashboard, websites, health score, issues board, all pages,
+ * verification, crawl center, image audit, SEO editor, SEO optimization). No audit modules, opportunities, reporting,
+ * team or configuration.
+ */
+export const ADMIN_PERMISSIONS: Permission[] = [
+  'dashboard.view', 'issues.view', 'issues.allocate', 'issues.update_status', 'issues.verify', 'issues.mark_not_issue', 'websites.manage',
+  'fixcards.approve_proposal', 'tasks.view_all', 'tasks.view_team', 'tasks.create', 'tasks.assign', 'tasks.update_own', 'tasks.review',
+  'tasks.cancel', 'tasks.verify_trigger', 'crawls.view', 'crawls.run', 'crawls.configure', 'shopify.edit', 'shopify.theme',
+];
+
+/**
+ * Default role → permission matrix (prompt §4.3). The Super Admin can edit it at runtime
+ * (Roles & Permissions screen); the backend enforces whatever is current. Super Admin always has every permission.
  */
 export const DEFAULT_PERMISSIONS: PermissionMatrix = {
-  admin: [...ALL_PERMISSIONS],
+  super_admin: [...ALL_PERMISSIONS],
+  admin: [...ADMIN_PERMISSIONS],
   seo_specialist: [
     'dashboard.view', 'issues.view', 'issues.allocate', 'issues.update_status', 'issues.verify', 'issues.mark_not_issue', 'issues.manage_exclusions', 'websites.manage',
     'fixcards.approve_proposal', 'tasks.view_all', 'tasks.view_team', 'tasks.create', 'tasks.assign',

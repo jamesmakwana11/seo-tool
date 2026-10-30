@@ -11,7 +11,6 @@ const fake = vi.hoisted(() => ({
   captures: [] as PageCapture[],
 }));
 vi.mock('@/api/client', () => ({
-  API_MODE: 'http',
   api: {
     getCaptureStatus: async (): Promise<CaptureStatus> => ({
       available: false, problems: ['No Chrome / Chromium found on the API server.'], memoryNeededMB: 300,

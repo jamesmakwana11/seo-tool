@@ -1,7 +1,7 @@
 import type { TopicCluster } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
-import { Async, Badge, DemoBadge, EmptyState, PageHeader, Panel, ProgressBar, Stat, type Tone } from '@/components/ui/primitives';
+import { Async, Badge, EmptyState, PageHeader, Panel, ProgressBar, Stat, type Tone } from '@/components/ui/primitives';
 import { TrendChart } from '@/components/ui/charts';
 import { SourceBadge } from '@/components/domain/badges';
 import { SiteUrl, YesNo } from '@/components/opportunities/shared';
@@ -20,7 +20,6 @@ export default function ClustersPage() {
       <PageHeader
         title="Topic clusters"
         description="Per topic cluster: pillar status, cluster completeness, pillar ↔ cluster interlinking integrity and combined weekly organic traffic. Missing pillars and broken links are flagged here (PDF §9 topic-cluster integrity, §13 cluster tracker)."
-        meta={<DemoBadge />}
       />
       <Async q={q} rows={10} empty={(cs) => cs.length === 0 && <Panel><EmptyState title="No topic clusters defined" description="Clusters are derived from collections and blog categories after the first full crawl." /></Panel>}>
         {(clusters) => <Body clusters={clusters} />}
@@ -40,7 +39,7 @@ function Body({ clusters }: { clusters: TopicCluster[] }) {
         <Stat label="Avg completeness" value={`${avg((c) => c.completeness)}%`} />
         <Stat label="Avg interlink integrity" value={`${avg((c) => c.interlinkIntegrity)}%`} />
       </div>
-      <p className="text-xs text-muted">Sorted with missing and thin pillars first, then lowest completeness. Traffic is GSC clicks per week — DEMO data until Search Console is connected.</p>
+      <p className="text-xs text-muted">Sorted with missing and thin pillars first, then lowest completeness. Traffic is GSC clicks per week and needs Search Console to be connected.</p>
       {sorted.map((c) => <ClusterCard key={c.id} c={c} />)}
     </div>
   );

@@ -19,7 +19,7 @@ export async function runEscalations(ctx: Ctx, issues: IssueService) {
   const summary = { tierChanges: 0, escalated: 0, autoAllocated: 0, slaNotices: 0 };
 
   for (const i of await r.issues.list()) {
-    if (i.source === 'demo' || !i.affectedUrls.length) continue;
+    if (i.source === 'sample' || !i.affectedUrls.length) continue;
     const tier = Math.min(...i.affectedUrls.map(tierOf)) as PageTier;
     if (tier !== i.highestTier) {
       previousTier[i.id] = i.highestTier;
@@ -57,7 +57,7 @@ export async function runEscalations(ctx: Ctx, issues: IssueService) {
 
   for (const u of unallocatedPastThreshold(await r.issues.list(), now, cfg)) {
     const i = (await r.issues.get(u.id))!;
-    if (i.source === 'demo') continue;
+    if (i.source === 'sample') continue;
     try {
       await issues.allocateWithTask(SYSTEM_ACTOR, i, i.recommendedTeam, `Critical unallocated for ${u.hours}h (threshold ${cfg.escalation.unallocatedCriticalHours}h) — auto-assigned to the engine's recommended team.`, undefined, true);
       summary.autoAllocated++;
@@ -70,7 +70,7 @@ export async function runEscalations(ctx: Ctx, issues: IssueService) {
   const today = now.toISOString().slice(0, 10);
   const notes = await r.notifications.list();
   for (const t of await r.tasks.list()) {
-    if (t.source === 'demo' || isTaskDone(t.status) || new Date(t.dueAt).getTime() >= now.getTime()) continue;
+    if (t.source === 'sample' || isTaskDone(t.status) || new Date(t.dueAt).getTime() >= now.getTime()) continue;
     const link = t.issueId ? `/issues/${t.issueId}` : '/issues';
     if (notes.some((n) => n.type === 'sla' && n.link === link && n.createdAt.slice(0, 10) === today)) continue;
     await notify(ctx, [t.assigneeId, await teamLead(ctx, t.team)], { type: 'sla', title: `SLA breached: ${t.title}`, body: `Due ${t.dueAt}`, link, severity: t.severity });

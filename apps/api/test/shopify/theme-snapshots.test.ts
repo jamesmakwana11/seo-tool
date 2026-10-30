@@ -11,24 +11,24 @@ import type { ThemeDiffResponse, ThemeSnapshotMeta } from '@sentinel/shared';
 import { loadEnv } from '../../src/config/env';
 import { createContainer } from '../../src/container';
 import { createApp } from '../../src/http/app';
-import { DEMO } from '../api/helpers';
+import { FIXTURE } from '../api/helpers';
 import { createMockShopify, SHOP, STOREFRONT, TOKEN } from './mockShopify';
 
 async function setup(connected: boolean) {
   const mock = createMockShopify();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-themes-'));
   const env = loadEnv({
-    NODE_ENV: 'test', SEED_DEMO_DATA: 'true', SESSION_SECRET: 'theme-snapshot-test-secret-at-least-32-chars', LOG_LEVEL: 'silent',
+    NODE_ENV: 'test', SEED_TEST_FIXTURES: 'true', SESSION_SECRET: 'theme-snapshot-test-secret-at-least-32-chars', LOG_LEVEL: 'silent',
     CRAWLER_BASE_URL: STOREFRONT, CRAWLER_ALLOW_LIVE: 'true', CHANGE_SNAPSHOT_DIR: dir, ...(connected ? { SHOPIFY_STORE_DOMAIN: SHOP, SHOPIFY_ADMIN_TOKEN: TOKEN } : {}),
   });
   const container = await createContainer({ env, fetchImpl: mock.fetchImpl });
   const agent = supertest(createApp(container));
   const as = async (email: string) => {
-    const tok = (await agent.post('/api/auth/login').send({ email, password: DEMO.password })).body.token as string;
+    const tok = (await agent.post('/api/auth/login').send({ email, password: FIXTURE.password })).body.token as string;
     const a = { Authorization: `Bearer ${tok}` };
     return { get: (p: string) => agent.get(p).set(a), post: (p: string, b: unknown = {}) => agent.post(p).set(a).send(b as object) };
   };
-  return { mock, dir, dev: await as(DEMO.developer), seo: await as(DEMO.seoLead) };
+  return { mock, dir, dev: await as(FIXTURE.developer), seo: await as(FIXTURE.seoLead) };
 }
 
 describe('theme source differences (read-only)', () => {

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { WebsiteSummary } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { WEBSITES_KEY, useWebsiteId } from '@/api/hooks';
-import { demoScope, websiteScope } from '@/api/websiteScope';
+import { websiteScope } from '@/api/websiteScope';
 
 interface WebsiteCtx {
   websiteId: string;
@@ -38,8 +38,6 @@ export function WebsiteProvider({ children }: { children: ReactNode }) {
     if (!q.isFetching && websites?.length && !websites.some((w) => w.id === websiteId)) websiteScope.set(websites[0].id);
   }, [websites, websiteId, q.isFetching]);
 
-  const currentSource = websites?.find((w) => w.id === websiteId)?.source;
-  useEffect(() => { demoScope.set(currentSource === undefined || currentSource === 'demo'); }, [currentSource]);
 
   const select = useCallback((id: string, to?: string) => {
     websiteScope.set(id);

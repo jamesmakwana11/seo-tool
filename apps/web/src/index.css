@@ -57,7 +57,7 @@
 
 @layer utilities {
   /* Diagonal hatching marks sample / simulated data so it can't be mistaken for a status colour. */
-  .demo-hatch {
+  .caution-hatch {
     background-color: #fef3c7;
     background-image: repeating-linear-gradient(135deg, rgba(180, 83, 9, 0.07) 0 6px, transparent 6px 12px);
   }

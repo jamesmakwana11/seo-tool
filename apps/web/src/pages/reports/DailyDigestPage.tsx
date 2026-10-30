@@ -3,7 +3,7 @@ import { ArrowUpRight, Bot, CheckCircle2, PartyPopper } from 'lucide-react';
 import { MODULE_LABELS, TEAMS, TEAM_IDS, type DailyDigest } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
-import { Async, Badge, DemoBadge, EmptyState, Mono, PageHeader, Panel, Stat } from '@/components/ui/primitives';
+import { Async, Badge, EmptyState, Mono, PageHeader, Panel, Stat } from '@/components/ui/primitives';
 import { TrendChart } from '@/components/ui/charts';
 import { SeverityBadge, SlaCountdown, TeamBadge } from '@/components/domain/badges';
 import { scoreColor } from '@/components/domain/HealthScore';
@@ -17,7 +17,7 @@ export default function DailyDigestPage() {
       <PageHeader
         title="Daily digest"
         description="Auto-delivered at 8:00 AM IST by email, WhatsApp and Slack (PDF §12.1). Every issue line carries the three one-tap allocation buttons (PDF §11.1a)."
-        meta={<><DemoBadge />{q.data && <span className="text-xs text-muted">For {fmtDate(q.data.meta.periodEnd)} · generated {fmtDateTime(q.data.meta.generatedAt)} IST</span>}</>}
+        meta={<>{q.data && <span className="text-xs text-muted">For {fmtDate(q.data.meta.periodEnd)} · generated {fmtDateTime(q.data.meta.generatedAt)} IST</span>}</>}
         actions={<ReportActions kind="daily" />}
       />
       <Async q={q} rows={12}>{(d) => <Digest d={d} />}</Async>

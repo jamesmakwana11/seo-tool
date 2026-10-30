@@ -20,7 +20,7 @@ export function sameJson(a: unknown, b: unknown) {
 /** Small provenance tag: where a default value comes from. */
 export function OriginTag({ origin }: { origin: string }) {
   const workshop = /workshop/i.test(origin);
-  return <Badge tone={workshop ? 'demo' : 'neutral'} title={workshop ? 'Not specified in the PDF — placeholder until the kickoff workshop (PDF p22)' : 'Default taken from seotooldocs.pdf'}>{origin}</Badge>;
+  return <Badge tone={workshop ? 'caution' : 'neutral'} title={workshop ? 'Not specified in the PDF — placeholder until the kickoff workshop (PDF p22)' : 'Default taken from seotooldocs.pdf'}>{origin}</Badge>;
 }
 
 /**

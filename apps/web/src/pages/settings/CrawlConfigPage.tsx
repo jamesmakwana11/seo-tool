@@ -4,7 +4,7 @@ import type { SentinelConfig } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Checkbox, DemoBadge, Field, Input, Mono, Notice, PageHeader, Panel } from '@/components/ui/primitives';
+import { Async, Badge, Checkbox, Field, Input, Mono, Notice, PageHeader, Panel } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/DataTable';
 import { ConfigSection, NumberField } from '@/components/settings/ConfigSection';
 import { fmtDateTime } from '@/lib/format';
@@ -18,12 +18,11 @@ export default function CrawlConfigPage() {
       <PageHeader
         title="Crawl configuration"
         description="How the crawler covers deodap.in: a daily smart crawl (home, collections, top products, URLs changed in the last 48h, re-verify set) and a weekly full crawl with JS rendering on a sample (PDF §2.1)."
-        meta={<DemoBadge />}
         actions={<Link to="/crawls" className="inline-flex h-9 items-center gap-1 rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card transition-colors hover:border-signal/40 hover:text-signal-dark">Crawl Center <ArrowUpRight className="h-4 w-4" /></Link>}
       />
       <div className="space-y-5">
         <Notice tone="signal" icon={<ShieldCheck className="h-4 w-4" />} title="Allow the crawler through Shopify bot protection">
-          The crawler user agent below must be allowed by Shopify’s bot protection and any firewall/CDN in front of deodap.in, otherwise crawls return challenge pages instead of real HTML (PDF §15 “verify crawler user-agent allowed”). In DEMO mode no requests are made — crawls are simulated.
+          The crawler user agent below must be allowed by Shopify’s bot protection and any firewall/CDN in front of deodap.in, otherwise crawls return challenge pages instead of real HTML (PDF §15 “verify crawler user-agent allowed”).
         </Notice>
         <Async q={q} rows={8}>{(c) => <CrawlForm c={c} />}</Async>
         <Schedules />

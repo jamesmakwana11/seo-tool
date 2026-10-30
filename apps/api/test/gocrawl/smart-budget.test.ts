@@ -12,8 +12,8 @@ import { HAVE_GO } from './goHelpers';
 
 /**
  * Smart Crawl page budget against the local synthetic store (127.0.0.1, ~2,400 eligible pages; no external site):
- * a Smart Crawl fetches at most 1,000 pages and reports the eligible URLs it left as pending; a Full Crawl on the same
- * store is not limited by that budget.
+ * the Smart Crawl budget is 10,000 pages by default (configurable lower); a Smart Crawl fetches at most its budget and
+ * reports the eligible URLs it left as pending; a Full Crawl on the same store is not limited by that budget.
  */
 const root = path.resolve(__dirname, '../../../..');
 let store: ChildProcess | undefined;
@@ -30,11 +30,11 @@ beforeAll(async () => {
 });
 afterAll(() => { store?.kill('SIGTERM'); });
 
-async function containerFor() {
+async function containerFor(extra: Record<string, string> = {}) {
   return createContainer({
     env: loadEnv({
-      NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'b'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: base, CRAWLER_ENGINE: 'go',
-      CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_RETRIES: '0', CHANGE_SNAPSHOT_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'budget-')),
+      NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'b'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: base, CRAWLER_ENGINE: 'go',
+      CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_RETRIES: '0', CHANGE_SNAPSHOT_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'budget-')), ...extra,
     }),
   });
 }
@@ -49,14 +49,15 @@ async function allRows(c: Awaited<ReturnType<typeof containerFor>>, id: string):
 }
 
 describe.skipIf(!HAVE_GO)('Smart Crawl page budget', () => {
-  it('is 1,000 pages', () => {
-    expect(SMART_CRAWL_PAGE_BUDGET).toBe(1000);
-    expect(loadEnv({ NODE_ENV: 'test' }).CRAWLER_SMART_MAX_PAGES).toBe(1000);
-    expect(() => loadEnv({ NODE_ENV: 'test', CRAWLER_SMART_MAX_PAGES: '5000' })).toThrow();
+  it('is 10,000 pages by default and at most', () => {
+    expect(SMART_CRAWL_PAGE_BUDGET).toBe(10000);
+    expect(loadEnv({ NODE_ENV: 'test' }).CRAWLER_SMART_MAX_PAGES).toBe(10000);
+    expect(loadEnv({ NODE_ENV: 'test', CRAWLER_SMART_MAX_PAGES: '5000' }).CRAWLER_SMART_MAX_PAGES).toBe(5000);
+    expect(() => loadEnv({ NODE_ENV: 'test', CRAWLER_SMART_MAX_PAGES: '10001' })).toThrow();
   });
 
-  it('stops a Smart Crawl at 1,000 pages and reports the pending eligible URLs; never as crawled or passed', async () => {
-    const c = await containerFor();
+  it('stops a Smart Crawl at its budget (here set to 1,000) and reports the pending eligible URLs; never as crawled or passed', async () => {
+    const c = await containerFor({ CRAWLER_SMART_MAX_PAGES: '1000' });
     const started = await c.services.crawls.start(SYSTEM_ACTOR, 'smart');
     expect(started.smart?.budget).toBe(1000);
     await c.services.crawls.idle();
@@ -91,6 +92,40 @@ describe.skipIf(!HAVE_GO)('Smart Crawl page budget', () => {
     }
   }, 180_000);
 
+  it('a website sync after a budget-limited Smart Crawl crawls URLs it left unfetched, within the per-sync limit', async () => {
+    const c = await containerFor({ CRAWLER_SMART_MAX_PAGES: '1000', SYNC_MAX_URLS: '300', MONITOR_MAX_CHECKS: '20' });
+    const started = await c.services.crawls.start(SYSTEM_ACTOR, 'smart');
+    await c.services.crawls.idle();
+    const base = (await c.repos.crawls.get(started.id))!;
+    const baseRows = await allRows(c, base.id);
+    const limitedBefore = baseRows.filter((r) => r.crawlState === 'page_limit').length;
+    expect(limitedBefore).toBeGreaterThan(300);
+    const s = (await c.services.monitor.runNow('manual', SYSTEM_ACTOR)) as import('@sentinel/shared').SyncSummary;
+    expect(s.state).toBe('crawling');
+    expect(s.reasons.not_crawled).toBeGreaterThan(0);
+    expect(Object.values(s.reasons).reduce((a, b) => a + (b ?? 0), 0)).toBeLessThanOrEqual(300);
+    await c.services.crawls.idle();
+    const run = (await c.repos.crawls.get(s.crawlRunId!))!;
+    expect(run).toMatchObject({ type: 'sync', status: 'completed' });
+    const rows = await allRows(c, run.id);
+    // Same URL set as the Smart Crawl's results (plus any new URL), with fewer pages left unfetched.
+    expect(rows.length).toBeGreaterThanOrEqual(baseRows.length);
+    const limitedAfter = rows.filter((r) => r.crawlState === 'page_limit').length;
+    expect(limitedAfter).toBeLessThanOrEqual(limitedBefore - s.reasons.not_crawled! + 5);
+    expect(limitedAfter).toBeLessThan(limitedBefore);
+  }, 240_000);
+
+  it('with the default 10,000-page budget, a Smart Crawl of this ~2,400-page store is not cut short', async () => {
+    const c = await containerFor();
+    const started = await c.services.crawls.start(SYSTEM_ACTOR, 'smart');
+    expect(started.smart?.budget).toBe(10000);
+    await c.services.crawls.idle();
+    const run = (await c.repos.crawls.get(started.id))!;
+    expect(run.status).toBe('completed');
+    expect(run.coverage!.processed).toBeGreaterThan(1500);
+    expect(run.coverage!.pageLimited).toBe(0);
+  }, 240_000);
+
   it('does not apply the Smart Crawl budget to a Full Crawl', async () => {
     const c = await containerFor();
     const started = await c.services.crawls.start(SYSTEM_ACTOR, 'full');
@@ -98,7 +133,7 @@ describe.skipIf(!HAVE_GO)('Smart Crawl page budget', () => {
     await c.services.crawls.idle();
     const run = (await c.repos.crawls.get(started.id))!;
     expect(run.outcome).toBe('completed');
-    expect(run.coverage!.processed).toBeGreaterThan(SMART_CRAWL_PAGE_BUDGET + 500);
+    expect(run.coverage!.processed).toBeGreaterThan(1500);
     expect(run.coverage!.pageLimited).toBe(0);
     expect(run.smart).toBeUndefined();
   }, 240_000);

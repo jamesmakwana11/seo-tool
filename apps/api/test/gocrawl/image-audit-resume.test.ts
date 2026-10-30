@@ -30,7 +30,7 @@ afterEach(async () => {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function envFor(base: string, extra: Record<string, string> = {}) {
   return loadEnv({
-    NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'j'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: base, CRAWLER_ENGINE: 'go',
+    NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'j'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: base, CRAWLER_ENGINE: 'go',
     CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_RETRIES: '0', CHANGE_SNAPSHOT_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'imgresume-')),
     ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password, ...extra,
   });
@@ -172,7 +172,7 @@ describe.skipIf(!DB_URL || !HAVE_GO)('Image Audit across a server restart (Postg
       cleanups.push(async () => fs.rmSync(tmp, { recursive: true, force: true }));
       const env = {
         NODE_ENV: 'development', DATABASE_URL: d.url, SESSION_SECRET: 'q'.repeat(40), ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password,
-        SEED_DEMO_DATA: 'false', LOG_LEVEL: 'warn', SCHEDULER_ENABLED: 'false', CRAWLER_BASE_URL: s.origin, CRAWLER_ENGINE: 'go', CRAWLER_RETRIES: '0',
+        SEED_TEST_FIXTURES: 'false', LOG_LEVEL: 'warn', SCHEDULER_ENABLED: 'false', CRAWLER_BASE_URL: s.origin, CRAWLER_ENGINE: 'go', CRAWLER_RETRIES: '0',
         CRAWLER_REQUEST_DELAY_MS: '200', IMAGE_AUDIT_CONCURRENCY: '1', IMAGE_AUDIT_CHECKPOINT_SECONDS: '1',
         CHANGE_SNAPSHOT_DIR: path.join(tmp, 'changes'), CRAWLER_WORK_DIR: path.join(tmp, 'work'),
       };

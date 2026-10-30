@@ -1,7 +1,7 @@
 import {
   CRAWL_DETAIL_ROW_LIMIT, SMART_CRAWL_PAGE_BUDGET, CRAWL_EXPORT_NOTE, auditLimitsFrom, auditPage, type CrawlPageReport, crawlCsvHeader, crawlCsvRow, crawlExportFilename, crawlResultsCsv, crawlResultsJson, validateCrawlOptions,
   type CrawlCoverageReport, type CrawlDetail, type CrawlerStatus, type CrawlOptions, type CrawlPagesQuery, type CrawlPagesResponse, type CrawlRun, type CrawlType,
-  type CrawledUrl, type CrawledUrlIssue, type PageTemplate, type SitePage,
+  type CrawledUrl, type CrawledUrlIssue, type PageTemplate, type SitePage, isIssueOpen,
 } from '@sentinel/shared';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
@@ -16,8 +16,12 @@ import type { IssueService } from './issues';
 import type { CrawlPlan, EngineRunResult } from './ports';
 import type { RuleService } from './rules';
 import { heapLimitMb } from '../crawler/memory';
+import { ANALYZERS_BY_ID } from '../analysis/analyzers';
 import type { ChangeService } from '../changes/service';
 import { acquireSlot, dropWaiters, queueInfo, releaseSlot, slotStats } from '../jobs/crawlSlots';
+
+/** Template-scope analyzers that judge each page on its own and are therefore updated by a website sync. */
+const SYNC_ONPAGE_CHECKS = new Set(['ONP-TITLE', 'ONP-META', 'ONP-H1', 'ONP-HEADINGS', 'ONP-IMAGES']);
 
 export function templateOfPath(path: string): PageTemplate {
   if (path === '/' || path === '') return 'home';
@@ -196,7 +200,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     const want = norm(url);
     let path = want;
     try { path = new URL(url).pathname.replace(/\/$/, '') || '/'; } catch { /* keep */ }
-    // Live crawls first (sample / demo rows never describe the real store), newest first.
+    // Live crawls first (sample rows never describe the real store), newest first.
     const runs = (await r.crawls.list()).filter((c) => c.status === 'completed' || c.status === 'cancelled')
       .sort((a, b) => Number(b.source === 'live') - Number(a.source === 'live') || (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
     for (const run of runs.slice(0, 5)) {
@@ -246,15 +250,16 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
   async function blockedReason(): Promise<string | undefined> {
     const ready = ctx.engine.readiness();
     if (!ready.ready) return ready.reason;
-    if ((await r.metrics.get()).source === 'demo') {
-      return 'This website holds the labelled DEMO dataset, so live results would be mixed with sample data. Add the site under Manage websites, or start the server with SEED_DEMO_DATA=false, to crawl it live.';
+    if ((await r.metrics.get()).source === 'sample') {
+      return 'This website holds the sample test dataset, so live results would be mixed with sample data. Add the site under Manage websites, or start the server with SEED_TEST_FIXTURES=false, to crawl it live.';
     }
     return undefined;
   }
 
   /** Issues seen in this run, by page URL key (issue tracker records with their Fix Cards). */
-  async function issuesByUrl(since: string) {
-    const seen = (await r.issues.list()).filter((i) => i.source === 'live' && !i.isTemplateGroup && i.lastSeenAt >= since);
+  /** `since` = issues seen in this crawl; `'open'` = every open issue (a sync's results stand for the whole site). */
+  async function issuesByUrl(since: string | 'open') {
+    const seen = (await r.issues.list()).filter((i) => i.source === 'live' && !i.isTemplateGroup && (since === 'open' ? isIssueOpen(i.status) : i.lastSeenAt >= since));
     const byUrl = new Map<string, CrawledUrlIssue[]>();
     for (const i of seen) {
       for (const u of i.affectedUrls) {
@@ -297,16 +302,17 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       try { return new URL(new URL(u).pathname + new URL(u).search, origin).toString(); } catch { return undefined; }
     };
     const fixedUrls = (await r.issues.list())
-      .filter((i) => i.source !== 'demo' && i.status === 'FIXED')
+      .filter((i) => i.source !== 'sample' && i.status === 'FIXED')
       .flatMap((i) => i.affectedUrls)
       .map(onSite).filter((u): u is string => !!u);
+    if (type === 'sync') throw conflict('A sync is started by Sync Now or Auto Sync with the URLs it found; an interrupted sync is not restarted — the next sync finds those changes again.', 'SYNC_NOT_RESUMABLE');
     if (type === 'reverify') {
       if (!fixedUrls.length) throw conflict('No live issues are in FIXED, so there is nothing to re-verify.', 'NOTHING_TO_VERIFY');
       return { type, baseUrl, previous: prev, urls: [...new Set(fixedUrls)].map((url) => ({ url, reason: 'reverify' as const })), maxPages: fixedUrls.length + 10, tierOf };
     }
     if (type === 'full') return { type, baseUrl, previous: prev, maxPages: ctx.env.CRAWLER_MAX_PAGES ?? Number.POSITIVE_INFINITY, tierOf };
     // Smart crawl (PDF §16): homepage + every collection + top products by value + pages changed in 48h + re-verify set.
-    // Only pages discovered by previous LIVE crawls are used — DEMO inventory is never requested from the live site.
+    // Only pages discovered by previous LIVE crawls are used — sample inventory is never requested from the live site.
     const pages = (await r.sitePages.list()).filter((p) => p.source === 'live');
     const changedSince = ctx.clock().getTime() - cfg.crawl.changedWithinHours * 3600_000;
     const urls: { url: string; reason: CrawledUrl['reason'] }[] = [{ url: `${origin}/`, reason: 'homepage' }];
@@ -430,7 +436,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
           await r.crawls.update({ ...cur, ...counts, ...l, ...(warnings ? { warnings } : {}) });
         }
       };
-      const out = await ctx.engine.run(plan, (crawled, failed, discovered, succeeded, politeness) => {
+      let out = await ctx.engine.run(plan, (crawled, failed, discovered, succeeded, politeness) => {
         latest = [crawled, failed, discovered, succeeded, politeness];
         if (scheduled) return;
         scheduled = true;
@@ -448,12 +454,24 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       }
       // Go crawls: rows live in a file-backed store; only small runs are also kept inline with the run.
       const inlineRows = async () => (out.store ? (await out.store.allIfSmall(CRAWL_DETAIL_ROW_LIMIT)) ?? [] : out.urls);
-      const urlCount = out.store ? out.store.count() : out.urls.length;
+      let urlCount = out.store ? out.store.count() : out.urls.length;
       if (shuttingDown && !plan.signal?.aborted && (out.failed || out.cancelled)) {
         // Cut off by the server shutting down, not by the user or the site: left "running" in the database so it is
         // started again when the server is back (never recorded as a finished, cancelled or failed audit).
         ctx.log.warn({ runId: run.id }, 'crawl interrupted by server shutdown; it will be restarted when the server is back');
         return;
+      }
+      // Incremental sync: the fetched pages replace their rows in the previous crawl's results (new URLs are added);
+      // every other page keeps its stored row. The run then holds the whole, updated dataset.
+      let fetchedUrls: Set<string> | undefined;
+      let syncKeep: Map<string, Set<string>> | undefined;
+      if (plan.type === 'sync' && plan.sync && !out.cancelled && !out.failed) {
+        setPhase('saving');
+        const merged = await mergeSync(run.id, plan.sync.baseRunId, out);
+        fetchedUrls = merged.fetched;
+        syncKeep = merged.keep;
+        out = merged.out;
+        urlCount = out.store ? out.store.count() : urlCount;
       }
       if (out.store) await keepStore(run.id, out.store, out.coverageReport);
       if (out.imageRefsFile) keepImageRefs(run.id, out.imageRefsFile);
@@ -487,11 +505,11 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       }
       await r.crawlUrls.upsert({ id: run.id, urls: await inlineRows() });
       if (out.sitemapDiff) await r.sitemapDiffs.upsert({ ...out.sitemapDiff, crawlRunId: run.id, id: run.id });
-      if (out.snapshot) await r.crawlStates.upsert({ id: 'latest', runId: run.id, at: iso(), state: { ...(await r.crawlStates.get('latest'))?.state, ...out.snapshot } });
+      if (out.snapshot && plan.type !== 'sync') await r.crawlStates.upsert({ id: 'latest', runId: run.id, at: iso(), state: { ...(await r.crawlStates.get('latest'))?.state, ...out.snapshot } });
       await recordPages(out.store ?? out.urls, plan.tierOf);
-      const stats = await issues.ingestFindings(run.id, { ...out, answeredUrls: out.answeredUrls });
+      const stats = await issues.ingestFindings(run.id, { ...out, answeredUrls: fetchedUrls ?? out.answeredUrls }, plan.type === 'sync' ? { incremental: true, keepUrls: syncKeep } : undefined);
       if (out.store) {
-        out.store.setIssues(await issuesByUrl(startedIso), sameUrlKey);
+        out.store.setIssues(await issuesByUrl(plan.type === 'sync' ? 'open' : startedIso), sameUrlKey);
         await r.crawlUrls.upsert({ id: run.id, urls: await inlineRows() });
       } else await r.crawlUrls.upsert({ id: run.id, urls: await attachIssues(out.urls, startedIso) });
       let ruleStats = { rules: 0, flagged: 0 };
@@ -519,14 +537,15 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
             : `Stopped taking new pages after ${out.stats.urlsCrawled ?? 0} pages because the API server's memory was nearly full (limit ${heapLimitMb().toLocaleString('en-US')} MB). The pages fetched were analysed normally. The Go crawler (CRAWLER_ENGINE=go) keeps memory bounded on large sites.` }
           : outcome === 'partial' ? { error: `Partially completed: ${out.stats.outcomeReason ?? 'not every eligible URL was fetched'}` } : {}),
         newIssues: stats.newIssues, resolvedIssues: stats.resolvedIssues, recurringIssues: stats.recurringIssues,
+        ...(plan.sync ? { sync: { baseRunId: plan.sync.baseRunId, fetched: fetchedUrls?.size ?? 0, reasons: plan.sync.reasons, merged: urlCount, ...(plan.sync.deferred ? { deferred: plan.sync.deferred } : {}) } } : {}),
         scope: [...(out.stats.scope ?? cur.scope), ...(stats.excludedUrls ? [{ label: 'URLs skipped by exclusions', count: stats.excludedUrls }] : []), { label: `Custom rules applied (${ruleStats.rules})`, count: ruleStats.flagged }],
       };
       if (saveError) final.warnings = [...(final.warnings ?? []), { code: 'database', message: `The page-level results could not be saved in the database (${saveError}); they are available until the server restarts. Issues, findings and the run itself are saved separately.`, at: iso() }];
       await r.crawls.update(final);
-      await recordChanges(run.id, out);
+      if (plan.type !== 'sync') await recordChanges(run.id, out);
       await ctx.integrations.recordSync?.('crawler', { ok: true });
       const m = await r.metrics.get();
-      if (m.source !== 'demo') {
+      if (m.source !== 'sample') {
         m.siteSize = await r.sitePages.count();
         await r.metrics.set(m);
       }
@@ -553,6 +572,79 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       await r.metrics.set(m);
       await audit(ctx, SYSTEM_ACTOR, 'crawl.failed', 'crawl', run.id, `${run.type} crawl failed: ${msg}`);
     }
+  }
+
+  /**
+   * Merge of an incremental sync: the base crawl's rows streamed into a new file-backed store, each replaced by the
+   * freshly fetched row of the same URL; new URLs appended. Only page-level findings are kept (site- and
+   * template-level checks need the whole site and are left to the next full or smart crawl), and only the fetched
+   * URLs count as re-crawled — so issues on pages that were not fetched are left as they are.
+   */
+  async function mergeSync(runId: string, baseRunId: string, out: EngineRunResult): Promise<{ out: EngineRunResult; fetched: Set<string>; keep: Map<string, Set<string>> }> {
+    const fresh = new Map<string, CrawledUrl>();
+    if (out.store) { for await (const row of out.store.iterate()) fresh.set(sameUrlKey(row.url), row); }
+    else for (const row of out.urls) fresh.set(sameUrlKey(row.url), row);
+    const fetched = new Set([...fresh.values()].filter((u) => u.status !== null && u.status !== undefined).map((u) => u.url));
+    const clean = (u: CrawledUrl): CrawledUrl => {
+      const { issues: _i, flags: _f, auditScore: _a, auditTodo: _t, recheckedAt: _r, scoreBeforeRecheck: _s, ...rest } = u;
+      return rest as CrawledUrl;
+    };
+    const limits = auditLimitsFrom((await r.config.get()).thresholds as unknown as Record<string, number>);
+    const dir = path.join(ctx.env.CRAWLER_WORK_DIR ?? path.join(os.tmpdir(), 'sentinel-crawls'), 'sync', `${scope}-${runId}`.replace(/[^\w.-]/g, '_'));
+    await fsp.rm(dir, { recursive: true, force: true });
+    const merged = new FileResultStore(dir, limits);
+    // Duplicate titles / meta descriptions / H1s across the whole merged result (the analyzers only saw the fetched
+    // pages): a fetched page whose value is shared with another page keeps that issue until a full or smart crawl.
+    type DupCheck = 'ONP-TITLE' | 'ONP-META' | 'ONP-H1';
+    const dupValue: [DupCheck, (u: CrawledUrl) => string | undefined][] = [
+      ['ONP-TITLE', (u) => u.title], ['ONP-META', (u) => u.metaDescription], ['ONP-H1', (u) => (u.h1?.length === 1 ? u.h1[0] : undefined)],
+    ];
+    const counts = new Map<DupCheck, Map<string, number>>(dupValue.map(([id]) => [id, new Map()]));
+    const valueKey = (v: string | undefined) => v?.toLowerCase().trim() || undefined;
+    const count = (row: CrawledUrl) => {
+      if (row.indexable === false || (row.finalStatus ?? row.status) !== 200) return;
+      for (const [id, get] of dupValue) {
+        const v = valueKey(get(row));
+        if (v) counts.get(id)!.set(v, (counts.get(id)!.get(v) ?? 0) + 1);
+      }
+    };
+    const base = await storeOf(baseRunId);
+    for await (const row of base.iterate()) {
+      const k = sameUrlKey(row.url);
+      const n = fresh.get(k);
+      const kept = n ?? row;
+      merged.add(clean(kept));
+      count(kept);
+      if (n) fresh.delete(k);
+    }
+    for (const n of fresh.values()) { merged.add(clean(n)); count(n); }
+    merged.seal();
+    await out.store?.dispose().catch(() => undefined);
+    const keep = new Map<string, Set<string>>();
+    for await (const row of merged.iterate()) {
+      if (!fetched.has(row.url)) continue;
+      for (const [id, get] of dupValue) {
+        const v = valueKey(get(row));
+        if (!v || (counts.get(id)!.get(v) ?? 0) < 2) continue;
+        const s = keep.get(id) ?? new Set<string>();
+        s.add(row.url);
+        keep.set(id, s);
+      }
+    }
+    // Page-level checks, plus the per-page on-page checks (titles, meta descriptions, headings, image alt text). Checks
+    // that compare whole templates or the site (thin or duplicate content, orphans, depth…) need every page: the next
+    // full or smart crawl updates those.
+    const kept = (id: string) => ANALYZERS_BY_ID[id]?.scope === 'pages' || SYNC_ONPAGE_CHECKS.has(id);
+    const findings = out.findings.filter((f) => kept(f.checkId)).map((f) => {
+      if (!SYNC_ONPAGE_CHECKS.has(f.checkId) || !f.severityContext?.templateWide) return f;
+      // "Every examined page is affected" says nothing about a whole template when only a few of its pages were fetched.
+      const { templateWide: _w, ...severityContext } = f.severityContext;
+      return { ...f, severityContext, summary: f.summary.split('\n').filter((l) => !l.startsWith('Every examined')).join('\n') };
+    });
+    return {
+      fetched, keep,
+      out: { ...out, store: merged, urls: [], findings, evaluatedChecks: out.evaluatedChecks.filter(kept), answeredUrls: fetched },
+    };
   }
 
   /** The plan of a crawl: its type plus the live-crawl settings (also used to start an interrupted crawl again). */
@@ -616,7 +708,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     }
   }
 
-  async function startOne(actor: Actor, type: CrawlType, trigger: CrawlRun['trigger'], options?: CrawlOptions, batchId?: string): Promise<CrawlRun> {
+  async function startOne(actor: Actor, type: CrawlType, trigger: CrawlRun['trigger'], options?: CrawlOptions, batchId?: string, prebuilt?: CrawlPlan): Promise<CrawlRun> {
     const activeRun = (await r.crawls.list()).find(isActive);
     if (activeRun) throw alreadyRunning(activeRun);
     const ready = ctx.engine.readiness();
@@ -633,16 +725,18 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
       }
       throw new ApiError(409, 'CRAWLER_NOT_READY', `The crawler cannot run: ${ready.reason}`);
     }
-    const plan = await planFor(type, options);
+    const plan = prebuilt ?? await planFor(type, options);
     const run: CrawlRun = {
       id: await r.crawls.nextId('CRL'), type, status: 'queued', phase: 'waiting', trigger, startedAt: iso(), ...(batchId ? { batchId } : {}), urlsPlanned: options ? 1 : plan.urls?.length ?? (Number.isFinite(plan.maxPages) ? plan.maxPages : 0), urlsCrawled: 0, urlsFailed: 0,
       urlsDiscovered: options ? 1 : undefined, urlsSucceeded: 0,
       jsRenderedSample: 0, newIssues: 0, resolvedIssues: 0, recurringIssues: 0,
       scope: options
         ? [{ label: `Live crawl from ${options.startUrl} (${options.maxPages === null ? 'all pages' : `up to ${options.maxPages} pages`}, ${options.maxDepth === null ? 'any depth' : `depth ${options.maxDepth}`})`, count: options.maxPages ?? 0 }]
+        : plan.sync ? Object.entries(plan.sync.reasons).map(([label, count]) => ({ label, count }))
         : plan.urls ? Object.entries(plan.urls.reduce<Record<string, number>>((a, u) => ({ ...a, [u.reason]: (a[u.reason] ?? 0) + 1 }), {})).map(([label, count]) => ({ label, count })) : [{ label: `Full discovery from ${new URL(plan.baseUrl).host} (${Number.isFinite(plan.maxPages) ? `cap ${plan.maxPages}` : 'no page cap'})`, count: Number.isFinite(plan.maxPages) ? plan.maxPages : 0 }],
       options,
       // Shown while it runs; the crawler's final accounting replaces it.
+      ...(plan.sync ? { sync: { baseRunId: plan.sync.baseRunId, fetched: 0, reasons: plan.sync.reasons, ...(plan.sync.deferred ? { deferred: plan.sync.deferred } : {}) } } : {}),
       ...(type === 'smart' ? { smart: { budget: Math.min(ctx.env.CRAWLER_SMART_MAX_PAGES, SMART_CRAWL_PAGE_BUDGET), prioritized: plan.urls?.length ?? 0, notAudited: 0, basis: [] } } : {}),
       source: 'live',
     };
@@ -663,7 +757,7 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
     const diff = await r.sitemapDiffs.get(id);
     const store = await savedStore(id);
     // Large runs: the rows are paged on the server (getCrawlPages); the detail carries only the count.
-    // Rows kept in the repository (built-in crawler, DEMO) are all returned, with their audit score and to-do checks.
+    // Rows kept in the repository (built-in crawler, sample) are all returned, with their audit score and to-do checks.
     const rows = store ? await store.allIfSmall(CRAWL_DETAIL_ROW_LIMIT) : await (await storeOf(id)).allIfSmall(Number.MAX_SAFE_INTEGER);
     const urlCount = store ? store.count() : rows?.length ?? 0;
     return {
@@ -673,6 +767,29 @@ export function createCrawlService(ctx: Ctx, issues: IssueService, rules: RuleSe
 
   return {
     start,
+    /**
+     * Incremental sync crawl (Sync Now / Auto Sync): fetches only `urls` and merges them into `baseRunId`'s results.
+     * One crawl per website at a time, like any crawl.
+     */
+    async startSync(actor: Actor, input: { urls: string[]; baseRunId: string; reasons: Record<string, number>; deferred?: number; trigger: CrawlRun['trigger'] }): Promise<CrawlRun> {
+      if (!input.urls.length) throw badRequest('Nothing to sync.');
+      if (starting) throw alreadyRunning();
+      starting = true;
+      try {
+        const ready = ctx.engine.readiness();
+        if (!ready.ready) throw new ApiError(409, 'CRAWLER_NOT_READY', `The crawler cannot run: ${ready.reason}`);
+        const tierOf = await issues.tierLookup();
+        const plan: CrawlPlan = {
+          type: 'sync', baseUrl: ready.baseUrl!, previous: (await r.crawlStates.get('latest'))?.state, urls: input.urls.map((url) => ({ url, reason: 'sync' as const })),
+          maxPages: input.urls.length + 5, tierOf, sync: { baseRunId: input.baseRunId, reasons: input.reasons, ...(input.deferred ? { deferred: input.deferred } : {}) },
+        };
+        return await startOne(actor, 'sync', input.trigger, undefined, undefined, plan);
+      } finally {
+        starting = false;
+      }
+    },
+    /** The newest completed crawl holding the whole site's results (full, smart or sync) — what a sync builds on. */
+    latestCompleteRun: () => latestRun(true),
     /** A run with its place in the server-wide queue when it is waiting (batch view). */
     withQueue,
     /**

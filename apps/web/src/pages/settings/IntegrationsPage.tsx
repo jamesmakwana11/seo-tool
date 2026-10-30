@@ -8,7 +8,7 @@ import {
 import { api } from '@/api/client';
 import { errorMessage, useApiMutation, useApiQuery, useSiteKey } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Button, DemoBadge, Field, IconButton, Input, KV, Mono, Notice, PageHeader, Panel, Select } from '@/components/ui/primitives';
+import { Async, Badge, Button, Field, IconButton, Input, KV, Mono, Notice, PageHeader, Panel, Select } from '@/components/ui/primitives';
 import { IntegrationStateBadge } from '@/components/settings/ConfigSection';
 import { fmtDateTime } from '@/lib/format';
 
@@ -27,7 +27,6 @@ export default function IntegrationsPage() {
       <PageHeader
         title="Integrations"
         description="Data sources and delivery channels Sentinel needs (PDF §15, notification adapters per prompt §5.16). Each card says what it powers, what access to request, and which server environment variables to set."
-        meta={<DemoBadge />}
       />
       <div className="space-y-5">
         <Notice tone="signal" icon={<KeyRound className="h-4 w-4" />} title="Secrets never go through the browser">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO, makeHarness } from './helpers';
+import { FIXTURE, makeHarness } from './helpers';
 
 /** Allocation → task creation → lifecycle → honest verification (PDF §11, §12.3, §16). */
 describe('issue allocation & task workflow', () => {
@@ -10,7 +10,7 @@ describe('issue allocation & task workflow', () => {
 
   it('allocating an issue assigns it to the team with the SLA due date; no external task sync is attempted', async () => {
     const h = await makeHarness();
-    const admin = h.as(await h.token(DEMO.admin));
+    const admin = h.as(await h.token(FIXTURE.admin));
     const issue = await firstNewIssue(admin);
     const res = await admin.post(`/api/issues/${issue.id}/allocate`, { team: issue.recommendedTeam, reason: 'triaged' });
     expect(res.status).toBe(200);
@@ -20,13 +20,13 @@ describe('issue allocation & task workflow', () => {
     expect(deliveries.some((d) => d.kind === 'task_sync')).toBe(false);
   });
 
-  it('start → mark fixed never verifies; a DEMO issue re-check returns pending_data and stays FIXED', async () => {
+  it('start → mark fixed never verifies; a FIXTURE issue re-check returns pending_data and stays FIXED', async () => {
     const h = await makeHarness();
-    const admin = h.as(await h.token(DEMO.admin));
+    const admin = h.as(await h.token(FIXTURE.admin));
     const issue = await firstNewIssue(admin);
     expect((await admin.post(`/api/issues/${issue.id}/status`, { action: 'start' })).body.error.code).toBe('NOT_ALLOCATED');
     await admin.post(`/api/issues/${issue.id}/allocate`, { team: 'development' });
-    const dev = h.as(await h.token(DEMO.developer));
+    const dev = h.as(await h.token(FIXTURE.developer));
     const start = await dev.post(`/api/issues/${issue.id}/status`, { action: 'start' });
     expect(start.status).toBe(200);
     expect(start.body.issue.status).toBe('IN_PROGRESS');
@@ -42,7 +42,7 @@ describe('issue allocation & task workflow', () => {
 
   it('mark-not-an-issue cancels the linked task and (optionally) writes an exclusion', async () => {
     const h = await makeHarness();
-    const admin = h.as(await h.token(DEMO.admin));
+    const admin = h.as(await h.token(FIXTURE.admin));
     const issue = await firstNewIssue(admin);
     await admin.post(`/api/issues/${issue.id}/allocate`, { team: issue.recommendedTeam });
     const res = await admin.post(`/api/issues/${issue.id}/not-an-issue`, { reason: 'Intentional for this template', addExclusion: true });

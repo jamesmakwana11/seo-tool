@@ -13,11 +13,11 @@ describe('production configuration', () => {
     expect(() => loadEnv(PROD)).toThrow(/ALLOW_EPHEMERAL_STORAGE/);
   });
 
-  it('refuses the DEMO seed (publicly known passwords) in production and defaults it off', () => {
-    expect(() => loadEnv({ ...PROD, ALLOW_EPHEMERAL_STORAGE: 'true', SEED_DEMO_DATA: 'true' })).toThrow(/SEED_DEMO_DATA/);
+  it('never loads the test fixtures (publicly known passwords) outside tests', () => {
+    expect(loadEnv({ ...PROD, ALLOW_EPHEMERAL_STORAGE: 'true', SEED_TEST_FIXTURES: 'true' }).SEED_TEST_FIXTURES).toBe(false);
+    expect(loadEnv({ ...PROD, NODE_ENV: 'development', ALLOW_EPHEMERAL_STORAGE: 'true', SEED_TEST_FIXTURES: 'true' }).SEED_TEST_FIXTURES).toBe(false);
     const env = loadEnv({ ...PROD, ALLOW_EPHEMERAL_STORAGE: 'true' });
-    expect(env.SEED_DEMO_DATA).toBe(false);
-    expect(env.ALLOW_DEV_ROLE_PREVIEW).toBe(false);
+    expect(env.SEED_TEST_FIXTURES).toBe(false);
     expect(env.DEV_EXPOSE_RESET_TOKEN).toBe(false);
   });
 
@@ -27,19 +27,17 @@ describe('production configuration', () => {
 });
 
 describe('production server', () => {
-  const prod = { ...PROD, SEED_DEMO_DATA: 'false', ALLOW_EPHEMERAL_STORAGE: 'true', ALLOW_DEV_ROLE_PREVIEW: 'false', DEV_EXPOSE_RESET_TOKEN: 'false' };
+  const prod = { ...PROD, SEED_TEST_FIXTURES: 'false', ALLOW_EPHEMERAL_STORAGE: 'true', DEV_EXPOSE_RESET_TOKEN: 'false' };
 
-  it('creates the first admin from env on a clean start, with no DEMO accounts', async () => {
+  it('creates the first admin from env on a clean start, with no fixture accounts', async () => {
     const h = await makeHarness({ ...prod, ...ADMIN });
     expect(await h.container.repos.employees.count()).toBe(1);
-    const demo = await h.agent.post('/api/auth/login').send({ email: 'aarav.admin@demo.deodap.local', password: 'Sentinel@Demo1' });
-    expect(demo.status).toBe(401);
+    const fixtureLogin = await h.agent.post('/api/auth/login').send({ email: 'aarav.admin@team.deodap.local', password: 'Sentinel@Fixture1' });
+    expect(fixtureLogin.status).toBe(401);
     const tok = await h.token(ADMIN.ADMIN_EMAIL, ADMIN.ADMIN_INITIAL_PASSWORD);
     const me = await h.as(tok).get('/api/auth/me');
-    expect(me.body.role).toBe('admin');
+    expect(me.body.role).toBe('super_admin');
     expect(me.body.name).toBe('Site Owner');
-    // Nothing is presented as DEMO data on a live server.
-    expect(me.body.serverDemoData).toBe(false);
   });
 
   it('rejects a weak initial admin password', async () => {

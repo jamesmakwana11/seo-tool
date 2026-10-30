@@ -57,7 +57,7 @@ export interface Booted {
 export async function boot(url: string, primaryUrl: string, extra: Record<string, string> = {}): Promise<Booted> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-boot-'));
   const env = loadEnv({
-    NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'p'.repeat(40), LOG_LEVEL: 'silent', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password,
+    NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'p'.repeat(40), LOG_LEVEL: 'silent', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password,
     CRAWLER_BASE_URL: primaryUrl, CRAWLER_ENGINE: 'go', CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_RETRIES: '0',
     CHANGE_SNAPSHOT_DIR: path.join(tmp, 'changes'), CRAWLER_WORK_DIR: path.join(tmp, 'work'), DATABASE_URL: url, ...extra,
   });

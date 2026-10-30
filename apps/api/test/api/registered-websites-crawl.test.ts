@@ -33,7 +33,7 @@ afterEach(async () => {
 async function server(env: Record<string, string>) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-sites-'));
   const container = await createContainer({ env: loadEnv({
-    NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'w'.repeat(40), LOG_LEVEL: 'silent', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password,
+    NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'w'.repeat(40), LOG_LEVEL: 'silent', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password,
     CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_RETRIES: '0', CHANGE_SNAPSHOT_DIR: path.join(tmp, 'changes'), CRAWLER_WORK_DIR: path.join(tmp, 'work'), ...env,
   }) });
   const app = createApp(container);

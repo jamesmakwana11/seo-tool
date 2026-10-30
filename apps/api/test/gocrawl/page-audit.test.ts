@@ -22,7 +22,7 @@ describe.skipIf(!HAVE_GO)('page audit of a Go crawl', () => {
     const s = site;
     container = await createContainer({
       env: loadEnv({
-        NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'k'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: s.origin, CRAWLER_REQUEST_DELAY_MS: '0',
+        NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'k'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: s.origin, CRAWLER_REQUEST_DELAY_MS: '0',
         CRAWLER_RETRIES: '0', CRAWLER_ENGINE: 'go', CHANGE_SNAPSHOT_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'audit-')),
       }),
     });

@@ -225,7 +225,11 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
    *  - auto-resolution only where the check was evaluated AND every affected URL was re-crawled
    *  - template grouping (≥3 related Medium) and real-time alerts for new Criticals
    */
-  async function ingestFindings(runId: string, outcome: Pick<CrawlOutcome, 'findings' | 'evaluatedChecks' | 'evaluatedTemplates' | 'urls' | 'pageTexts'> & { answeredUrls?: Set<string> }) {
+  /**
+   * `incremental` (website sync): only some pages were fetched. An issue keeps its URLs that were not fetched, gains
+   * the fetched URLs that still fail, and loses the fetched URLs that now pass; it is resolved only when none is left.
+   */
+  async function ingestFindings(runId: string, outcome: Pick<CrawlOutcome, 'findings' | 'evaluatedChecks' | 'evaluatedTemplates' | 'urls' | 'pageTexts'> & { answeredUrls?: Set<string> }, opts: { incremental?: boolean; keepUrls?: Map<string, Set<string>> } = {}) {
     const cfg = await r.config.get();
     const tierOfRaw = await tierLookup();
     const tierCache = new Map<string, PageTier>();
@@ -238,13 +242,16 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
     const now = ctx.clock();
     const all = await r.issues.list();
     // Page/finding-level issues (superseded group children included — they keep tracking their own URLs).
-    const live = all.filter((i) => i.source !== 'demo' && !i.isTemplateGroup);
+    const live = all.filter((i) => i.source !== 'sample' && !i.isTemplateGroup);
     const liveByKey = new Map<string, Issue[]>();
     for (const i of live) { const k = issueKeyOf(i); const list = liveByKey.get(k); if (list) list.push(i); else liveByKey.set(k, [i]); }
     const seen = new Set<string>();
     const stats = { newIssues: 0, resolvedIssues: 0, recurringIssues: 0, excludedUrls: 0 };
     // URLs that answered in this run (Go crawls pass the set from their result store instead of every row).
     const crawled = outcome.answeredUrls ?? new Set(outcome.urls.filter((u) => u.status !== null).map((u) => u.url));
+    // Incremental: a URL counts as re-checked for an issue only if it was fetched and nothing outside the fetched pages
+    // could still make it fail (a duplicate title shared with a page that was not fetched).
+    const rechecked = (checkId: string, u: string) => crawled.has(u) && !opts.keepUrls?.get(checkId)?.has(u);
     const primaryTask = async (i: Issue) => {
       // A grouped child shares its parent's task; only the task's own issue drives verification.
       const t = i.taskId ? await r.tasks.get(i.taskId) : undefined;
@@ -253,11 +260,14 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
 
     for (const f of outcome.findings) {
       if (!CHECKS_BY_ID[f.checkId]) { ctx.log.warn({ checkId: f.checkId }, 'finding for unknown check ignored'); continue; }
-      const urls = exclusions.applies(f.checkId) ? f.urls.filter((u) => !exclusions.matches(f.checkId, u)) : f.urls;
-      stats.excludedUrls += f.urls.length - urls.length;
-      if (f.urls.length > 0 && urls.length === 0) continue; // every URL is excluded
+      const found = exclusions.applies(f.checkId) ? f.urls.filter((u) => !exclusions.matches(f.checkId, u)) : f.urls;
+      stats.excludedUrls += f.urls.length - found.length;
+      if (f.urls.length > 0 && found.length === 0) continue; // every URL is excluded
       const key = findingKeyOf(f);
       seen.add(key);
+      // Incremental: the open issue's URLs that were not fetched this time still fail as far as anyone knows.
+      const prior = opts.incremental ? (liveByKey.get(key) ?? []).find((i) => isIssueOpen(i.status) || i.status === 'SUPERSEDED') : undefined;
+      const urls = prior ? [...new Set([...prior.affectedUrls.filter((u) => !rechecked(f.checkId, u)), ...found])] : found;
       const tiers = urls.map(tierOf);
       const highestTier = (tiers.length ? tiers.reduce((a, b) => (b < a ? b : a)) : 1) as PageTier;
       const tierBreakdown: Record<PageTier, number> = { 1: 0, 2: 0, 3: 0 };
@@ -276,8 +286,9 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
         open.highestTier = highestTier;
         open.tierBreakdown = tierBreakdown;
         open.lastSeenAt = now.toISOString();
-        open.summary = f.summary;
-        open.title = f.title;
+        // Incremental: the finding describes the fetched pages only; the open issue's own wording still describes all
+        // of its URLs (the count is affectedCount).
+        if (!prior || urls.length === found.length) { open.summary = f.summary; open.title = f.title; }
         open.crawlRunId = runId;
         open.evidence = evidenceFrom(f, 'live');
         open.delta = open.affectedCount > prevCount ? 'worsening' : open.affectedCount < prevCount ? 'improving' : 'unchanged';
@@ -349,7 +360,7 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
       if (!isIssueOpen(i.status) || !evaluated.has(i.checkId)) return false;
       const tpls = outcome.evaluatedTemplates?.[i.checkId];
       if (i.template && tpls && tpls.length && !tpls.includes(i.template)) return false;
-      return !i.affectedUrls.length || i.affectedUrls.every((u) => crawled.has(u));
+      return !i.affectedUrls.length || i.affectedUrls.every((u) => rechecked(i.checkId, u));
     };
     const resolve = async (i: Issue) => {
       const fresh = (await r.issues.get(i.id))!;
@@ -377,10 +388,20 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
       stats.resolvedIssues++;
     };
     for (const i of live) if (!seen.has(issueKeyOf(i)) && resolvable(i)) await resolve(i);
+    if (opts.incremental) {
+      // Partly re-checked and no longer seen on the fetched pages: those URLs pass now; the others still count.
+      for (const i of live) {
+        if (seen.has(issueKeyOf(i)) || !isIssueOpen(i.status) || !evaluated.has(i.checkId) || resolvable(i)) continue;
+        const left = i.affectedUrls.filter((u) => !rechecked(i.checkId, u));
+        if (left.length === i.affectedUrls.length) continue;
+        const fresh = (await r.issues.get(i.id))!;
+        await r.issues.update({ ...fresh, affectedUrls: left, affectedCount: left.length || 1, delta: 'improving', lastSeenAt: now.toISOString(), crawlRunId: runId });
+      }
+    }
 
     // Template-level parents (PDF §11.2.4): the parent card is the actionable one; it resolves as a unit when none of
     // its children is detected any more, and otherwise tracks the union of the children's URLs.
-    for (const parent of (await r.issues.list()).filter((i) => i.isTemplateGroup && i.source !== 'demo' && isIssueOpen(i.status))) {
+    for (const parent of (await r.issues.list()).filter((i) => i.isTemplateGroup && i.source !== 'sample' && isIssueOpen(i.status))) {
       const children = (await Promise.all((parent.childIssueIds ?? []).map((id) => r.issues.get(id)))).filter((x): x is Issue => !!x);
       const stillSeen = children.some((c) => seen.has(issueKeyOf(c)));
       if (stillSeen) {
@@ -406,7 +427,7 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
   /** PDF §3.3: ≥ threshold related Medium issues on one template → one Critical template-level issue that supersedes them (§11.2.4). */
   async function groupTemplates() {
     const cfg = await r.config.get();
-    const issues = (await r.issues.list()).filter((i) => i.source !== 'demo');
+    const issues = (await r.issues.list()).filter((i) => i.source !== 'sample');
     for (const p of proposeTemplateGroups(issues, cfg)) {
       const children = (await Promise.all(p.issueIds.map((id) => r.issues.get(id)))).filter((x): x is Issue => !!x);
       const groupId = await r.groups.nextId('GRP');
@@ -570,7 +591,8 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
       return out;
     },
     async listExclusions(actor: Actor) {
-      await need(ctx, actor, 'issues.view');
+      // Configuration → Exclusions (not part of the Admin role's Overview / SEO operations).
+      await need(ctx, actor, 'issues.manage_exclusions');
       return r.exclusions.list();
     },
     async removeExclusion(actor: Actor, id: string) {
@@ -581,7 +603,8 @@ export function createIssueService(ctx: Ctx, tasks: TaskService) {
       await audit(ctx, actor, 'exclusion.remove', 'exclusion', id, `Removed exclusion ${ex.urlPattern}`);
     },
     async allocationHistory(actor: Actor) {
-      await need(ctx, actor, 'issues.view');
+      // Team → Allocation history.
+      await need(ctx, actor, 'employees.view');
       return (await r.issues.list()).flatMap((i) => i.allocation.map((a) => ({ ...a, issueTitle: i.title }))).sort((a, b) => b.at.localeCompare(a.at));
     },
   };

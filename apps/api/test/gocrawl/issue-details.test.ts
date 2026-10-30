@@ -31,7 +31,7 @@ afterEach(async () => {
 });
 
 const envFor = (base: string, engine: 'go' | 'node') => loadEnv({
-  NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'd'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: base, CRAWLER_ENGINE: engine,
+  NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'd'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: base, CRAWLER_ENGINE: engine,
   CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_RETRIES: '0', CHANGE_SNAPSHOT_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'details-')),
   ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password,
 });

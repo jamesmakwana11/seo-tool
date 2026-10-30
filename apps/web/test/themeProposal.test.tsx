@@ -12,7 +12,6 @@ const proposal: ShopifyThemeProposal = {
 } as ShopifyThemeProposal;
 
 vi.mock('@/api/client', () => ({
-  API_MODE: 'http',
   api: {
     downloadShopifyThemeBackup: async () => { fake.backups++; return { filename: 'x.liquid', mimeType: 'text/plain', content: 'x' }; },
     applyShopifyThemeProposal: async (_id: string, phrase: string) => {

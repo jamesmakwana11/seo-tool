@@ -11,12 +11,12 @@
 // ---------------------------------------------------------------------------
 
 /**
- * - `demo`      deterministic sample data seeded for development (always labelled DEMO in UI)
+ * - `sample`      deterministic sample data seeded for development (always labelled sample in UI)
  * - `simulated` produced by a simulated run (e.g. a mock crawl in frontend dev mode)
  * - `live`      produced by a real crawler run or a connected external API
  * - `manual`    entered by a person
  */
-export type DataSource = 'demo' | 'simulated' | 'live' | 'manual';
+export type DataSource = 'sample' | 'simulated' | 'live' | 'manual';
 
 export type ISODate = string;
 
@@ -60,7 +60,7 @@ export type ScoreModule = 'technical' | 'onpage' | 'content_ai' | 'performance' 
 export type TeamId = 'seo' | 'content' | 'development';
 
 /** User roles (prompt §4.3). Distinct from assignment teams. */
-export type Role = 'admin' | 'seo_specialist' | 'developer';
+export type Role = 'super_admin' | 'admin' | 'seo_specialist' | 'developer';
 
 export type AccountStatus = 'active' | 'invited' | 'suspended';
 
@@ -151,7 +151,7 @@ export interface Website {
   createdAt: ISODate;
   updatedAt: ISODate;
   createdByName: string;
-  /** 'demo' = the bundled sample workspace; 'manual' = added by a person (starts with no data). */
+  /** 'sample' = the bundled sample workspace; 'manual' = added by a person (starts with no data). */
   source: DataSource;
 }
 
@@ -579,7 +579,8 @@ export interface SlaState {
 // Crawls  (PDF §2.1)
 // ---------------------------------------------------------------------------
 
-export type CrawlType = 'full' | 'smart' | 'reverify';
+/** sync: incremental — only new, changed or removed URLs since the previous crawl, merged into its results. */
+export type CrawlType = 'full' | 'smart' | 'reverify' | 'sync';
 export type CrawlStatus = 'scheduled' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface CrawlRun {
@@ -600,8 +601,10 @@ export interface CrawlRun {
   durationMs?: number;
   error?: string;
   scope: { label: string; count: number }[];
+  /** Incremental sync runs: the crawl whose results it updates, and why each URL was fetched. */
+  sync?: { baseRunId: string; fetched: number; reasons: Record<string, number>; merged?: number; deferred?: number };
   source: DataSource;
-  /** Settings of a live crawl started from the Crawl Center (absent for smart / re-verify / DEMO runs). */
+  /** Settings of a live crawl started from the Crawl Center (absent for smart / re-verify / sample runs). */
   options?: CrawlOptions;
   /** Same-site page URLs found so far (start URL, sitemap entries, internal links), within the crawl's scope. */
   urlsDiscovered?: number;
@@ -760,11 +763,11 @@ export interface RepeatedImage {
 export interface CrawledUrl {
   url: string;
   status: number | null;
-  reason: 'homepage' | 'collection' | 'top_product' | 'changed_48h' | 'reverify' | 'full' | 'sitemap';
+  reason: 'homepage' | 'collection' | 'top_product' | 'changed_48h' | 'reverify' | 'full' | 'sitemap' | 'sync';
   responseMs?: number;
   error?: string;
   changed?: boolean;
-  // ---- page details (live crawls; absent on DEMO / older runs)
+  // ---- page details (live crawls; absent on sample / older runs)
   finalUrl?: string;
   finalStatus?: number | null;
   redirects?: number;
@@ -1314,7 +1317,7 @@ export interface ReportMeta {
   periodStart: string;
   periodEnd: string;
   generatedAt: ISODate;
-  sources: { name: string; state: 'live' | 'demo' | 'missing' }[];
+  sources: { name: string; state: 'live' | 'sample' | 'missing' }[];
   dataNotes: string[];
   deliveries: DeliveryAttempt[];
 }

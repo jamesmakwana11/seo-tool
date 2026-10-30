@@ -6,7 +6,7 @@ import { api } from '@/api/client';
 import { errorMessage, useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
 import { DetailError } from '@/components/domain/DetailError';
-import { Async, Badge, Button, DemoBadge, Field, IconButton, Input, KV, Notice, PageHeader, Panel, Select, Textarea } from '@/components/ui/primitives';
+import { Async, Badge, Button, Field, IconButton, Input, KV, Notice, PageHeader, Panel, Select, Textarea } from '@/components/ui/primitives';
 import { SourceBadge } from '@/components/domain/badges';
 import { INTENT_LABELS } from '@/components/opportunities/shared';
 import { BRIEF_STATUS, BriefStatusBadge, ORIGIN_LABELS, PAGE_TYPE_LABELS } from '@/components/opportunities/briefLabels';
@@ -70,7 +70,7 @@ function Editor({ brief }: { brief: ContentBrief }) {
       <PageHeader
         title={brief.title || 'Untitled brief'}
         description={<>Content brief <span className="font-mono">{brief.id}</span> · updated {fmtDateTime(brief.updatedAt)} IST</>}
-        meta={<><DemoBadge /><SourceBadge source={brief.source} /><BriefStatusBadge status={brief.status} />{dirty && <Badge tone="med">Unsaved changes</Badge>}</>}
+        meta={<><SourceBadge source={brief.source} /><BriefStatusBadge status={brief.status} />{dirty && <Badge tone="med">Unsaved changes</Badge>}</>}
         actions={
           canEdit ? (
             <>
@@ -82,7 +82,7 @@ function Editor({ brief }: { brief: ContentBrief }) {
       />
 
       <div className="space-y-5">
-        <Notice tone="demo" title="Outline is a template in DEMO mode">
+        <Notice tone="caution" title="Outline is a template">
           SERP-based outlines (headings, entities and questions mined from the current top 10) need the Ahrefs or Semrush SERP API. Generated outlines here are templates — edit them before the brief goes to production.
         </Notice>
         {!canEdit && <Notice>You can read this brief. Editing needs the <span className="font-mono">opportunities.manage</span> permission.</Notice>}

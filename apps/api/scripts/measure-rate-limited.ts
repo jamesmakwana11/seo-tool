@@ -29,7 +29,7 @@ async function main() {
   const ready = await new Promise<{ url: string }>((resolve) => readline.createInterface({ input: site.stdout! }).once('line', (l) => resolve(JSON.parse(l))));
   const base = ready.url.replace(/\/$/, '');
   const c = await createContainer({ env: loadEnv({
-    NODE_ENV: 'development', LOG_LEVEL: 'warn', SEED_DEMO_DATA: 'false', CRAWLER_BASE_URL: base, CRAWLER_ENGINE: 'go', CRAWLER_REQUEST_DELAY_MS: arg('delay', '250'),
+    NODE_ENV: 'development', LOG_LEVEL: 'warn', SEED_TEST_FIXTURES: 'false', CRAWLER_BASE_URL: base, CRAWLER_ENGINE: 'go', CRAWLER_REQUEST_DELAY_MS: arg('delay', '250'),
     CHANGE_SNAPSHOT_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'rl-')), CHANGE_CAPTURE_AFTER_CRAWL: 'false',
     ...(process.env.CRAWLER_GO_BIN ? { CRAWLER_GO_BIN: process.env.CRAWLER_GO_BIN } : {}),
   }) });

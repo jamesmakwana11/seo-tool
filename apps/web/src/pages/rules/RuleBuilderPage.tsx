@@ -5,7 +5,7 @@ import { api } from '@/api/client';
 import { errorMessage, useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/components/ui/Toast';
-import { Async, Badge, Button, Checkbox, DemoBadge, EmptyState, Field, Input, Notice, PageHeader, Panel, Select, Textarea, Toggle } from '@/components/ui/primitives';
+import { Async, Badge, Button, Checkbox, EmptyState, Field, Input, Notice, PageHeader, Panel, Select, Textarea, Toggle } from '@/components/ui/primitives';
 import { ConfirmDialog, Drawer } from '@/components/ui/overlay';
 import { DataTable } from '@/components/ui/DataTable';
 import { SeverityBadge, SourceBadge, TeamBadge } from '@/components/domain/badges';
@@ -66,7 +66,6 @@ export default function RuleBuilderPage() {
       <PageHeader
         title="Custom rule builder"
         description="Add AI-content checks without code (PDF §10.2). Custom rules run in the same pipeline as built-ins — same severities, Fix Cards, digest section and verification loop. Dry-run a rule against the last 30 days of pages before enabling it so noisy rules never reach the digest."
-        meta={<DemoBadge />}
         actions={canManage ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setEditing(blank())}>New rule</Button> : undefined}
       />
       <div className="space-y-5">

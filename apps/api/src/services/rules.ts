@@ -59,7 +59,7 @@ export function createRuleService(ctx: Ctx) {
         const flag: AiComplianceFlag = {
           id: await r.aiFlags.nextId('AIF'), checkId: rule.id, ruleName: rule.name, url: page.url, template: page.template, passage: res.passage ?? '',
           explanation: res.reason ?? rule.description, severity: rule.severity, qaHold: rule.action === 'block_qa_gate', qaHoldStatus: rule.action === 'block_qa_gate' ? 'held' : undefined,
-          detectedAt: iso(), source: page.source === 'demo' ? 'demo' : 'live',
+          detectedAt: iso(), source: page.source === 'sample' ? 'sample' : 'live',
         };
         await r.aiFlags.insert(flag);
         if (!existingFlags.has(flagKey(flag.checkId, flag.url))) existingFlags.set(flagKey(flag.checkId, flag.url), flag);
@@ -148,10 +148,10 @@ export function createRuleService(ctx: Ctx) {
         }
       }
       const live = pages.filter((p) => p.source === 'live').length;
-      const source = live === pages.length && pages.length > 0 ? 'live' : pages.some((p) => p.source === 'live') ? 'live' : 'demo';
+      const source = live === pages.length && pages.length > 0 ? 'live' : pages.some((p) => p.source === 'live') ? 'live' : 'sample';
       const res: DryRunResult = {
         ruleId: input.id, ranAt: iso(), pagesScanned: evaluated ? pages.length : 0, pagesFlagged: flagged, windowDays, samples, evaluated,
-        note: note ?? `Dry run over ${pages.length} stored page texts (${live} from live crawls, ${pages.length - live} DEMO) from the last ${windowDays} days. Nothing was flagged in the digest.`,
+        note: note ?? `Dry run over ${pages.length} stored page texts (${live} from live crawls, ${pages.length - live} sample) from the last ${windowDays} days. Nothing was flagged in the digest.`,
         source,
       };
       if (input.id) {

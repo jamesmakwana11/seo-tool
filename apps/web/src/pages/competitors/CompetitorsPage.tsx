@@ -4,7 +4,7 @@ import type { DataSource } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, DemoBadge, EmptyState, Notice, PageHeader, Panel, type Tone } from '@/components/ui/primitives';
+import { Async, Badge, EmptyState, Notice, PageHeader, Panel, type Tone } from '@/components/ui/primitives';
 import { SERIES, Sparkline, TrendChart, TOOLTIP_STYLE, TOOLTIP_LABEL, TOOLTIP_ITEM } from '@/components/ui/charts';
 import { SourceBadge } from '@/components/domain/badges';
 import { fmtNum } from '@/lib/format';
@@ -24,7 +24,6 @@ export default function CompetitorsPage() {
       <PageHeader
         title="Competitor view"
         description="Side-by-side organic visibility, Core Web Vitals, referring-domain strength and content velocity against the named competitor set (PDF §12.3)."
-        meta={<DemoBadge />}
       />
       <Async q={q} rows={10} empty={(rows) => rows.length === 0 && <Panel><EmptyState title="No competitors configured" description="Add 3–5 competitors in Settings → Thresholds." /></Panel>}>
         {(rows) => <Body rows={rows} />}
@@ -55,8 +54,8 @@ function Body({ rows }: { rows: Competitor[] }) {
 
   return (
     <div className="space-y-5">
-      <Notice tone="demo" demoData title="Placeholder competitors and sample data">
-        Competitor names are placeholders until the kickoff workshop finalises the list of 3–5 competitors{can('settings.view') ? <> — configure them in <Link to="/settings/thresholds" className="underline">Settings → Thresholds</Link></> : ' (configurable in Settings → Thresholds)'}. Visibility, backlink and content-velocity figures require the Ahrefs or Semrush API; CWV comparisons require CrUX/PageSpeed Insights. Everything below is DEMO data.
+      <Notice tone="caution" title="Competitor data sources">
+        Competitor names are placeholders until the kickoff workshop finalises the list of 3–5 competitors{can('settings.view') ? <> — configure them in <Link to="/settings/thresholds" className="underline">Settings → Thresholds</Link></> : ' (configurable in Settings → Thresholds)'}. Visibility, backlink and content-velocity figures require the Ahrefs or Semrush API; CWV comparisons require CrUX/PageSpeed Insights.
       </Notice>
 
       <Panel title="Side-by-side comparison" subtitle={`${self?.name ?? 'DeoDap'} first, then competitors`} bodyClassName="p-0">

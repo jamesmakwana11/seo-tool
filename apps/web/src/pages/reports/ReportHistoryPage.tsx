@@ -5,7 +5,7 @@ import type { ReportMeta } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Button, DemoBadge, Notice, PageHeader, Panel } from '@/components/ui/primitives';
+import { Async, Badge, Button, Notice, PageHeader, Panel } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/DataTable';
 import { FilterSelect } from '@/components/ui/filters';
 import { DeliveryTable, FORMAT_LABEL, REPORT_LABEL, sourceCounts, summarizeDeliveries, type ExportFormat, type ReportKind } from '@/components/reports/ReportParts';
@@ -23,10 +23,9 @@ export default function ReportHistoryPage() {
       <PageHeader
         title="Report history & export"
         description="Daily digests for the last 14 days plus the current weekly and monthly rollups, with what was actually delivered on each channel (PDF §12.1, §12.5)."
-        meta={<DemoBadge />}
       />
       <div className="space-y-5">
-        <Notice tone="demo" title="Past snapshots are not stored in DEMO mode">
+        <Notice tone="caution" title="Exports are regenerated on demand">
           Earlier reports are not kept as frozen files. Every export below is regenerated from the current data at the moment you click — the filename carries today's date, not the historical period.
         </Notice>
 
@@ -49,7 +48,7 @@ export default function ReportHistoryPage() {
                   {
                     key: 'src', header: 'Sources', cell: (r) => {
                       const n = sourceCounts(r);
-                      return <span className="flex flex-wrap gap-1">{n.live > 0 && <Badge tone="ok">{n.live} live</Badge>}{n.demo > 0 && <Badge tone="demo">{n.demo} DEMO</Badge>}{n.missing > 0 && <Badge tone="neutral">{n.missing} missing</Badge>}</span>;
+                      return <span className="flex flex-wrap gap-1">{n.live > 0 && <Badge tone="ok">{n.live} live</Badge>}{n.sample > 0 && <Badge tone="caution">{n.sample} sample</Badge>}{n.missing > 0 && <Badge tone="neutral">{n.missing} missing</Badge>}</span>;
                     },
                   },
                   { key: 'del', header: 'Deliveries', cell: (r) => <span className="text-xs text-muted">{summarizeDeliveries(r.deliveries).text}</span> },

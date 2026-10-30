@@ -17,7 +17,7 @@ import type { MetricsDoc } from '../repositories/types';
 import type { Ctx } from '../services/context';
 import { recomputeTiers } from './ga4';
 import {
-  addDays, googleToken, GSC_SCOPE, guardedSync, integrationProperty, livePagesByPath, normalizePath, num, postJson, seriesIsDemo, siteOrigin, SyncError, upsertLivePage, ymd,
+  addDays, googleToken, GSC_SCOPE, guardedSync, integrationProperty, livePagesByPath, normalizePath, num, postJson, seriesIsSample, siteOrigin, SyncError, upsertLivePage, ymd,
   type SyncDeps, type SyncResult,
 } from './common';
 
@@ -122,16 +122,16 @@ export async function gscSearch(ctx: Ctx, deps: SyncDeps = {}): Promise<SyncResu
         };
       });
 
-    // ---- write metrics (DEMO series are replaced wholesale, never mixed with live points)
+    // ---- write metrics (sample series are replaced wholesale, never mixed with live points)
     const m: MetricsDoc = await ctx.repos.metrics.get();
-    const visDemo = seriesIsDemo(m, m.visibility);
-    if (visDemo) m.visibility = points;
+    const visSample = seriesIsSample(m, m.visibility);
+    if (visSample) m.visibility = points;
     else {
       const byDate = new Map(m.visibility.map((p) => [p.date, p]));
       for (const p of points) byDate.set(p.date, p);
       m.visibility = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
     }
-    const strikingDemo = seriesIsDemo(m, m.striking);
+    const strikingSample = seriesIsSample(m, m.striking);
     m.striking = striking; // a current snapshot: always replaced
     await ctx.repos.metrics.set(m);
 
@@ -139,15 +139,15 @@ export async function gscSearch(ctx: Ctx, deps: SyncDeps = {}): Promise<SyncResu
     const clicks = points.reduce((a, p) => a + p.clicks, 0);
     const impressions = points.reduce((a, p) => a + p.impressions, 0);
     const summary =
-      `Search Console sync (${property}, ${startDate}…${endDate}): ${points.length} daily points (${clicks} clicks, ${impressions} impressions)${visDemo ? ' replaced the DEMO visibility series' : ''}; ` +
+      `Search Console sync (${property}, ${startDate}…${endDate}): ${points.length} daily points (${clicks} clicks, ${impressions} impressions)${visSample ? ' replaced the sample visibility series' : ''}; ` +
       `${perPath.size} pages with impressions (${updated} updated, ${created} created, ${zeroed} set to zero${pageRes.complete ? '' : '; page report truncated — unseen pages left unchanged'}${offSite ? `, ${offSite} off-site URLs ignored` : ''}); ` +
-      `${striking.length} striking-distance queries (positions ${minPos}–${maxPos}, ≥${minImpr} impressions)${strikingDemo ? ' replaced the DEMO list' : ''}${qp.complete ? '' : ' from a truncated query report'}. ` +
+      `${striking.length} striking-distance queries (positions ${minPos}–${maxPos}, ≥${minImpr} impressions)${strikingSample ? ' replaced the sample list' : ''}${qp.complete ? '' : ' from a truncated query report'}. ` +
       `Index coverage is not available from the Search Console API — indexation series unchanged. Tiers recomputed: Tier 1 ${tiers.counts[1]}, Tier 2 ${tiers.counts[2]}, Tier 3 ${tiers.counts[3]}.`;
     return {
       summary,
       details: {
-        property, startDate, endDate, visibilityPoints: points.length, replacedDemoVisibility: visDemo, pagesWithImpressions: perPath.size, updated, created, zeroed,
-        striking: striking.length, replacedDemoStriking: strikingDemo, indexation: 'not available from the Search Console API — left unchanged', tiers: tiers.counts,
+        property, startDate, endDate, visibilityPoints: points.length, replacedSampleVisibility: visSample, pagesWithImpressions: perPath.size, updated, created, zeroed,
+        striking: striking.length, replacedSampleStriking: strikingSample, indexation: 'not available from the Search Console API — left unchanged', tiers: tiers.counts,
       },
     };
   });

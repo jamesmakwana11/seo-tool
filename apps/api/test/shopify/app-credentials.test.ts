@@ -26,7 +26,7 @@ async function boot(opts: { repos?: Container['repos']; secret?: string; env?: R
   const logs: string[] = [];
   const log = pino({ level: 'debug' }, new Writable({ write(chunk, _e, cb) { logs.push(String(chunk)); cb(); } }));
   const env = loadEnv({
-    NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: opts.secret ?? 'session-secret-for-shopify-credentials-test', LOG_LEVEL: 'debug',
+    NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: opts.secret ?? 'session-secret-for-shopify-credentials-test', LOG_LEVEL: 'debug',
     ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password, CRAWLER_BASE_URL: STOREFRONT, CRAWLER_ALLOW_LIVE: 'true', ...opts.env,
   });
   const container = await createContainer({ env, fetchImpl: mock.fetchImpl, log: log as never, ...(opts.repos ? { repos: opts.repos } : {}) });

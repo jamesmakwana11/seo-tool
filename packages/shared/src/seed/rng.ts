@@ -1,4 +1,4 @@
-/** Deterministic PRNG (mulberry32) so DEMO data is identical on every run. */
+/** Deterministic PRNG (mulberry32) so sample data is identical on every run. */
 export function rng(seed: number) {
   let a = seed >>> 0;
   const next = () => {

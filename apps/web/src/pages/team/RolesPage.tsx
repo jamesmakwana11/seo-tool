@@ -4,7 +4,7 @@ import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS, ROLE_LABELS, type Permission, typ
 import { api } from '@/api/client';
 import { useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Button, DemoBadge, Notice, PageHeader, Panel } from '@/components/ui/primitives';
+import { Async, Badge, Button, Notice, PageHeader, Panel } from '@/components/ui/primitives';
 import { ConfirmDialog } from '@/components/ui/overlay';
 import { ROLES, ROLE_HELP } from '@/components/team/roles';
 
@@ -38,7 +38,6 @@ export default function RolesPage() {
       <PageHeader
         title="Roles & permissions"
         description="What each role may do (prompt §4.3). Roles are permission sets; the 1into2 teams (SEO, Content, Development) are allocation groups managed on the Employees screen."
-        meta={<DemoBadge />}
       />
       <div className="mb-4"><Notice tone="signal" title="Enforced by the backend">The API checks this matrix on every request. Hiding buttons in the interface is only a convenience — removing a permission here is what actually blocks the action.</Notice></div>
       <Async q={q} rows={12}>{(m) => <Matrix server={m} />}</Async>
@@ -62,7 +61,8 @@ function Matrix({ server }: { server: PermissionMatrix }) {
     invalidate: [['permissions'], ['employees'], ['audit']],
     onSuccess: () => { void refresh(); },
   });
-  const locked = (r: Role, p: Permission) => r === 'admin' && p === 'roles.manage';
+  // Super Admin always has every permission (the server enforces it too).
+  const locked = (r: Role, _p: Permission) => r === 'super_admin';
   const toggle = (r: Role, p: Permission) => {
     if (locked(r, p)) return;
     setDraft((d) => ({ ...d, [r]: d[r].includes(p) ? d[r].filter((x) => x !== p) : ALL_PERMISSIONS.filter((x) => x === p || d[r].includes(x)) }));

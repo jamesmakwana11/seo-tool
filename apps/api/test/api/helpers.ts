@@ -3,11 +3,11 @@ import { loadEnv } from '../../src/config/env';
 import { createContainer, type Container } from '../../src/container';
 import { createApp } from '../../src/http/app';
 
-export const DEMO = {
-  admin: 'aarav.admin@demo.deodap.local',
-  seoLead: 'ritesh.seo@demo.deodap.local',
-  developer: 'ankit.dev@demo.deodap.local',
-  password: 'Sentinel@Demo1',
+export const FIXTURE = {
+  admin: 'aarav.admin@team.deodap.local',
+  seoLead: 'ritesh.seo@team.deodap.local',
+  developer: 'ankit.dev@team.deodap.local',
+  password: 'Sentinel@Fixture1',
 };
 
 /** A fetch stub that fails every outbound call — proves the server never claims success without a provider. */
@@ -15,14 +15,14 @@ export const failingFetch = async () => { throw new Error('network disabled in t
 
 export async function makeHarness(envOverrides: Record<string, string> = {}) {
   const env = loadEnv({
-    NODE_ENV: 'test', SEED_DEMO_DATA: 'true', SESSION_SECRET: 'test-secret-value-at-least-32-chars-long!!', LOG_LEVEL: 'silent',
-    ALLOW_DEV_ROLE_PREVIEW: 'true', DEV_EXPOSE_RESET_TOKEN: 'true', ...envOverrides,
+    NODE_ENV: 'test', SEED_TEST_FIXTURES: 'true', SESSION_SECRET: 'test-secret-value-at-least-32-chars-long!!', LOG_LEVEL: 'silent',
+    DEV_EXPOSE_RESET_TOKEN: 'true', ...envOverrides,
   });
   const container: Container = await createContainer({ env, fetchImpl: failingFetch });
   const app = createApp(container);
   const agent = supertest(app);
 
-  async function token(email: string, password = DEMO.password): Promise<string> {
+  async function token(email: string, password = FIXTURE.password): Promise<string> {
     const res = await agent.post('/api/auth/login').send({ email, password });
     if (res.status !== 200) throw new Error(`login failed (${res.status}): ${JSON.stringify(res.body)}`);
     return res.body.token as string;

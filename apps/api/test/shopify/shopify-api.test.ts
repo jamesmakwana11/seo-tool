@@ -14,7 +14,7 @@ import { loadEnv } from '../../src/config/env';
 import { createContainer } from '../../src/container';
 import { createApp } from '../../src/http/app';
 import { signQuery } from '../../src/shopify/oauth';
-import { DEMO } from '../api/helpers';
+import { FIXTURE } from '../api/helpers';
 import { API_KEY, API_SECRET, createMockShopify, SHOP, STOREFRONT, TOKEN, type MockShopify } from './mockShopify';
 
 async function setup(extra: Record<string, string> = {}) {
@@ -22,13 +22,13 @@ async function setup(extra: Record<string, string> = {}) {
   const logs: string[] = [];
   const log = pino({ level: 'debug' }, new Writable({ write(chunk, _e, cb) { logs.push(String(chunk)); cb(); } }));
   const env = loadEnv({
-    NODE_ENV: 'test', SEED_DEMO_DATA: 'true', SESSION_SECRET: 'shopify-test-secret-value-at-least-32-chars', LOG_LEVEL: 'debug',
+    NODE_ENV: 'test', SEED_TEST_FIXTURES: 'true', SESSION_SECRET: 'shopify-test-secret-value-at-least-32-chars', LOG_LEVEL: 'debug',
     CRAWLER_BASE_URL: STOREFRONT, CRAWLER_ALLOW_LIVE: 'true', APP_BASE_URL: 'https://sentinel.example', ...extra,
   });
   const container = await createContainer({ env, fetchImpl: mock.fetchImpl, log: log as never });
   const agent = supertest(createApp(container));
   const bodies: string[] = [];
-  const tokenOf = async (email: string) => (await agent.post('/api/auth/login').send({ email, password: DEMO.password })).body.token as string;
+  const tokenOf = async (email: string) => (await agent.post('/api/auth/login').send({ email, password: FIXTURE.password })).body.token as string;
   const as = (tok: string) => {
     const a = { Authorization: `Bearer ${tok}` };
     const rec = async <T extends { text?: string; headers: Record<string, string> }>(p: PromiseLike<T>) => { const r = await p; bodies.push(r.text ?? '', JSON.stringify(r.headers)); return r; };
@@ -45,7 +45,7 @@ async function setup(extra: Record<string, string> = {}) {
     bodies.push(r.text ?? '', JSON.stringify(r.headers));
     return r;
   };
-  return { mock, logs, container, agent, bodies, as, admin: as(await tokenOf(DEMO.admin)), seo: as(await tokenOf(DEMO.seoLead)), dev: as(await tokenOf(DEMO.developer)), callback };
+  return { mock, logs, container, agent, bodies, as, admin: as(await tokenOf(FIXTURE.admin)), seo: as(await tokenOf(FIXTURE.seoLead)), dev: as(await tokenOf(FIXTURE.developer)), callback };
 }
 
 const OAUTH_ENV = { SHOPIFY_API_KEY: API_KEY, SHOPIFY_API_SECRET: API_SECRET };

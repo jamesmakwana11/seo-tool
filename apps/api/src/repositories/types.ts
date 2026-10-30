@@ -58,6 +58,17 @@ export interface MonitorStateDoc {
   lastRunAt?: string;
   lastShopifyCheck?: string;
   lastRun?: import('@sentinel/shared').MonitorRunSummary;
+  /** Website sync: Auto Sync on/off (default on), when it was turned on, the last sync's start time. */
+  autoSync?: boolean;
+  autoSyncSince?: string;
+  lastSyncAt?: string;
+  /** URLs found but not yet crawled (per-sync cap, or a sync crawl that did not finish). */
+  pending?: string[];
+  /** URLs of the sync crawl in progress (moved back to pending if it does not finish). */
+  inFlight?: string[];
+  current?: import('@sentinel/shared').SyncSummary;
+  /** Newest first, at most 20. */
+  history?: import('@sentinel/shared').SyncSummary[];
 }
 /** Last observed state of one monitored page: HTTP validators and SEO fingerprint. */
 export interface MonitorPageDoc {
@@ -77,7 +88,7 @@ export interface PageSnapshot { id: string /* url */; url: string; runId: string
 /** Last crawl observation (robots.txt, head scripts, indexable URLs…) used as the next run's baseline. */
 export interface CrawlStateDoc { id: string /* 'latest' or run id */; runId: string; at: string; state: import('../services/ports').PreviousCrawlState }
 /** expiresAt absent = no automatic expiry (signed in until sign-out). */
-export interface SessionDoc { id: string /* session id */; employeeId: string; demo: boolean; createdAt: string; expiresAt?: string; revokedAt?: string }
+export interface SessionDoc { id: string /* session id */; employeeId: string; createdAt: string; expiresAt?: string; revokedAt?: string }
 
 export interface MetricsDoc {
   source: DataSource;

@@ -12,7 +12,7 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {
-  DEMO_WEBSITE_ID, computeHealthScore, defaultConfig, normalizeDomain, siteHasAuditData, validateWebsiteInput,
+  PRIMARY_WEBSITE_ID, computeHealthScore, defaultConfig, normalizeDomain, siteHasAuditData, validateWebsiteInput,
   type Website, type WebsiteInput, type WebsiteSummary,
 } from '@sentinel/shared';
 import { WEBSITE_PLATFORMS } from '@sentinel/shared';
@@ -37,7 +37,7 @@ export function parseSeedWebsites(raw: string | undefined): WebsiteInput[] {
 
 export function createWorkspaces(primary: Container) {
   const als = new AsyncLocalStorage<Container>();
-  const containers = new Map<string, Container>([[DEMO_WEBSITE_ID, primary]]);
+  const containers = new Map<string, Container>([[PRIMARY_WEBSITE_ID, primary]]);
   const websites: Website[] = [];
   let ready: Promise<void> | undefined;
   const db = primary.persistence;
@@ -56,26 +56,26 @@ export function createWorkspaces(primary: Container) {
   }
 
   /**
-   * The primary website mirrors the server's configured site (DEMO deodap.in, or CRAWLER_BASE_URL on a clean start).
+   * The primary website mirrors the server's configured site (sample deodap.in, or CRAWLER_BASE_URL on a clean start).
    * With a database, every other saved website is opened again with its own stored data.
    */
   function init() {
     ready ??= (async () => {
       const saved = db ? await db.listWebsites<Website>() : [];
       const cfg = await primary.repos.config.get();
-      const demo = (await primary.repos.issues.list()).some((i) => i.source === 'demo');
+      const sample = (await primary.repos.issues.list()).some((i) => i.source === 'sample');
       const url = cfg.site.baseUrl.replace(/\/$/, '');
       const at = primary.clock().toISOString();
-      const before = saved.find((w) => w.id === DEMO_WEBSITE_ID);
+      const before = saved.find((w) => w.id === PRIMARY_WEBSITE_ID);
       const main: Website = {
-        id: DEMO_WEBSITE_ID, name: cfg.site.brand, url: `${url}/`, domain: normalizeDomain(url), platform: before?.platform ?? 'shopify',
+        id: PRIMARY_WEBSITE_ID, name: cfg.site.brand, url: `${url}/`, domain: normalizeDomain(url), platform: before?.platform ?? 'shopify',
         sitemapUrl: before?.sitemapUrl ?? `${url}/sitemap.xml`, createdAt: before?.createdAt ?? at, updatedAt: before?.updatedAt ?? at,
-        createdByName: demo ? 'Sentinel (DEMO seed)' : before?.createdByName ?? 'Server configuration', source: demo ? 'demo' : 'live',
+        createdByName: sample ? 'Sentinel (test dataset)' : before?.createdByName ?? 'Server configuration', source: sample ? 'sample' : 'live',
       };
       websites.push(main);
       if (db) await db.saveWebsite(main);
       for (const w of saved) {
-        if (w.id === DEMO_WEBSITE_ID || containers.has(w.id)) continue;
+        if (w.id === PRIMARY_WEBSITE_ID || containers.has(w.id)) continue;
         const c = await openSite(w, false);
         containers.set(w.id, c);
         websites.push(w);
@@ -94,7 +94,7 @@ export function createWorkspaces(primary: Container) {
   /** The website's name and platform in its settings (brand and platform used by Fix Cards). Only writes when they differ. */
   async function syncSiteSettings(c: Container, w: Website) {
     const cfg = await c.repos.config.get();
-    const brand = w.id === DEMO_WEBSITE_ID ? cfg.site.brand : w.name;
+    const brand = w.id === PRIMARY_WEBSITE_ID ? cfg.site.brand : w.name;
     if (cfg.site.platform !== w.platform || cfg.site.brand !== brand) await c.repos.config.set({ ...cfg, site: { ...cfg.site, platform: w.platform, brand } });
   }
 
@@ -137,7 +137,7 @@ export function createWorkspaces(primary: Container) {
       await repos.schedules.insert({ id: 'SCH-full', type: 'full', cron: '0 3 * * 0', description: 'Weekly full crawl', enabled: false, timezone: 'Asia/Kolkata' });
     }
     return createContainer({
-      env: { ...primary.env, CRAWLER_BASE_URL: w.url.replace(/\/$/, ''), SEED_DEMO_DATA: false },
+      env: { ...primary.env, CRAWLER_BASE_URL: w.url.replace(/\/$/, ''), SEED_TEST_FIXTURES: false },
       repos, log: primary.log, clock: primary.clock, fetchImpl: primary.fetchImpl, diagnostics: primary.diagnostics,
       persistence: db, scope: w.id,
     });
@@ -201,8 +201,8 @@ export function createWorkspaces(primary: Container) {
       const w = websites.find((x) => x.id === id);
       if (!w) throw notFound(`Website ${id}`);
       const v = validateWebsiteInput(input, websites, id);
-      if (id !== DEMO_WEBSITE_ID) assertCrawlable(input?.url, v.url);
-      if (v.domain !== w.domain && id === DEMO_WEBSITE_ID) throw badRequest('The primary website domain comes from server configuration (CRAWLER_BASE_URL) and cannot be changed here.');
+      if (id !== PRIMARY_WEBSITE_ID) assertCrawlable(input?.url, v.url);
+      if (v.domain !== w.domain && id === PRIMARY_WEBSITE_ID) throw badRequest('The primary website domain comes from server configuration (CRAWLER_BASE_URL) and cannot be changed here.');
       const c = containers.get(id)!;
       if (v.domain !== w.domain) throw badRequest('Changing a website’s domain is not supported — add a new website instead.');
       Object.assign(w, v, { updatedAt: primary.clock().toISOString() });

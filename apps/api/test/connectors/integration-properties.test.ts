@@ -14,7 +14,7 @@ import { expectNoSecrets, json, mockFetch, serviceAccountJson, text, type Respon
  * honest about a missing service-account key. Network is mocked (no Google request leaves the machine).
  */
 const SA_EMAIL = 'sentinel@deodap-seo.iam.gserviceaccount.com';
-const BASE = { NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'g'.repeat(40), LOG_LEVEL: 'silent' };
+const BASE = { NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'g'.repeat(40), LOG_LEVEL: 'silent' };
 const sites: FixtureSite[] = [];
 afterEach(async () => { for (const s of sites.splice(0)) await s.close(); });
 
@@ -56,7 +56,7 @@ describe('Site crawler without CRAWLER_USER_AGENT', () => {
     const site = await startFixtureSite({ slowMs: 10 });
     sites.push(site);
     const c = await createContainer({ env: loadEnv({ ...BASE, CRAWLER_BASE_URL: site.origin, CRAWLER_ENGINE: 'node', CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_RETRIES: '0' }) });
-    const run = await c.services.crawls.startManual({ id: 'sys', name: 'System', role: 'admin', teamIds: [], permissions: ['crawls.run'], demo: false } as never, 'full', { startUrl: site.url, maxPages: 5, maxDepth: null, timeoutMs: 10000, concurrency: 1 });
+    const run = await c.services.crawls.startManual({ id: 'sys', name: 'System', role: 'admin', teamIds: [], permissions: ['crawls.run'] } as never, 'full', { startUrl: site.url, maxPages: 5, maxDepth: null, timeoutMs: 10000, concurrency: 1 });
     await c.services.crawls.idle();
     expect((await c.repos.crawls.get(run.id))!.status).toBe('completed');
     expect(site.requests.length).toBeGreaterThan(1);

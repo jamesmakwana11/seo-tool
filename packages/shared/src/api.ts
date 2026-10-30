@@ -27,10 +27,6 @@ export interface SessionUser {
   teamIds: TeamId[];
   isSeoLead?: boolean;
   permissions: string[];
-  /** true when this session is a development/demo role preview (prompt §4.3) */
-  demo: boolean;
-  /** true when the server has the DEMO seed loaded (sample data, temporary in-memory storage). */
-  serverDemoData?: boolean;
 }
 
 export interface AuthResult {
@@ -105,7 +101,7 @@ export interface CrawlerStatus {
   siteUrl: string;
   /** Optional server-wide page cap (CRAWLER_MAX_PAGES); null = no cap, every page can be crawled. */
   maxPagesCap: number | null;
-  /** Pages one Smart Crawl may fetch (at most SMART_CRAWL_PAGE_BUDGET = 1,000). */
+  /** Pages one Smart Crawl may fetch (at most SMART_CRAWL_PAGE_BUDGET = 10,000). */
   smartPageBudget?: number;
   /** Crawl jobs and results live in server memory only. */
   temporaryStorage: boolean;
@@ -226,7 +222,7 @@ export type IntegrationSyncResult =
   | { id: string; ran: true; ok: false; error: string };
 
 export interface ApiDiagnostics {
-  mode: 'mock' | 'http';
+  mode: 'http';
   baseUrl?: string;
   endpoints: { method: string; path: string; permission?: string; description: string }[];
   recent: { at: string; method: string; path: string; status: number; ms: number; requestId?: string }[];
@@ -235,13 +231,12 @@ export interface ApiDiagnostics {
 
 /**
  * The single API contract. Implemented by:
- *  - apps/web mock adapter (Phase 1, in-browser, DEMO data, not persisted)
+ *  - apps/web mock adapter (Phase 1, in-browser, sample data, not persisted)
  *  - apps/web http client → apps/api (Phase 2, in-memory repositories)
  */
 export interface SentinelApi {
   // auth
   login(email: string, password: string): Promise<AuthResult>;
-  previewAs(role: Role): Promise<AuthResult>;
   logout(): Promise<void>;
   me(): Promise<SessionUser>;
   /** `sent` = the email provider accepted the message; `emailConfigured` = this server can send email at all. */
@@ -315,8 +310,10 @@ export interface SentinelApi {
   removeShopifyAppCredentials(): Promise<ShopifyStatus>;
   /** Incremental monitoring of the selected website: last run and recent changes. */
   getMonitor(): Promise<MonitorStatus>;
-  /** Run an incremental check now (targeted requests only). */
+  /** Sync Now: find new / changed / removed URLs and crawl only those (results merged into the latest crawl). */
   runMonitor(): Promise<MonitorStatus>;
+  /** Auto Sync on / off (every intervalHours, default 12). */
+  updateSyncSettings(input: { autoSync: boolean }): Promise<MonitorStatus>;
   resolveShopifyUrl(url: string): Promise<ShopifyResolveResult>;
   listShopifyResources(input: { kind: ShopifyResourceKind; q?: string; after?: string }): Promise<ShopifyResourceList>;
   /** Builds a draft for one resource (from a crawled URL, or kind + id) with suggested changes. Nothing is written to Shopify. */
@@ -495,7 +492,53 @@ export interface MonitorEvent {
   after?: string;
   status?: number | null;
   /** Which signal led to the check. */
-  source: 'sitemap' | 'shopify' | 'webhook' | 'recheck';
+  source: 'sitemap' | 'shopify' | 'webhook' | 'recheck' | 'content' | 'link';
+}
+
+/** Why a URL is synced: what told Sentinel it is new or changed. */
+export type SyncReason = 'new_in_sitemap' | 'new_link' | 'lastmod' | 'shopify' | 'webhook' | 'content' | 'removed' | 'recheck' | 'pending' | 'not_crawled';
+
+export const SYNC_REASON_LABELS: Record<SyncReason, string> = {
+  new_in_sitemap: 'New in the sitemap', new_link: 'New link found', lastmod: 'Sitemap date changed', shopify: 'Updated in Shopify', webhook: 'Shopify webhook',
+  content: 'Content changed', removed: 'Removed from the sitemap', recheck: 'Error re-check', pending: 'Left from the last sync',
+  not_crawled: 'Not crawled yet (page budget)',
+};
+
+export interface SyncSummary {
+  /** When the sync started and finished (finished = its crawl is done, or nothing needed crawling). */
+  at: string;
+  finishedAt?: string;
+  trigger: 'manual' | 'auto';
+  by?: string;
+  state: 'checking' | 'crawling' | 'done' | 'no_changes' | 'failed' | 'skipped';
+  message?: string;
+  /** The crawl the sync compared against, and the incremental crawl it started. */
+  baseRunId?: string;
+  crawlRunId?: string;
+  /** URLs to crawl by reason (deduplicated: each URL counted once, under its first reason). */
+  reasons: Partial<Record<SyncReason, number>>;
+  /** Pages requested to look for changes (conditional requests), of which unchanged (304 / same fingerprint). */
+  checked: number;
+  unchanged: number;
+  /** URLs crawled; left for the next sync (per-sync cap). */
+  crawled: number;
+  deferred: number;
+  sitemapsNotModified: number;
+  sitemapsFetched: number;
+  /** When finished: what the incremental crawl changed in the audit. */
+  newIssues?: number;
+  resolvedIssues?: number;
+  ms?: number;
+  notes: string[];
+}
+
+export interface SyncSettings {
+  autoSync: boolean;
+  intervalHours: number;
+  /** The server's scheduler is off (SCHEDULER_ENABLED=false): Auto Sync cannot run until it is turned on. */
+  schedulerOff?: boolean;
+  lastSyncAt?: string;
+  nextSyncAt?: string;
 }
 
 export interface MonitorRunSummary {
@@ -520,6 +563,10 @@ export interface MonitorStatus {
   reason?: string;
   running: boolean;
   intervalMinutes: number;
+  /** Website sync: Auto Sync settings and schedule, the newest sync and recent ones. */
+  sync: SyncSettings & { baseline?: { runId: string; type: string; at?: string; pages: number } };
+  lastSync?: SyncSummary;
+  history: SyncSummary[];
   lastRun?: MonitorRunSummary;
   openErrors: number;
   /** Newest first. */

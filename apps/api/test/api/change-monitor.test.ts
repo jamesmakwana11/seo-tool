@@ -19,7 +19,7 @@ async function setup(engine: 'go' | 'node', initial?: Partial<FixtureOptions>) {
   site = await startFixtureSite(initial);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-changes-e2e-'));
   const env = loadEnv({
-    NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'c'.repeat(40), LOG_LEVEL: 'silent',
+    NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'c'.repeat(40), LOG_LEVEL: 'silent',
     CRAWLER_BASE_URL: site.origin, CRAWLER_REQUEST_DELAY_MS: '0', CRAWLER_ALLOW_LIVE: 'false', CRAWLER_RETRIES: '0', CRAWLER_ENGINE: engine,
     CHANGE_SNAPSHOT_DIR: dir,
   });
@@ -127,7 +127,7 @@ describe('Change Monitor API (HTTP)', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-changes-api-'));
     container = await createContainer({
       env: loadEnv({
-        NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'd'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: s.origin, CRAWLER_REQUEST_DELAY_MS: '0',
+        NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'd'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: s.origin, CRAWLER_REQUEST_DELAY_MS: '0',
         CRAWLER_RETRIES: '0', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password, CHANGE_SNAPSHOT_DIR: dir,
       }),
     });

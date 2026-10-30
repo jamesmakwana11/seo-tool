@@ -3,7 +3,7 @@ import { ArrowRight, Bot, Layers } from 'lucide-react';
 import { TEAMS, TEAM_IDS, type AllocationEvent } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
-import { Async, Badge, DemoBadge, EmptyState, Input, PageHeader, Panel, Stat } from '@/components/ui/primitives';
+import { Async, Badge, EmptyState, Input, PageHeader, Panel, Stat } from '@/components/ui/primitives';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ClearFilters, FilterSelect, useUrlFilters } from '@/components/ui/filters';
 import { fmtDateTime } from '@/lib/format';
@@ -50,7 +50,6 @@ export default function AllocationHistoryPage() {
       <PageHeader
         title="Allocation history"
         description="Who allocated each issue → which 1into2 team → when, including reallocations with their reason, template-level bulk allocations, and automatic allocations of Criticals left unallocated for 24 hours (PDF §11.1a, §12.4)."
-        meta={<DemoBadge />}
       />
       <Async q={q} rows={10}>
         {(rows) => {

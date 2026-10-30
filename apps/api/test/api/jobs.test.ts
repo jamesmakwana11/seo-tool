@@ -5,7 +5,7 @@ import { cronMatches, istParts, nextRun } from '../../src/jobs/scheduler';
 import { failingFetch } from './helpers';
 
 async function liveC(now: Date) {
-  const env = loadEnv({ NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'z'.repeat(40), LOG_LEVEL: 'silent' });
+  const env = loadEnv({ NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'z'.repeat(40), LOG_LEVEL: 'silent' });
   return createContainer({ env, fetchImpl: failingFetch, clock: () => now });
 }
 

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
-import { Bell, ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Menu as MenuIcon, Search, User, X, Eye } from 'lucide-react';
+import { Bell, ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Menu as MenuIcon, Search, User, X } from 'lucide-react';
 import { WebsiteProvider } from '@/websites/WebsiteContext';
 import { WebsiteSelector } from '@/components/websites/WebsiteSelector';
-import { ROLE_LABELS, type Role, type SearchResult } from '@sentinel/shared';
+import { ROLE_LABELS, type SearchResult } from '@sentinel/shared';
 import { useAuth, useUser } from '@/auth/AuthContext';
-import { api, API_MODE } from '@/api/client';
+import { api } from '@/api/client';
 import { useApiQuery, useWebsiteId } from '@/api/hooks';
 import { isActive, visibleNav } from './nav';
 import { Menu } from '@/components/ui/overlay';
@@ -125,7 +125,7 @@ function NotificationBell() {
 
 export function AppShell() {
   const user = useUser();
-  const { logout, previewAs, can } = useAuth();
+  const { logout, can } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
   const [collapsed, setCollapsed] = useState(() => localStorageGet('sentinel.nav.collapsed') === '1');
@@ -246,13 +246,6 @@ export function AppShell() {
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        {(API_MODE === 'mock' || user.demo || user.serverDemoData) && (
-          <div className="demo-hatch flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 border-b border-demo/25 px-3 py-1 text-center text-xs text-[#8A5408]">
-            {API_MODE === 'mock' && <span><strong>DEMO mode</strong> — sample data in browser memory; changes reset on reload. No database.</span>}
-            {API_MODE === 'http' && user.serverDemoData && <span><strong>DEMO data</strong> — the API server loaded sample data into temporary in-memory storage; it resets on restart. No database.</span>}
-            {user.demo && <span><strong>DEVELOPMENT role preview</strong> as {ROLE_LABELS[user.role]} ({user.name}) — not production authentication.</span>}
-          </div>
-        )}
         <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface/90 px-3 backdrop-blur sm:gap-3 sm:px-5">
           <button className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-ctl text-muted hover:bg-raised lg:hidden" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><MenuIcon className="h-5 w-5" /></button>
           <WebsiteSelector />
@@ -272,10 +265,6 @@ export function AppShell() {
             )}
             items={[
               { label: <span className="flex items-center gap-2"><User className="h-4 w-4" /> Profile & settings</span>, onClick: () => nav('/profile') },
-              ...(API_MODE === 'mock' ? (['admin', 'seo_specialist', 'developer'] as Role[]).filter((r) => r !== user.role).map((r) => ({
-                label: <span className="flex items-center gap-2"><Eye className="h-4 w-4" /> Preview as {ROLE_LABELS[r]} <span className="text-2xs text-demo">DEV</span></span>,
-                onClick: () => { void previewAs(r).then(() => nav('/')); },
-              })) : []),
               { label: <span className="flex items-center gap-2"><LogOut className="h-4 w-4" /> Sign out</span>, onClick: () => { void logout().then(() => nav('/login')); } },
             ]}
           />

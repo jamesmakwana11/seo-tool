@@ -3,10 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, Images, Pencil, Play, RefreshCcw, ShieldCheck, Zap } from 'lucide-react';
 import { SMART_CRAWL_PAGE_BUDGET, type CrawlRun, type CrawlSchedule, type CrawlType } from '@sentinel/shared';
-import { api, API_MODE } from '@/api/client';
+import { api } from '@/api/client';
 import { useApiMutation, useApiQuery, useRefreshWhenCrawlsFinish, useSiteKey } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Button, DemoBadge, EmptyState, Field, Input, Mono, Notice, PageHeader, Panel, Stat, Toggle } from '@/components/ui/primitives';
+import { Async, Badge, Button, EmptyState, Field, Input, Mono, Notice, PageHeader, Panel, Stat, Toggle } from '@/components/ui/primitives';
 import { ConfirmDialog, Dialog } from '@/components/ui/overlay';
 import { DataTable } from '@/components/ui/DataTable';
 import { ClearFilters, FilterSelect, useUrlFilters } from '@/components/ui/filters';
@@ -17,6 +17,7 @@ import { fmtDuration } from '@/components/crawls/format';
 import { CrawlProgress, LiveCrawlForm, TemporaryResultsNote } from '@/components/crawls/LiveCrawl';
 import { LighthousePanel } from '@/components/crawls/LighthousePanel';
 import { ChangeMonitorPanel } from '@/components/crawls/ChangeMonitor';
+import { WebsiteSyncPanel } from '@/components/crawls/WebsiteSync';
 import { fmtDateTime, fmtNum, fmtRelative } from '@/lib/format';
 
 const isActive = (r: CrawlRun) => r.status === 'running' || r.status === 'queued';
@@ -37,12 +38,12 @@ export default function CrawlCenterPage() {
       <PageHeader
         title="Crawl Center"
         description="Crawl the selected website live, watch progress, and review every page and issue found. Smart and re-verification crawls are below."
-        meta={<><DemoBadge />{API_MODE === 'mock' && <DemoBadge label="Crawls are SIMULATED" title="Mock mode makes no HTTP requests. Runs you start here are simulated and produce no findings." />}</>}
         actions={<Link to="/verification" className="inline-flex h-9 items-center gap-1.5 rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card transition-colors hover:border-signal/40 hover:text-signal-dark"><ShieldCheck className="h-4 w-4" /> Verification results</Link>}
       />
       <div className="space-y-5">
         <LiveCrawlPanel running={running} latest={latestLive} />
-        {API_MODE !== 'mock' && <ChangeMonitorPanel />}
+        <WebsiteSyncPanel />
+        <ChangeMonitorPanel />
         <StartCrawlPanel running={running} loading={q.isLoading} />
         <LighthouseSection />
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -144,7 +145,6 @@ function StartCrawlPanel({ running, loading }: { running?: CrawlRun; loading: bo
         body={pending && (
           <div className="space-y-2">
             <p>{START_OPTIONS.find((o) => o.type === pending)?.blurb}</p>
-            {API_MODE === 'mock' && <Notice tone="demo">Mock mode: this run is <strong>simulated</strong>. No HTTP requests are made, no pages are fetched and no findings are produced. The real crawler runs from the API server (Phase 2).</Notice>}
           </div>
         )}
         confirmLabel={pending ? `Start ${CRAWL_TYPE_LABELS[pending].toLowerCase()}` : 'Start'}
@@ -244,8 +244,8 @@ function SchedulesPanel() {
         )}
       </Async>
       {!canConfigure && <p className="border-t border-line px-4 py-2 text-xs text-muted">Only admins can change crawl schedules.</p>}
-      <p className="border-t border-line px-4 py-2 text-xs text-muted">Next run is computed from the cron expression in IST.{API_MODE === 'mock' && ' In mock mode schedules are stored but nothing fires on them.'}</p>
-      {status.data && !status.data.schedulerEnabled && API_MODE !== 'mock' && (
+      <p className="border-t border-line px-4 py-2 text-xs text-muted">Next run is computed from the cron expression in IST.</p>
+      {status.data && !status.data.schedulerEnabled && (
         <p className="border-t border-line px-4 py-2 text-xs font-medium text-med-ink">Scheduled crawls are disabled on this server (SCHEDULER_ENABLED is off), so schedules never fire. Start crawls manually.</p>
       )}
       <EditCronDialog schedule={editing} onClose={() => setEditing(null)} />
@@ -330,8 +330,8 @@ function History({ runs }: { runs: CrawlRun[] }) {
                 <div className="min-w-[150px]">
                   <Link to={`/crawls/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-mono text-xs text-signal hover:underline">{r.id}</Link>
                   <div className="text-sm font-medium">{r.options ? "Live crawl" : CRAWL_TYPE_LABELS[r.type]}</div>{r.options && <p className="max-w-[260px] truncate font-mono text-xs text-muted" title={r.options.startUrl}>{r.options.startUrl}</p>}
-                  {r.source === 'simulated' && r.error && <p className="mt-0.5 max-w-[320px] text-xs text-demo">{r.error}</p>}
-                  {r.source === 'simulated' && !r.error && <p className="mt-0.5 max-w-[320px] text-xs text-demo">Simulated run in progress — no HTTP requests are made.</p>}
+                  {r.source === 'simulated' && r.error && <p className="mt-0.5 max-w-[320px] text-xs text-caution">{r.error}</p>}
+                  {r.source === 'simulated' && !r.error && <p className="mt-0.5 max-w-[320px] text-xs text-caution">Simulated run in progress — no HTTP requests are made.</p>}
                   {r.source !== 'simulated' && r.error && <p className="mt-0.5 max-w-[320px] text-xs text-crit-ink">{r.error}</p>}
                 </div>
               ),
@@ -342,7 +342,7 @@ function History({ runs }: { runs: CrawlRun[] }) {
             { key: 'dur', header: 'Duration', hideOnMobile: true, cell: (r) => <span className="tabular-nums text-xs">{isActive(r) ? 'running…' : fmtDuration(r.durationMs)}</span>, sort: (a, b) => (a.durationMs ?? 0) - (b.durationMs ?? 0) },
             {
               key: 'urls', header: 'Planned / crawled / failed', cell: (r) => r.source === 'simulated'
-                ? <span className="text-xs text-muted">{fmtNum(r.urlsPlanned)} planned · <span className="text-demo">0 fetched (simulated)</span></span>
+                ? <span className="text-xs text-muted">{fmtNum(r.urlsPlanned)} planned · <span className="text-caution">0 fetched (simulated)</span></span>
                 : <span className="whitespace-nowrap tabular-nums text-xs">{fmtNum(r.urlsPlanned)} / {fmtNum(r.urlsCrawled)} / <span className={r.urlsFailed ? 'font-medium text-crit-ink' : ''}>{fmtNum(r.urlsFailed)}</span></span>,
             },
             {

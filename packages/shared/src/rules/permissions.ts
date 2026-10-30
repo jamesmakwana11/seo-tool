@@ -1,7 +1,13 @@
 import type { Permission, PermissionMatrix, Role, Task, TeamId } from '../types';
+import { ALL_PERMISSIONS } from '../config';
+
+/** Super Admin always has every permission, whatever the stored matrix says (it can never be locked out). */
+export function permissionsOf(matrix: PermissionMatrix, role: Role): Permission[] {
+  return role === 'super_admin' ? [...ALL_PERMISSIONS] : matrix[role] ?? [];
+}
 
 export function hasPermission(matrix: PermissionMatrix, role: Role, perm: Permission): boolean {
-  return matrix[role]?.includes(perm) ?? false;
+  return permissionsOf(matrix, role).includes(perm);
 }
 
 /** Can this user see this task? (all / team / own) */
@@ -27,7 +33,8 @@ export const ROUTE_PERMISSIONS: Record<string, Permission> = {
   '/ai-compliance/rules': 'rules.view',
   '/team/employees': 'employees.view',
   '/team/roles': 'roles.manage',
-  '/team/allocations': 'issues.view',
+  '/team/allocations': 'employees.view',
+  '/issues/exclusions': 'issues.manage_exclusions',
   '/settings/integrations': 'integrations.view',
   '/settings/thresholds': 'settings.view',
   '/settings/crawl': 'settings.view',

@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --max-warnings 0",
     "test": "vitest run",
-    "e2e": "node e2e/smoke.mjs",
+    "e2e": "node e2e/prod-smoke.mjs",
     "dev:http": "vite --mode http",
     "build:http": "tsc -p tsconfig.json --noEmit && vite build --mode http"
   },

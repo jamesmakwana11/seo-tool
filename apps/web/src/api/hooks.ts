@@ -39,9 +39,11 @@ export function useRefreshWhenCrawlsFinish(activeIds: string[] | undefined) {
 }
 
 /** Thin query wrapper so every screen gets loading / error / retry states the same way. */
-export function useApiQuery<T>(key: QueryKey, fn: () => Promise<T>, opts: { enabled?: boolean; refetchInterval?: number } = {}) {
+export function useApiQuery<T>(key: QueryKey, fn: () => Promise<T>, opts: { enabled?: boolean; refetchInterval?: number | ((data: T | undefined) => number | false) } = {}) {
   const siteKey = useSiteKey();
-  return useQuery({ queryKey: siteKey(key), queryFn: fn, enabled: opts.enabled, refetchInterval: opts.refetchInterval, retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 1 });
+  const every = opts.refetchInterval;
+  const refetchInterval = typeof every === 'function' ? (q: { state: { data: T | undefined } }) => every(q.state.data) : every;
+  return useQuery({ queryKey: siteKey(key), queryFn: fn, enabled: opts.enabled, refetchInterval, retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 1 });
 }
 
 /**

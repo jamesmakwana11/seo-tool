@@ -114,7 +114,7 @@ export function createChangeService(ctx: Ctx, deps: ChangeServiceDeps) {
 
   /** Records a finished crawl: compares it with the baseline and updates the baseline when the crawl qualifies. */
   async function record(run: CrawlRun, out: Pick<EngineRunResult, 'snapshotFile' | 'snapshotRecords'>): Promise<ChangeRunSummary | undefined> {
-    if (!enabled || run.type === 'reverify') return undefined;
+    if (!enabled || run.type === 'reverify' || run.type === 'sync') return undefined;
     if (!out.snapshotFile && !out.snapshotRecords) return undefined;
     const st = await store();
     comparing.add(run.id);

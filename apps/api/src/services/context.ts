@@ -1,5 +1,5 @@
 import {
-  ApiError, ROLE_LABELS, TEAMS, hasPermission,
+  ApiError, ROLE_LABELS, TEAMS, hasPermission, permissionsOf,
   type AuditLogEntry, type Employee, type IntegrationId, type Notification, type Permission, type PermissionMatrix,
   type SentinelView, type SessionUser, type TeamId,
 } from '@sentinel/shared';
@@ -35,11 +35,10 @@ export interface Actor {
   role: SessionUser['role'];
   teamIds: TeamId[];
   permissions: Permission[];
-  demo: boolean;
   system?: boolean;
 }
 
-export const SYSTEM_ACTOR: Actor = { id: 'system', name: 'Sentinel (system)', role: 'admin', teamIds: [], permissions: [], demo: false, system: true };
+export const SYSTEM_ACTOR: Actor = { id: 'system', name: 'Sentinel (system)', role: 'admin', teamIds: [], permissions: [], system: true };
 
 export function requirePerm(matrix: PermissionMatrix, actor: Actor, perm: Permission) {
   if (actor.system) return;
@@ -83,12 +82,12 @@ export async function seoLead(ctx: Ctx): Promise<string | undefined> {
   return (await ctx.repos.employees.list()).find((e) => e.isSeoLead && e.status === 'active')?.id ?? (await teamLead(ctx, 'seo'));
 }
 
-export function toSessionUser(e: Employee, matrix: PermissionMatrix, demo: boolean): SessionUser {
-  return { id: e.id, name: e.name, email: e.email, role: e.role, teamIds: e.teamIds, isSeoLead: e.isSeoLead, permissions: matrix[e.role], demo };
+export function toSessionUser(e: Employee, matrix: PermissionMatrix): SessionUser {
+  return { id: e.id, name: e.name, email: e.email, role: e.role, teamIds: e.teamIds, isSeoLead: e.isSeoLead, permissions: permissionsOf(matrix, e.role) };
 }
 
-export function actorFromEmployee(e: Employee, matrix: PermissionMatrix, demo: boolean): Actor {
-  return { id: e.id, name: e.name, role: e.role, teamIds: e.teamIds, permissions: matrix[e.role], demo };
+export function actorFromEmployee(e: Employee, matrix: PermissionMatrix): Actor {
+  return { id: e.id, name: e.name, role: e.role, teamIds: e.teamIds, permissions: permissionsOf(matrix, e.role) };
 }
 
 /** Assemble the read-model view the shared query functions operate on. */

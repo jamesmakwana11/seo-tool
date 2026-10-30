@@ -4,7 +4,7 @@ import type { OpportunityItem } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, DemoBadge, EmptyState, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
+import { Async, Badge, EmptyState, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
 import { ChipGroup, ClearFilters, FilterSelect, useUrlFilters } from '@/components/ui/filters';
 import { SourceBadge } from '@/components/domain/badges';
 import { OPP_KIND_LABELS, OPP_KIND_SCREEN, OppStatusBadge, OpportunityActions, SiteUrl } from '@/components/opportunities/shared';
@@ -27,7 +27,6 @@ export default function OpportunitiesBoardPage() {
       <PageHeader
         title="Opportunities"
         description="Growth opportunities from every module — striking-distance queries, CTR rewrites, keyword gaps, briefs, link prospects, unlinked mentions, PAA/snippet targets, seasonal prompts, digital PR and citation gaps — ranked by value (PDF §12.3, Appendix A opportunity class)."
-        meta={<DemoBadge />}
       />
       <Async q={q} rows={10}>{(items) => <Board items={items} />}</Async>
     </div>

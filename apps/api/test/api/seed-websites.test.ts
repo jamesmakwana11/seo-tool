@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FixCard, Issue, Paged, WebsiteSummary } from '@sentinel/shared';
 import { DEFAULT_SEED_WEBSITES, loadEnv } from '../../src/config/env';
 import { parseSeedWebsites } from '../../src/websites';
-import { DEMO, makeHarness } from './helpers';
+import { FIXTURE, makeHarness } from './helpers';
 
 /**
  * Websites that must always be selectable (SEED_WEBSITES): added at start-up when missing, never duplicated or changed,
@@ -33,7 +33,7 @@ describe('saved websites from SEED_WEBSITES', () => {
 
   it('adds every missing website once (DeoDap is the primary website already), each selectable with its own workspace', async () => {
     const h = await makeHarness({ SEED_WEBSITES: SEEDS });
-    const tok = await h.token(DEMO.seoLead);
+    const tok = await h.token(FIXTURE.seoLead);
     const seo = h.as(tok);
     const list = (await seo.get('/api/websites')).body as WebsiteSummary[];
     expect(list.map((w) => w.domain)).toEqual(['deodap.in', 'grabnix.in', 'oblivion.co.in', 'natation.in']);
@@ -51,7 +51,7 @@ describe('saved websites from SEED_WEBSITES', () => {
 
   it('lists every issue with its time to fix and where, and Fix Cards name the selected website', async () => {
     const h = await makeHarness({ SEED_WEBSITES: SEEDS });
-    const seo = h.as(await h.token(DEMO.seoLead));
+    const seo = h.as(await h.token(FIXTURE.seoLead));
     const page = (await seo.get('/api/issues?pageSize=500&status=NEW,ASSIGNED,IN_PROGRESS,FIXED,VERIFIED,CLOSED')).body as Paged<Issue>;
     expect(page.items.length).toBeGreaterThan(10);
     for (const i of page.items) {

@@ -28,7 +28,7 @@ async function main() {
   });
 
   const server = app.listen(env.PORT, () => {
-    log.info({ port: env.PORT, env: env.NODE_ENV, scheduler: env.SCHEDULER_ENABLED, demoSeed: env.SEED_DEMO_DATA }, `DeoDap SEO Sentinel API listening on :${env.PORT}`);
+    log.info({ port: env.PORT, env: env.NODE_ENV, scheduler: env.SCHEDULER_ENABLED, testFixtures: env.SEED_TEST_FIXTURES }, `DeoDap SEO Sentinel API listening on :${env.PORT}`);
     if (persistence) log.info({ database: describeDatabaseUrl(env.DATABASE_URL!) }, 'Storage: PostgreSQL — websites, crawls and results are kept across restarts.');
     else log.warn('Storage is TEMPORARY in-memory: all websites, crawls and issues are lost on restart. Set DATABASE_URL to keep them in PostgreSQL.');
     // Live crawling: one switch for every registered website; each website's crawler only requests its own host.

@@ -138,8 +138,8 @@ describe('link discovery on a store', () => {
     const routes: Record<string, Route> = {
       'https://shop.example/robots.txt': () => new Response('User-agent: *\nDisallow: /cart\nSitemap: https://shop.example/sitemap.xml\n', { status: 200, headers: { 'content-type': 'text/plain' } }),
       'https://shop.example/sitemap.xml': xml(urlset(['https://shop.example/', 'https://shop.example/pages/hidden'])),
-      'https://shop.example/': html(page('Home', ['/collections/all', '/loop/x/']), { 'strict-transport-security': 'max-age=1', 'x-powered-by': 'demo' }),
-      'https://shop.example/collections/all': html(page('All', ['/products/a', '/products/b', '/collections/all?page=2', '/collections/all?sort_by=price']), { 'x-robots-tag': 'all', 'set-cookie': 'a=b', 'x-powered-by': 'demo' }),
+      'https://shop.example/': html(page('Home', ['/collections/all', '/loop/x/']), { 'strict-transport-security': 'max-age=1', 'x-powered-by': 'sample' }),
+      'https://shop.example/collections/all': html(page('All', ['/products/a', '/products/b', '/collections/all?page=2', '/collections/all?sort_by=price']), { 'x-robots-tag': 'all', 'set-cookie': 'a=b', 'x-powered-by': 'sample' }),
       'https://shop.example/collections/all?page=2': html(page('All page 2', ['/products/c', '/products/d', '/collections/all'])),
       'https://shop.example/pages/hidden': html(page('Hidden', ['/pages/deeper'])),
       'https://shop.example/pages/deeper': html(page('Deeper', ['/'])),
@@ -192,7 +192,7 @@ describe('link discovery on a store', () => {
     });
     const home = collected.pages.find((p) => p.url === 'https://shop.example/')!;
     const col = collected.pages.find((p) => p.url === 'https://shop.example/collections/all')!;
-    expect(home.headers['x-powered-by']).toBe('demo');
+    expect(home.headers['x-powered-by']).toBe('sample');
     expect(home.headers['strict-transport-security']).toBe('max-age=1');
     expect(col.headers).toEqual({ 'content-type': 'text/html', 'x-robots-tag': 'all' });
   });

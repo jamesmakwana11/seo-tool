@@ -7,7 +7,6 @@ import { auditPage, type CrawledUrl, type CrawlPageReport } from '@sentinel/shar
 /** Every page-audit finding expands to the exact page, values and related pages / images / links (mocked API). */
 const fake = vi.hoisted(() => ({ duplicates: undefined as unknown as CrawlPageReport['duplicates'], pageCalls: 0 }));
 vi.mock('@/api/client', () => ({
-  API_MODE: 'http',
   api: {
     getCrawlPage: async () => { fake.pageCalls++; return { runId: 'CRL-1', row: {}, audit: {}, limits: {}, duplicates: fake.duplicates }; },
     getCrawlPages: async () => ({ total: 0, offset: 0, limit: 1, rows: [], facets: { status: {}, problem: {}, crawlState: {}, source: {}, template: {}, indexable: {}, check: { 'title-duplicate': 4, 'meta-missing': 12, 'alt-missing': 30, 'images-repeated': 7, 'broken-links': 2 } } }),

@@ -5,7 +5,7 @@ import { defaultConfig, SCORE_MODULE_LABELS, SCORE_MODULES, type HealthScore, ty
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Checkbox, DemoBadge, Mono, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
+import { Async, Badge, Checkbox, Mono, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
 import { TrendChart, SERIES } from '@/components/ui/charts';
 import { ChipGroup } from '@/components/ui/filters';
 import { HealthScoreSummary, MODULE_LINKS, ModulePerformanceBars } from '@/components/domain/HealthScore';
@@ -21,7 +21,6 @@ export default function HealthPage() {
       <PageHeader
         title="SEO Health Score"
         description="One 0–100 number made of seven weighted module scores (PDF §14). It is a motivation instrument: fixing Criticals — especially on Tier 1 pages — moves it visibly."
-        meta={<DemoBadge />}
         actions={can('settings.view') ? <Link to="/settings/thresholds" className="inline-flex h-9 items-center rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card transition-colors hover:border-signal/40 hover:text-signal-dark">Scoring settings</Link> : undefined}
       />
       <Async q={q} rows={10}>{(h) => <Body h={h} cfg={cfgQ.data} cfgFromServer={!!cfgQ.data} />}</Async>

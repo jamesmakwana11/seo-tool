@@ -23,7 +23,7 @@ async function harness(fixture: Partial<FixtureOptions> = {}, env: Record<string
   sites.push(site);
   const container = await createContainer({
     env: loadEnv({
-      NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'z'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: site.origin,
+      NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'z'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: site.origin,
       CRAWLER_REQUEST_DELAY_MS: '0', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password, ...env,
     }),
   });
@@ -79,12 +79,12 @@ describe('validation', () => {
     expect(all.status).toBe(400);
   });
 
-  it('refuses to crawl live in a workspace that holds DEMO data', async () => {
-    const h = await harness({}, { SEED_DEMO_DATA: 'true' });
-    const login = await supertest(createApp(h.container)).post('/api/auth/login').send({ email: 'aarav.admin@demo.deodap.local', password: 'Sentinel@Demo1' });
+  it('refuses to crawl live in a workspace that holds the test fixtures', async () => {
+    const h = await harness({}, { SEED_TEST_FIXTURES: 'true' });
+    const login = await supertest(createApp(h.container)).post('/api/auth/login').send({ email: 'aarav.admin@team.deodap.local', password: 'Sentinel@Fixture1' });
     const res = await supertest(createApp(h.container)).get('/api/crawls/status').set({ Authorization: `Bearer ${login.body.token}` });
     expect(res.body.ready).toBe(false);
-    expect(res.body.reason).toMatch(/DEMO dataset/);
+    expect(res.body.reason).toMatch(/sample test dataset/);
   });
 });
 

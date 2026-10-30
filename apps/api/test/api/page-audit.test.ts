@@ -40,7 +40,7 @@ const engine: CrawlEngine = {
 describe('All Pages and the page audit API', () => {
   it('lists pages with scores, filters by check and score band, and returns a full page report', async () => {
     const container = await createContainer({
-      env: loadEnv({ NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'p'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: ORIGIN, ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password }),
+      env: loadEnv({ NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'p'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: ORIGIN, ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password }),
       engine,
     });
     const agent = supertest(createApp(container));

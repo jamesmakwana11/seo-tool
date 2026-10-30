@@ -14,7 +14,7 @@ import type { CwvTemplateMetric, PageTemplate, SitePage } from '@sentinel/shared
 import { defaultFetch, failureResult, httpRequest, is2xx } from '../connectors/http';
 import type { Ctx } from '../services/context';
 import type { Finding } from '../services/ports';
-import { guardedSync, num, seriesIsDemo, siteOrigin, SyncError, type SyncDeps, type SyncResult } from './common';
+import { guardedSync, num, seriesIsSample, siteOrigin, SyncError, type SyncDeps, type SyncResult } from './common';
 
 const ENDPOINT = 'https://chromeuxreport.googleapis.com/v1/records:queryRecord';
 const METRICS = ['largest_contentful_paint', 'interaction_to_next_paint', 'cumulative_layout_shift'] as const;
@@ -38,7 +38,7 @@ type Outcome =
 /** Highest-value live page of a template: tier, then revenue, then organic sessions, then impressions. */
 function topPage(pages: SitePage[], template: PageTemplate): SitePage | undefined {
   return pages
-    .filter((p) => p.source !== 'demo' && p.template === template && p.indexable)
+    .filter((p) => p.source !== 'sample' && p.template === template && p.indexable)
     .sort((a, b) => a.tier - b.tier || (b.revenue90d ?? 0) - (a.revenue90d ?? 0) || (b.organicSessions90d ?? 0) - (a.organicSessions90d ?? 0) || (b.impressions28d ?? 0) - (a.impressions28d ?? 0) || a.path.localeCompare(b.path))[0];
 }
 
@@ -90,12 +90,12 @@ export async function cruxCwv(ctx: Ctx, deps: SyncDeps = {}): Promise<SyncResult
       outcomes.push({ template: t.template, target: t.target, kind: 'data', metric: { template: t.template, device: 'mobile', ...v, status: classifyCwv(v, th), source: 'live' } });
     }
 
-    // ---- write metrics.cwv: DEMO series replaced wholesale; otherwise the mobile entries for every attempted template are
+    // ---- write metrics.cwv: sample series replaced wholesale; otherwise the mobile entries for every attempted template are
     //      replaced (or removed when CrUX now has insufficient data), other live entries (e.g. desktop) kept.
     const m = await ctx.repos.metrics.get();
-    const demo = seriesIsDemo(m, m.cwv);
+    const sample = seriesIsSample(m, m.cwv);
     const attempted = new Set(outcomes.filter((o) => o.kind !== 'skipped').map((o) => o.template));
-    const prev = demo ? [] : m.cwv;
+    const prev = sample ? [] : m.cwv;
     const kept = prev.filter((c) => !(c.device === 'mobile' && attempted.has(c.template)));
     const fresh = outcomes.flatMap((o) => {
       if (o.kind !== 'data') return [];
@@ -129,11 +129,11 @@ export async function cruxCwv(ctx: Ctx, deps: SyncDeps = {}): Promise<SyncResult
 
     const fmt = (o: Outcome) =>
       o.kind === 'data' ? `${o.template}: ${o.metric.status} (LCP ${o.metric.lcpMs}ms, INP ${o.metric.inpMs}ms, CLS ${o.metric.cls})` : `${o.template}: ${o.kind === 'insufficient' ? 'insufficient field data' : 'skipped'} — ${o.detail}`;
-    const summary = `CrUX sync (PHONE, ${origin}): ${outcomes.map(fmt).join('; ')}.${demo ? ' Replaced the DEMO Core Web Vitals series.' : ''}${issueStats ? ` PERF-CRUX issues: ${issueStats.newIssues} new, ${issueStats.resolvedIssues} resolved, ${issueStats.recurringIssues} recurring.` : ''}`;
+    const summary = `CrUX sync (PHONE, ${origin}): ${outcomes.map(fmt).join('; ')}.${sample ? ' Replaced the sample Core Web Vitals series.' : ''}${issueStats ? ` PERF-CRUX issues: ${issueStats.newIssues} new, ${issueStats.resolvedIssues} resolved, ${issueStats.recurringIssues} recurring.` : ''}`;
     return {
       summary,
       details: {
-        origin, replacedDemo: demo, issues: issueStats,
+        origin, replacedSample: sample, issues: issueStats,
         results: outcomes.map((o) => (o.kind === 'data' ? { template: o.template, target: o.target, status: o.metric.status, lcpMs: o.metric.lcpMs, inpMs: o.metric.inpMs, cls: o.metric.cls } : { template: o.template, target: o.target || undefined, [o.kind]: true, detail: o.detail })),
       },
     };

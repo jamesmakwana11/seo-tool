@@ -28,7 +28,6 @@ const status = (id: IntegrationId): IntegrationStatus => {
 };
 
 vi.mock('@/api/client', () => ({
-  API_MODE: 'http',
   api: {
     listIntegrations: async () => INTEGRATION_CATALOG.map((i) => status(i.id)),
     updateIntegration: async (id: IntegrationId, settings: Record<string, string>) => {

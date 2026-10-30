@@ -4,7 +4,7 @@ import { CheckCircle2, CircleDashed, CircleSlash, XCircle, AlertTriangle } from 
 import { MODULE_LABELS, type AuditModule, type ModuleData } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
-import { Async, DemoBadge, EmptyState, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
+import { Async, EmptyState, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/DataTable';
 import { IssueTable } from './IssueTable';
 import { scoreColor } from './HealthScore';
@@ -65,7 +65,7 @@ export function ModuleView({ module, title, description, groupFilter, extra, hea
   const [tab, setTab] = useState<'open' | 'all'>('open');
   return (
     <div>
-      <PageHeader title={title ?? MODULE_LABELS[module]} description={description} meta={<DemoBadge />} actions={headerActions} />
+      <PageHeader title={title ?? MODULE_LABELS[module]} description={description} actions={headerActions} />
       <Async q={q} rows={8}>
         {(d) => <ModuleBody d={d} groupFilter={groupFilter} extra={extra} tab={tab} setTab={setTab} />}
       </Async>
@@ -90,7 +90,7 @@ function ModuleBody({ d, groupFilter, extra, tab, setTab }: { d: ModuleData; gro
         <Stat label="Medium open" value={med} tone={med ? 'med' : undefined} />
         <Stat label="Low open" value={low} tone={low ? 'low' : undefined} />
       </div>
-      {d.dataNotes.map((n) => <Notice key={n} tone="demo">{n}</Notice>)}
+      {d.dataNotes.map((n) => <Notice key={n} tone="caution">{n}</Notice>)}
       <Panel title="Check library" subtitle="Every check from the specification for this area, with its last result." bodyClassName="p-3">
         <CheckTable checks={checks} />
       </Panel>

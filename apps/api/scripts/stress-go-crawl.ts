@@ -46,7 +46,7 @@ async function main() {
   const base = ready.url.replace(/\/$/, '');
   console.log(`synthetic store: ${JSON.stringify(ready)}`);
   const env = loadEnv({
-    NODE_ENV: 'development', LOG_LEVEL: 'warn', SEED_DEMO_DATA: 'false', CRAWLER_BASE_URL: base, CRAWLER_ENGINE: 'go', CRAWLER_REQUEST_DELAY_MS: '0',
+    NODE_ENV: 'development', LOG_LEVEL: 'warn', SEED_TEST_FIXTURES: 'false', CRAWLER_BASE_URL: base, CRAWLER_ENGINE: 'go', CRAWLER_REQUEST_DELAY_MS: '0',
     ...(BUDGET ? { CRAWLER_MEMORY_BUDGET_MB: BUDGET } : {}),
     CHANGE_SNAPSHOT_DIR: fs.mkdtempSync(path.join((await import('node:os')).tmpdir(), 'stress-changes-')), CHANGE_CAPTURE_AFTER_CRAWL: 'false',
     ...(process.env.CHANGE_MONITOR_ENABLED ? { CHANGE_MONITOR_ENABLED: process.env.CHANGE_MONITOR_ENABLED } : {}),

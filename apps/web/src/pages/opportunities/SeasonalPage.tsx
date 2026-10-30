@@ -4,7 +4,7 @@ import type { FestivalEntry } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, DemoBadge, EmptyState, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
+import { Async, Badge, EmptyState, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
 import { SiteUrl } from '@/components/opportunities/shared';
 import { fmtDate } from '@/lib/format';
 
@@ -18,7 +18,6 @@ export default function SeasonalPage() {
       <PageHeader
         title="Seasonal planner"
         description="India festival and season calendar, surfaced ahead of time so collections are refreshed and landing pages published before demand peaks — Diwali gifting, Rakhi, Holi, monsoon, wedding season, back-to-school (PDF §7.2, §13)."
-        meta={<DemoBadge />}
         actions={can('settings.view') ? <Link to="/settings/thresholds" className="inline-flex h-9 items-center gap-1.5 rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card transition-colors hover:border-signal/40 hover:text-signal-dark"><CalendarDays className="h-4 w-4" /> Edit festival dates</Link> : undefined}
       />
       <Async q={q} rows={10}>

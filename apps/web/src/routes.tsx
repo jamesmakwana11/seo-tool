@@ -75,10 +75,11 @@ const P = {
 };
 
 /** Route guard (UI only — the backend enforces permissions independently). */
-function Guard({ perm, children }: { perm?: Permission; children: ReactNode }) {
+function Guard({ perm, anyOf, children }: { perm?: Permission; anyOf?: Permission[]; children: ReactNode }) {
   const { can } = useAuth();
-  if (perm && !can(perm)) {
-    return <EmptyState icon={<ShieldAlert className="h-8 w-8 text-med-ink" />} title="You don't have access to this page" description={`Your role needs the "${perm}" permission. Ask an Admin if you need it.`} />;
+  const missing = perm && !can(perm) ? perm : anyOf && !anyOf.some(can) ? anyOf.join('" or "') : undefined;
+  if (missing) {
+    return <EmptyState icon={<ShieldAlert className="h-8 w-8 text-med-ink" />} title="You don't have access to this page" description={`Your role needs the "${missing}" permission. Ask a Super Admin if you need it.`} />;
   }
   return <Suspense fallback={<LoadingBlock rows={6} />}>{children}</Suspense>;
 }
@@ -105,7 +106,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-const g = (C: ComponentType, perm?: Permission) => <Guard perm={perm}><C /></Guard>;
+const g = (C: ComponentType, perm?: Permission, anyOf?: Permission[]) => <Guard perm={perm} anyOf={anyOf}><C /></Guard>;
 /** Scored / pass-fail screens: shown only for a website that has audit data (never a fake score for an uncrawled site). */
 const ga = (C: ComponentType, perm?: Permission) => <Guard perm={perm}><RequireAuditData><C /></RequireAuditData></Guard>;
 
@@ -144,7 +145,7 @@ export function AppRoutes() {
 
         <Route path="issues" element={g(P.Issues, 'issues.view')} />
         <Route path="issues/groups" element={g(P.IssueGroups, 'issues.view')} />
-        <Route path="issues/exclusions" element={g(P.Exclusions, 'issues.view')} />
+        <Route path="issues/exclusions" element={g(P.Exclusions, 'issues.manage_exclusions')} />
         <Route path="issues/:id" element={g(P.Issue, 'issues.view')} />
 
         <Route path="websites" element={g(P.Websites, 'dashboard.view')} />
@@ -153,7 +154,7 @@ export function AppRoutes() {
 
         <Route path="team/employees" element={g(P.Employees, 'employees.view')} />
         <Route path="team/roles" element={g(P.Roles, 'roles.manage')} />
-        <Route path="team/allocations" element={g(P.Allocations, 'issues.view')} />
+        <Route path="team/allocations" element={g(P.Allocations, 'employees.view')} />
 
         <Route path="opportunities" element={g(P.Opps, 'opportunities.view')} />
         <Route path="opportunities/keywords" element={g(P.Keywords, 'opportunities.view')} />
@@ -175,7 +176,7 @@ export function AppRoutes() {
         <Route path="settings/notifications" element={g(P.NotifSettings, 'notifications.configure')} />
         <Route path="settings/integrations" element={g(P.Integrations, 'integrations.view')} />
         <Route path="settings/shopify" element={g(P.Shopify, 'integrations.view')} />
-        <Route path="seo-editor" element={g(P.SeoEditor)} />
+        <Route path="seo-editor" element={g(P.SeoEditor, undefined, ['shopify.edit', 'shopify.theme'])} />
         <Route path="optimize" element={<Navigate to="/optimize/titles" replace />} />
         <Route path="optimize/:field" element={g(P.SeoOptimization, 'crawls.view')} />
         <Route path="settings/thresholds" element={g(P.Thresholds, 'settings.view')} />

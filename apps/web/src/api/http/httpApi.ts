@@ -11,14 +11,14 @@ import {
   type DeliveryAttempt, type DisavowCandidate, type DryRunResult, type Employee, type EmployeeInput, type HealthPoint, type HealthScore,
   type IntegrationId, type IntegrationStatus, type IntegrationSyncResult, type Issue, type IssueDetail, type IssueFilter, type IssueGroup, type KeywordGap,
   type LinkProspect, type ModuleData, type MonthlyReport, type Notification, type OpportunityItem, type Paged, type PermissionMatrix,
-  type ReportMeta, type Role, type SearchResult, type SentinelApi, type SentinelConfig, type SessionUser, type StrikingDistanceQuery,
+  type ReportMeta, type SearchResult, type SentinelApi, type SentinelConfig, type SessionUser, type StrikingDistanceQuery,
   type SystemComponentHealth, type SystemErrorEntry, type TopicCluster, type Website, type WebsiteSummary, WEBSITE_HEADER,
   type VerificationAttempt, type WeeklyReport, type AllocationEvent,
   type ShopifyApplyBatchResult, type ShopifyApplyPreview, type ShopifyDraft, type ShopifyResolveResult, type ShopifyResourceList, type ShopifyStatus,
   type ShopifyTheme, type ShopifyThemeFile, type ShopifyThemeProposal,
   type CaptureJob, type CaptureStatus, type ChangeDetail, type ChangeListResponse, type ChangeMonitorStatus, type ChangeRunSummary, type PageCapture, type PageComparison,
   type ThemeDiffResponse, type ThemeSnapshotMeta,
-  type SeoBulkItemsPage, type SeoBulkJob, type SeoOptimizationPage,
+  type SeoBulkItemsPage, type SeoBulkJob, type SeoOptimizationPage, type MonitorStatus,
 } from '@sentinel/shared';
 
 const TOKEN_KEY = 'sentinel.http.token';
@@ -98,7 +98,6 @@ export function createHttpApi(baseUrl = '/api', websiteId: () => string | undefi
   const api: SentinelApi = {
     // auth
     async login(email, password) { const r = await post<AuthResult>('/auth/login', { email, password }); setToken(r.token); return r; },
-    async previewAs(role: Role) { const r = await post<AuthResult>('/auth/preview', { role }); setToken(r.token); return r; },
     async logout() { try { await post('/auth/logout'); } finally { setToken(null); } },
     me: () => get<SessionUser>('/auth/me'),
     requestPasswordReset: (email) => post('/auth/request-reset', { email }),
@@ -157,6 +156,7 @@ export function createHttpApi(baseUrl = '/api', websiteId: () => string | undefi
     removeShopifyAppCredentials: () => del<ShopifyStatus>('/shopify/app-credentials'),
     getMonitor: () => get('/monitor'),
     runMonitor: () => post('/monitor/run'),
+    updateSyncSettings: (input) => patch<MonitorStatus>('/monitor/settings', input),
     resolveShopifyUrl: (url) => get<ShopifyResolveResult>(`/shopify/resolve${qs({ url })}`),
     listShopifyResources: (input) => get<ShopifyResourceList>(`/shopify/resources${qs(input)}`),
     createShopifyDraft: (input) => post<ShopifyDraft>('/shopify/drafts', input),

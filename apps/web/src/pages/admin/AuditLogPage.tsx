@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { AuditLogEntry } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
-import { Async, Badge, Code, DemoBadge, EmptyState, Input, Mono, Notice, PageHeader, Panel } from '@/components/ui/primitives';
+import { Async, Badge, Code, EmptyState, Input, Mono, PageHeader, Panel } from '@/components/ui/primitives';
 import { ClearFilters, FilterSelect, useUrlFilters } from '@/components/ui/filters';
 import { useEmployees } from '@/hooks/lookups';
 import { fmtDateTime } from '@/lib/format';
@@ -31,10 +31,8 @@ export default function AuditLogPage() {
       <PageHeader
         title="Audit log"
         description="Every alert, allocation, status change, verification, configuration change and export is logged (PDF §17). The monthly executive report is generated from this log, so reporting is evidence-backed, never manual."
-        meta={<DemoBadge />}
       />
       <div className="space-y-5">
-        <Notice tone="demo">DEMO mode: the log lives in browser memory and resets on reload. Actions you take in this session are appended live.</Notice>
         <Panel bodyClassName="p-3">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <Input aria-label="Search audit log" placeholder="Search summary, action or entity id" value={text} onChange={(e) => setText(e.target.value)} className="w-full max-w-xs" />

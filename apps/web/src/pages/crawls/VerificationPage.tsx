@@ -4,7 +4,7 @@ import type { VerificationAttempt } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { useEmployees } from '@/hooks/lookups';
-import { Async, DemoBadge, EmptyState, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
+import { Async, EmptyState, Notice, PageHeader, Panel, Stat } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/DataTable';
 import { ClearFilters, FilterSelect, useUrlFilters } from '@/components/ui/filters';
 import { SourceBadge } from '@/components/domain/badges';
@@ -18,7 +18,6 @@ export default function VerificationPage() {
       <PageHeader
         title="Verification results"
         description="Automated re-verification and re-verification crawl results for fixed issues (PDF §12.3). Re-verification closes issues automatically — nobody marks an issue verified by hand."
-        meta={<DemoBadge />}
         actions={<Link to="/crawls" className="inline-flex h-9 items-center gap-1.5 rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card transition-colors hover:border-signal/40 hover:text-signal-dark"><Radar className="h-4 w-4" /> Crawl Center</Link>}
       />
       <div className="space-y-5">

@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { ApiError } from '@sentinel/shared';
-import { API_MODE } from '@/api/client';
 import { Button, Panel } from '@/components/ui/primitives';
 
 /**
@@ -25,9 +24,7 @@ export function DetailError({ error, what, id, back, onRetry, forbidden }: {
   let retry = false;
   if (status === 404) {
     title = `${what} ${id} not found`;
-    detail = API_MODE === 'mock'
-      ? `${what} ${id} doesn't exist. It may have been mistyped, or created in an earlier session — DEMO data lives in this browser and resets on reload.`
-      : `${what} ${id} doesn't exist. It may have been mistyped or removed — or, on a server without a database, created before the server last restarted.`;
+    detail = `${what} ${id} doesn't exist. It may have been mistyped or removed — or, on a server without a database, created before the server last restarted.`;
   } else if (status === 403) {
     title = forbidden?.title ?? `You don't have access to this ${what.toLowerCase()}`;
     detail = forbidden?.detail ?? (error as ApiError).message;

@@ -29,7 +29,7 @@ export function computeHealthScore(
   siteSize: number,
   cfg: SentinelConfig,
   at = new Date(),
-  source: DataSource = 'demo',
+  source: DataSource = 'live',
 ): HealthScore {
   const { severityWeights, tierMultipliers, normalizationK, weights } = cfg.scoring;
   const acc = new Map<ScoreModule, { p: number; c: Record<Severity, number> }>();

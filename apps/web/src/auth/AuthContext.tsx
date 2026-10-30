@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ApiError, type Permission, type Role, type SessionUser } from '@sentinel/shared';
+import { ApiError, type Permission, type SessionUser } from '@sentinel/shared';
 import { api } from '@/api/client';
 
 interface AuthCtx {
@@ -9,7 +9,6 @@ interface AuthCtx {
   /** Set while the server cannot be reached (starting up, redeploying, offline): the session is kept, not ended. */
   unreachable?: string;
   login: (email: string, password: string) => Promise<void>;
-  previewAs: (role: Role) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   can: (p: Permission) => boolean;
@@ -60,11 +59,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     unreachable,
     login: async (email, password) => {
       const r = await api.login(email, password);
-      qc.clear();
-      setUser(r.user);
-    },
-    previewAs: async (role) => {
-      const r = await api.previewAs(role);
       qc.clear();
       setUser(r.user);
     },

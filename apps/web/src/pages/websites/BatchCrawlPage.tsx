@@ -88,7 +88,7 @@ export default function BatchCrawlPage() {
               <div className="flex flex-wrap items-end gap-3 border-t border-line pt-4">
                 <Field label="Crawl type" htmlFor="batch-type">
                   <Select id="batch-type" value={type} onChange={(e) => setType(e.target.value as BatchCrawlType)}>
-                    <option value="smart">Smart crawl (up to 1,000 priority pages each)</option>
+                    <option value="smart">Smart crawl (up to 10,000 priority pages each)</option>
                     <option value="full">Full crawl (every page)</option>
                   </Select>
                 </Field>

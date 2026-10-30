@@ -30,7 +30,7 @@ async function setup(env: Record<string, string> = {}) {
   site = await startFixtureSite();
   container = await createContainer({
     env: loadEnv({
-      NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'v'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: site.origin, CRAWLER_REQUEST_DELAY_MS: '0',
+      NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'v'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: site.origin, CRAWLER_REQUEST_DELAY_MS: '0',
       CRAWLER_RETRIES: '0', ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password, CHANGE_SNAPSHOT_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-capture-')),
       CHANGE_CAPTURE_MAX_HEIGHT: '2000', ...env,
     }),

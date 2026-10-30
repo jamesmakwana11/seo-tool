@@ -85,7 +85,7 @@ export function createTaskService(ctx: Ctx) {
         creatorId: actor.id, creatorName: actor.name, createdAt: now, updatedAt: now, dueAt: issue.slaDueAt, progress: 0, estimatedHours: fc.effortHours,
         actualHours: 0, acceptanceCriteria: fc.acceptanceCriteria, comments: [], blockers: [], evidence: [], verification: [], activity: [],
         assignmentHistory: [{ at: now, byId: actor.id, byName: actor.name, toTeam: team }], relatedIssueIds: issue.childIssueIds ?? [], reopenCount: 0,
-        source: issue.source === 'demo' ? 'demo' : 'live',
+        source: issue.source === 'sample' ? 'sample' : 'live',
       };
       act(t, actor, 'created', `Task created from Fix Card ${issue.id} — allocated to ${TEAMS[team].name}${automatic ? ' (automatic: Critical unallocated past threshold, PDF §12.4)' : ''}. Priority ${t.priority} (from ${issue.severity}); due ${t.dueAt} (SLA).`);
       await r.tasks.insert(t);
@@ -199,8 +199,8 @@ export function createTaskService(ctx: Ctx) {
       const base = { id: await r.verifications.nextId('VER'), taskId: t.id, issueId: issue?.id ?? '-', at: iso(), triggeredBy: actor.id };
       if (!issue || !check) {
         attempt = { ...base, method: 'manual_attestation', outcome: 'pending_data', checkedUrls: 0, failingUrls: 0, details: 'Task has no linked check — verify manually and record an attestation.', source: 'live' };
-      } else if (issue.source === 'demo') {
-        attempt = { ...base, method: 'automated_recrawl', outcome: 'pending_data', checkedUrls: 0, failingUrls: 0, details: `Issue ${issue.id} is DEMO data — its URLs were never crawled, so there is nothing real to re-check. Status stays FIXED.`, source: 'live' };
+      } else if (issue.source === 'sample') {
+        attempt = { ...base, method: 'automated_recrawl', outcome: 'pending_data', checkedUrls: 0, failingUrls: 0, details: `Issue ${issue.id} is sample data — its URLs were never crawled, so there is nothing real to re-check. Status stays FIXED.`, source: 'live' };
       } else {
         const cv = ctx.reverifier.canVerify(issue.checkId);
         if (!cv.ok) {

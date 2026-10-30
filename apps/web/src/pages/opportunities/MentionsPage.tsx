@@ -2,7 +2,7 @@ import type { BrandMention } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, DemoBadge, EmptyState, Notice, PageHeader, Select, Stat, type Tone } from '@/components/ui/primitives';
+import { Async, Badge, EmptyState, Notice, PageHeader, Select, Stat, type Tone } from '@/components/ui/primitives';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ChipGroup, ClearFilters, useUrlFilters } from '@/components/ui/filters';
 import { SourceBadge } from '@/components/domain/badges';
@@ -31,7 +31,6 @@ export default function MentionsPage() {
       <PageHeader
         title="Unlinked brand mentions"
         description='New mentions of "DeoDap" across the web and news that do not link to deodap.in, queued for link-reclamation outreach (PDF §7.1 brand-mention monitor).'
-        meta={<DemoBadge />}
       />
       <Async q={q} rows={8}>{(rows) => <Body rows={rows} />}</Async>
     </div>
@@ -79,7 +78,7 @@ function Body({ rows }: { rows: BrandMention[] }) {
 
   return (
     <div className="space-y-5">
-      <Notice tone="demo" demoData>Mentions are DEMO data. Live monitoring needs a brand-mention source (Ahrefs/Semrush alerts or a news API). Sentinel never contacts sites itself — outreach is done by the SEO team.</Notice>
+      <Notice tone="caution">Live monitoring needs a brand-mention source (Ahrefs/Semrush alerts or a news API). Sentinel never contacts sites itself — outreach is done by the SEO team.</Notice>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {(Object.keys(STATUS) as BrandMention['status'][]).map((s) => <Stat key={s} label={STATUS[s].label} value={rows.filter((m) => m.status === s).length} tone={s === 'new' ? 'signal' : s === 'reclaimed' ? 'ok' : undefined} />)}
       </div>

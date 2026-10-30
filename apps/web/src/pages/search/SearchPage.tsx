@@ -4,7 +4,7 @@ import { AlertCircle, BookOpen, FileText, LayoutGrid, ListChecks, Search, User, 
 import type { SearchResult } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
-import { Async, Button, DemoBadge, EmptyState, Input, PageHeader, Panel } from '@/components/ui/primitives';
+import { Async, Button, EmptyState, Input, PageHeader, Panel } from '@/components/ui/primitives';
 
 const KIND_ORDER: SearchResult['kind'][] = ['screen', 'issue', 'page', 'employee', 'check', 'brief'];
 const KIND: Record<SearchResult['kind'], { label: string; icon: LucideIcon }> = {
@@ -34,7 +34,7 @@ export default function SearchPage() {
 
   return (
     <div>
-      <PageHeader title="Search" description="Screens, issues, site pages, people, checks and content briefs for the selected website." meta={<DemoBadge />} />
+      <PageHeader title="Search" description="Screens, issues, site pages, people, checks and content briefs for the selected website." />
       <form onSubmit={submit} role="search" className="mb-5 flex max-w-2xl gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-faint" aria-hidden />

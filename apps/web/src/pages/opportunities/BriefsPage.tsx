@@ -5,7 +5,7 @@ import type { ContentBrief } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiMutation, useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Button, DemoBadge, EmptyState, Field, Input, PageHeader } from '@/components/ui/primitives';
+import { Async, Button, EmptyState, Field, Input, PageHeader } from '@/components/ui/primitives';
 import { Dialog } from '@/components/ui/overlay';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ChipGroup, ClearFilters, useUrlFilters } from '@/components/ui/filters';
@@ -26,7 +26,6 @@ export default function BriefsPage() {
       <PageHeader
         title="Content briefs"
         description="Briefs generated from approved keyword gaps, PAA gaps, citation gaps and the seasonal planner — target keyword, cluster, intent, suggested URL and type, outline, entities, FAQs and internal links (PDF §13)."
-        meta={<DemoBadge />}
         actions={
           <Button variant="primary" icon={<Plus className="h-4 w-4" />} disabled={!allowed} title={allowed ? undefined : 'Your role does not have permission to manage opportunities (opportunities.manage).'} onClick={() => setCreating(true)}>
             New brief

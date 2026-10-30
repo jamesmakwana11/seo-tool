@@ -1,11 +1,11 @@
 import { createHmac } from 'node:crypto';
 import path from 'node:path';
-import { DEMO_WEBSITE_ID, defaultConfig, setPriorityConfig } from '@sentinel/shared';
+import { ADMIN_PERMISSIONS, ALL_PERMISSIONS, PRIMARY_WEBSITE_ID, defaultConfig, setPriorityConfig, type Role } from '@sentinel/shared';
 import type { Env } from './config/env';
 import { createLogger, type Logger } from './lib/logger';
 import { hashPassword, passwordPolicyError, randomToken } from './lib/passwords';
 import { createInMemoryRepositories } from './repositories/memory/inMemory';
-import { seedDemoData } from './repositories/seedDemo';
+import { seedTestFixtures } from './repositories/seedFixtures';
 import type { Persistence } from './repositories/postgres/persistence';
 import type { Repositories } from './repositories/types';
 import { createCrawlEngine, type CrawlEngineOptions } from './crawler/engine';
@@ -61,19 +61,19 @@ export async function createContainer(o: ContainerOptions) {
   const env = o.env;
   const log = o.log ?? createLogger(env.LOG_LEVEL);
   const clock = o.clock ?? (() => new Date());
-  const scope = o.scope ?? DEMO_WEBSITE_ID;
+  const scope = o.scope ?? PRIMARY_WEBSITE_ID;
   // With a database: a website that already has data is loaded as it is — never re-seeded or reset at start-up.
   const fresh = o.repos ? false : o.persistence ? !(await o.persistence.hasData(scope)) : true;
   const repos = o.repos ?? (o.persistence ? await o.persistence.repositories(scope, clock()) : createInMemoryRepositories(clock()));
-  let seeded: Awaited<ReturnType<typeof seedDemoData>> | undefined;
-  if (fresh && env.SEED_DEMO_DATA) seeded = await seedDemoData(repos, clock());
+  let seeded: Awaited<ReturnType<typeof seedTestFixtures>> | undefined;
+  if (fresh && env.SEED_TEST_FIXTURES) seeded = await seedTestFixtures(repos, clock());
   if (!o.repos && !fresh && env.CRAWLER_BASE_URL) {
     // The primary website's address comes from the server configuration (CRAWLER_BASE_URL).
     const cfg = await repos.config.get();
     if (cfg.site.baseUrl !== env.CRAWLER_BASE_URL) await repos.config.set({ ...cfg, site: { ...cfg.site, baseUrl: env.CRAWLER_BASE_URL } });
   }
-  if (fresh && !env.SEED_DEMO_DATA) {
-    // Clean live start: real configuration with the crawler pointed at CRAWLER_BASE_URL; no DEMO records.
+  if (fresh && !env.SEED_TEST_FIXTURES) {
+    // Clean live start: real configuration with the crawler pointed at CRAWLER_BASE_URL; no sample records.
     const cfg = defaultConfig(clock());
     if (env.CRAWLER_BASE_URL) cfg.site.baseUrl = env.CRAWLER_BASE_URL;
     await repos.config.set(cfg);
@@ -88,9 +88,43 @@ export async function createContainer(o: ContainerOptions) {
     if (missing.length) await repos.config.set({ ...cfg, thresholds: { ...Object.fromEntries(missing.map((k) => [k, def[k]])), ...cfg.thresholds } });
   }
   setPriorityConfig(await repos.config.get());
+  let upgradedRoles = false;
+  {
+    // Super Admin role (added Oct 2026): a stored matrix from before it gets the role, and Admin is limited to the
+    // Overview and SEO operations sections (the old Admin rights move to Super Admin). Runs once.
+    const matrix = await repos.permissions.get();
+    upgradedRoles = !matrix.super_admin;
+    if (upgradedRoles) await repos.permissions.set({ ...matrix, super_admin: [...ALL_PERMISSIONS], admin: [...ADMIN_PERMISSIONS] });
+  }
   if (!o.repos && env.ADMIN_EMAIL && env.ADMIN_INITIAL_PASSWORD && (await repos.employees.count()) === 0) {
     await bootstrapAdmin(repos, env, clock());
-    log.info({ email: env.ADMIN_EMAIL }, 'created the first admin account from ADMIN_EMAIL (password from ADMIN_INITIAL_PASSWORD — change it after first sign-in)');
+    log.info({ email: env.ADMIN_EMAIL }, 'created the first account (Super Admin) from ADMIN_EMAIL (password from ADMIN_INITIAL_PASSWORD — change it after first sign-in)');
+  }
+  if (!o.repos && env.ADMIN_EMAIL) {
+    // The ADMIN_EMAIL account of a server started before the Super Admin role keeps full access: it becomes Super Admin
+    // when no Super Admin exists yet.
+    const all = await repos.employees.list();
+    const owner = all.find((e) => e.email.toLowerCase() === env.ADMIN_EMAIL!.trim().toLowerCase());
+    if (owner && owner.role === 'admin' && !all.some((e) => e.role === 'super_admin')) {
+      await repos.employees.update({ ...owner, role: 'super_admin' });
+      log.info({ employeeId: owner.id }, 'the ADMIN_EMAIL account is now the Super Admin');
+    }
+  }
+  if (upgradedRoles) {
+    // Upgrade without ADMIN_EMAIL: the oldest active Admin becomes Super Admin, so someone can still manage the team.
+    const all = await repos.employees.list();
+    const oldest = all.filter((e) => e.role === 'admin' && e.status === 'active').sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+    if (oldest && !all.some((e) => e.role === 'super_admin')) {
+      await repos.employees.update({ ...oldest, role: 'super_admin' });
+      log.info({ employeeId: oldest.id }, 'the oldest active Admin is now the Super Admin');
+    }
+  }
+  if (!o.repos && env.SITE_ADMIN_EMAIL && env.SITE_ADMIN_INITIAL_PASSWORD) {
+    const created = await provisionAccount(repos, env, clock(), { email: env.SITE_ADMIN_EMAIL, password: env.SITE_ADMIN_INITIAL_PASSWORD, name: env.SITE_ADMIN_NAME ?? 'Admin', role: 'admin' });
+    if (created) {
+      log.info({ email: env.SITE_ADMIN_EMAIL }, 'created the Admin account from SITE_ADMIN_EMAIL (Overview and SEO operations only)');
+      if (passwordPolicyError(env.SITE_ADMIN_INITIAL_PASSWORD)) log.warn('SITE_ADMIN_INITIAL_PASSWORD is shorter or simpler than the password rule (10+ characters with letters and numbers): change it after the first sign-in');
+    }
   }
 
   const fetchImpl = o.fetchImpl;
@@ -124,7 +158,7 @@ export async function createContainer(o: ContainerOptions) {
   /** Which engine runs a plan: re-verification → built-in; otherwise CRAWLER_ENGINE (auto = Go when installed). */
   const goInstalled = () => { const b = goEngine.binaries(); return !!b.crawler.path && !b.crawler.problem; };
   // An injected fetch (tests with a simulated network) can only drive the built-in crawler.
-  const pick = (type?: string) => (type === 'reverify' || fetchImpl || env.CRAWLER_ENGINE === 'node' || (env.CRAWLER_ENGINE === 'auto' && !goInstalled()) ? 'node' : 'go');
+  const pick = (type?: string) => (type === 'reverify' || type === 'sync' || fetchImpl || env.CRAWLER_ENGINE === 'node' || (env.CRAWLER_ENGINE === 'auto' && !goInstalled()) ? 'node' : 'go');
   const engine: CrawlEngine = o.engine ?? {
     readiness: () => (pick() === 'go' ? goEngine.readiness() : baseEngine.readiness()),
     async run(plan, cb) {
@@ -134,7 +168,7 @@ export async function createContainer(o: ContainerOptions) {
       Object.assign(engineOpts.thresholds, cfg.thresholds);
       if (pick(plan.type) === 'go') return goEngine.run(plan, cb);
       const out = await baseEngine.run(plan, cb);
-      const warn = plan.type !== 'reverify' && env.CRAWLER_ENGINE === 'auto'
+      const warn = plan.type !== 'reverify' && plan.type !== 'sync' && env.CRAWLER_ENGINE === 'auto'
         ? [{ code: 'node_engine', message: `The Go crawler is not installed on this server (${goEngine.binaries().crawler.problem ?? 'not found'}), so the built-in Node.js crawler ran. It keeps every page in memory and is not suited to very large sites.`, at: clock().toISOString() }]
         : undefined;
       return { ...out, stats: { ...out.stats, engine: 'node', ...(warn ? { warnings: warn } : {}) } };
@@ -225,7 +259,8 @@ export async function createContainer(o: ContainerOptions) {
     collector: baseEngine.collector, userAgent: engineOpts.userAgent, latestRow: (u) => crawls.latestRow(u),
     shopifyChangedSince: (since) => shopify.changedSince(since),
     crawlRunning: async () => (await repos.crawls.list()).some((c) => c.status === 'running' || c.status === 'queued'),
-    maxChecks: env.MONITOR_MAX_CHECKS, intervalMinutes: env.MONITOR_INTERVAL_MINUTES,
+    latestCompleteRun: () => crawls.latestCompleteRun(), rowsOf: (id) => crawls.rowsOf(id), startSync: (actor, input) => crawls.startSync(actor, input),
+    maxChecks: env.MONITOR_MAX_CHECKS, intervalMinutes: env.MONITOR_INTERVAL_MINUTES, maxSyncUrls: env.SYNC_MAX_URLS, schedulerEnabled: env.SCHEDULER_ENABLED,
   });
   const scheduler = createScheduler({ ctx, crawls, issues, reports, monitor });
   schedulerRef = scheduler;
@@ -238,7 +273,7 @@ export async function createContainer(o: ContainerOptions) {
   await refreshVerifierInputs();
 
   const crawlerReady = engine.readiness();
-  log.info({ storage: repos.storage.kind, demoSeed: seeded ?? false, crawler: crawlerReady }, 'container ready');
+  log.info({ storage: repos.storage.kind, testFixtures: seeded ?? false, crawler: crawlerReady }, 'container ready');
   // Say at start-up (in the server log) why live crawling will be refused, so a missing setting is not found only in the UI.
   if (!o.repos && !crawlerReady.ready) log.warn({ reason: crawlerReady.reason }, 'live crawling is not available for the primary website');
   return {
@@ -253,7 +288,7 @@ export async function createContainer(o: ContainerOptions) {
 }
 export type Container = Awaited<ReturnType<typeof createContainer>>;
 
-/** Creates the first live admin on a clean start (no DEMO seed), so a production server is usable without preview accounts. */
+/** Creates the first live admin on a clean start (no test dataset), so a production server is usable without preview accounts. */
 async function bootstrapAdmin(repos: Repositories, env: Env, now: Date) {
   const password = env.ADMIN_INITIAL_PASSWORD!;
   const weak = passwordPolicyError(password);
@@ -261,11 +296,31 @@ async function bootstrapAdmin(repos: Repositories, env: Env, now: Date) {
   const email = env.ADMIN_EMAIL!.trim().toLowerCase();
   const id = await repos.employees.nextId('EMP', 3);
   await repos.employees.insert({
-    id, name: env.ADMIN_NAME ?? 'Administrator', email, role: 'admin', teamIds: [], title: 'Administrator', status: 'active',
+    id, name: env.ADMIN_NAME ?? 'Administrator', email, role: 'super_admin', teamIds: [], title: 'Super Admin', status: 'active',
     capacityHoursPerWeek: 40, createdAt: now.toISOString(), source: 'live',
   });
   // Same salt at every start (keyed with SESSION_SECRET): sessions signed before a restart stay valid after it.
   const fixedSalt = env.SESSION_SECRET ? createHmac('sha256', env.SESSION_SECRET).update(`admin-salt:${email}`).digest('hex').slice(0, 32) : undefined;
   const { hash, salt } = await hashPassword(password, fixedSalt);
   await repos.credentials.insert({ id: email, employeeId: id, hash, salt, updatedAt: now.toISOString() });
+}
+
+/**
+ * Creates an account from server configuration when no employee has this email (an existing account is never changed).
+ * The password is hashed with the same scheme as every other account and never logged. Returns true when created.
+ */
+async function provisionAccount(repos: Repositories, env: Env, now: Date, a: { email: string; password: string; name: string; role: Role }) {
+  const email = a.email.trim().toLowerCase();
+  if ((await repos.employees.list()).some((e) => e.email.toLowerCase() === email) || (await repos.credentials.get(email))) return false;
+  if (a.password.length < 8) throw new Error('SITE_ADMIN_INITIAL_PASSWORD must have at least 8 characters.');
+  const id = await repos.employees.nextId('EMP', 3);
+  await repos.employees.insert({
+    id, name: a.name, email, role: a.role, teamIds: [], title: 'Admin', status: 'active', capacityHoursPerWeek: 40, createdAt: now.toISOString(), source: 'live',
+  });
+  // Same salt at every start (keyed with SESSION_SECRET): without a database the account is re-created at each start,
+  // and sessions signed before the restart stay valid.
+  const fixedSalt = env.SESSION_SECRET ? createHmac('sha256', env.SESSION_SECRET).update(`account-salt:${email}`).digest('hex').slice(0, 32) : undefined;
+  const { hash, salt } = await hashPassword(a.password, fixedSalt);
+  await repos.credentials.insert({ id: email, employeeId: id, hash, salt, updatedAt: now.toISOString() });
+  return true;
 }

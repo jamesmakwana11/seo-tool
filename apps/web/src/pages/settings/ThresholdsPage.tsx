@@ -4,7 +4,7 @@ import { SCORE_MODULE_LABELS, type FestivalEntry, type PageTier, type ScoreModul
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
 import { useAuth } from '@/auth/AuthContext';
-import { Async, Badge, Button, Checkbox, DemoBadge, IconButton, Input, Notice, PageHeader, Select, Toggle } from '@/components/ui/primitives';
+import { Async, Badge, Button, Checkbox, IconButton, Input, Notice, PageHeader, Select, Toggle } from '@/components/ui/primitives';
 import { ConfigSection, NumberField, OriginTag, StringListEditor, humanizeKey } from '@/components/settings/ConfigSection';
 import { fmtDateTime } from '@/lib/format';
 
@@ -17,7 +17,7 @@ export default function ThresholdsPage() {
       <PageHeader
         title="Thresholds & scoring"
         description="The threshold configuration file (PDF §17) — severity cutoffs, tier definitions, SLA days and scoring — editable by the SEO lead without code changes. Values not given in the PDF are placeholders until the kickoff workshop (PDF p22)."
-        meta={<><DemoBadge />{q.data && <span className="text-xs text-muted">Last updated {fmtDateTime(q.data.updatedAt)} IST by {q.data.updatedBy}</span>}</>}
+        meta={<>{q.data && <span className="text-xs text-muted">Last updated {fmtDateTime(q.data.updatedAt)} IST by {q.data.updatedBy}</span>}</>}
       />
       <Async q={q} rows={12}>{(c) => <Sections c={c} />}</Async>
     </div>
@@ -26,7 +26,7 @@ export default function ThresholdsPage() {
 
 function Sections({ c }: { c: SentinelConfig }) {
   const { can, user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const edit = can('settings.manage');
   const nav = [
     ['tiers', 'Page tiers'], ['sla', 'SLA'], ['escalation', 'Escalation'], ['scoring', 'Scoring'], ['thresholds', 'Check thresholds'], ['automation', 'Automation'],
@@ -115,7 +115,7 @@ function Sections({ c }: { c: SentinelConfig }) {
               <div key={i} className="flex flex-wrap items-center gap-2">
                 <Input aria-label={`Competitor ${i + 1} name`} placeholder="Name" value={x.name} disabled={d} onChange={(e) => set(v.map((y, j) => (j === i ? { ...y, name: e.target.value } : y)))} className="w-44" />
                 <Input aria-label={`Competitor ${i + 1} domain`} placeholder="domain.in" value={x.domain} disabled={d} onChange={(e) => set(v.map((y, j) => (j === i ? { ...y, domain: e.target.value } : y)))} className="w-56 font-mono" />
-                {x.domain.endsWith('.example') && <Badge tone="demo">Placeholder</Badge>}
+                {x.domain.endsWith('.example') && <Badge tone="caution">Placeholder</Badge>}
                 {!d && <IconButton label={`Remove competitor ${x.name || i + 1}`} onClick={() => set(v.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></IconButton>}
               </div>
             ))}

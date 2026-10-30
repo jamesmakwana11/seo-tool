@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Plug, Radar, ScanSearch } from 'lucide-react';
 import { useWebsites } from '@/websites/WebsiteContext';
 import { LoadingBlock } from '@/components/ui/primitives';
-import { API_MODE } from '@/api/client';
 
 /**
  * Screens that report a score or pass/fail results (dashboard, health, audit modules, reports) only render for a website
@@ -27,7 +26,6 @@ export function NoAuditData() {
         <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">
           <span className="font-mono text-ink-soft">{current.domain}</span> was added on this workspace but has not been crawled, so there is no health score,
           no findings and nothing to report. Scores and pass/fail results appear only after a real crawl completes.
-          {API_MODE === 'mock' && ' This review build runs in the browser and cannot crawl — simulated crawls never produce findings.'}
         </p>
         <ol className="mt-6 grid gap-3 sm:grid-cols-2">
           <li>

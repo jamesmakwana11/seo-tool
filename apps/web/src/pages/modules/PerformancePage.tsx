@@ -58,7 +58,7 @@ function CwvPanels() {
           </div>
         </div>
         <div className="mt-4">
-          <Notice tone="demo" title="Requires the PageSpeed Insights / CrUX API key">Both field and lab figures come from Google's PSI and CrUX APIs. Until the key is configured in Integrations, values on this screen are DEMO samples. <PanelLink to="/settings/integrations">Integrations</PanelLink></Notice>
+          <Notice tone="caution" title="Requires the PageSpeed Insights / CrUX API key">Both field and lab figures come from Google's PSI and CrUX APIs. Until the key is configured in Integrations, this screen has no live values. <PanelLink to="/settings/integrations">Integrations</PanelLink></Notice>
         </div>
       </Panel>
     </div>

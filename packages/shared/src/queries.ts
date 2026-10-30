@@ -45,7 +45,7 @@ export interface SentinelView {
   criticalAlerts: { id: string; type: string; title: string; at: string; issueId?: string }[];
   audit: AuditLogEntry[];
   competitors: { domain: string; name: string; visibility: number[]; cwv: string; referringDomains: number; contentVelocity: number; source: DataSource }[];
-  /** Which external sources are live. Missing/false ⇒ figures shown are DEMO or unavailable. */
+  /** Which external sources are live. Missing/false ⇒ figures shown are sample or unavailable. */
   liveSources: Partial<Record<'gsc' | 'ga4' | 'crux' | 'backlinks' | 'ai_engines' | 'crawler' | 'shopify' | 'gbp', boolean>>;
 }
 
@@ -120,13 +120,13 @@ export function openLoadByIssues(issues: Issue[]): Record<TeamId, number> {
 function sourceNotes(v: SentinelView): string[] {
   const notes: string[] = [];
   const names: Record<string, string> = { gsc: 'Google Search Console', ga4: 'GA4', crux: 'PageSpeed/CrUX', backlinks: 'Ahrefs/Semrush', ai_engines: 'AI engine APIs', crawler: 'Site crawler', shopify: 'Shopify Admin', gbp: 'Google Business Profile' };
-  const demo = v.issues.some((i) => i.source === 'demo');
-  for (const [k, label] of Object.entries(names)) if (!v.liveSources[k as keyof SentinelView['liveSources']]) notes.push(`${label} not connected — ${demo ? 'related figures are DEMO sample data' : 'no data for this website yet'}.`);
+  const sample = v.issues.some((i) => i.source === 'sample');
+  for (const [k, label] of Object.entries(names)) if (!v.liveSources[k as keyof SentinelView['liveSources']]) notes.push(`${label} not connected — ${sample ? 'related figures are sample data' : 'no data for this website yet'}.`);
   return notes;
 }
 
 export function buildDashboard(v: SentinelView, now: Date): DashboardData {
-  const health = computeHealthScore(v.issues, v.siteSize, v.config, now, v.liveSources.crawler ? 'live' : 'demo');
+  const health = computeHealthScore(v.issues, v.siteSize, v.config, now, v.liveSources.crawler || !v.issues.some((i) => i.source === 'sample') ? 'live' : 'sample');
   const modules: AuditModule[] = ['technical', 'performance', 'content', 'onpage', 'offpage', 'aeo', 'geo', 'ai_compliance'];
   const open = v.issues.filter((i) => isIssueOpen(i.status) && i.issueClass !== 'opportunity');
   const issueCounts = modules.map((m) => ({
@@ -169,16 +169,16 @@ const UNAVAILABLE_WITHOUT: Partial<Record<string, string>> = {
   gsc: 'Google Search Console', ga4: 'GA4', crux: 'CrUX', psi: 'PageSpeed Insights', backlinks: 'Ahrefs/Semrush', gbp: 'Google Business Profile', ai_engines: 'AI engine APIs', llm: 'LLM provider', google_docs_feed: 'Google documentation feed', renderer: 'headless renderer', shopify: 'Shopify Admin API',
 };
 
-export function buildModuleData(v: SentinelView, module: AuditModule, now: Date, demoMode: boolean): ModuleData {
+export function buildModuleData(v: SentinelView, module: AuditModule, now: Date, sampleMode: boolean): ModuleData {
   const issues = v.issues.filter((i) => i.module === module && i.status !== 'SUPERSEDED');
   const checks = CHECKS.filter((c) => c.module === module).map((c) => {
     const mine = issues.filter((i) => i.checkId === c.id && isIssueOpen(i.status));
     const needs = c.dataSources.filter((d) => d !== 'crawler' && !(v.liveSources as Record<string, boolean>)[d === 'psi' ? 'crux' : d === 'llm' || d === 'google_docs_feed' || d === 'renderer' ? 'none' : d]);
-    const unavailable = !demoMode && needs.length > 0 && !c.crawlerEvaluable;
+    const unavailable = !sampleMode && needs.length > 0 && !c.crawlerEvaluable;
     // A check that never runs must never show "Pass": not-built checks and crawler checks before the first live crawl say so.
     const notBuilt = CHECKS_NOT_BUILT[c.id];
     const crawlerCheck = c.crawlerEvaluable || c.dataSources.includes('crawler');
-    const awaitingCrawl = !demoMode && crawlerCheck && !notBuilt && !v.liveSources.crawler;
+    const awaitingCrawl = !sampleMode && crawlerCheck && !notBuilt && !v.liveSources.crawler;
     const lastStatus: ModuleData['checks'][number]['lastStatus'] = mine.some((i) => i.severity === 'critical') ? 'fail' : mine.length ? 'warn'
       : notBuilt ? 'not_built' : unavailable ? 'unavailable' : awaitingCrawl ? 'awaiting_crawl'
       : c.issueClass === 'opportunity' || c.issueClass === 'metric' || c.issueClass === 'report' ? 'not_run' : 'pass';
@@ -188,17 +188,18 @@ export function buildModuleData(v: SentinelView, module: AuditModule, now: Date,
   const scoreMod = module === 'content' || module === 'ai_compliance' ? 'content_ai' : module;
   const h = computeHealthScore(v.issues, v.siteSize, v.config, now);
   void MODULE_LABELS;
-  return { module, score: h.modules.find((m) => m.module === scoreMod)?.score, checks, issues, dataNotes: demoMode ? ['DEMO data: check results are sample findings, not a live crawl.'] : sourceNotes(v) };
+  return { module, score: h.modules.find((m) => m.module === scoreMod)?.score, checks, issues, dataNotes: sampleMode ? ['sample data: check results are sample findings, not a live crawl.'] : sourceNotes(v) };
 }
 
 // ------------------------------------------------------------------ reports
 
 function reportMeta(kind: ReportMeta['kind'], start: Date, end: Date, v: SentinelView, now: Date, deliveries: DeliveryAttempt[]): ReportMeta {
-  const src = (k: keyof SentinelView['liveSources'], name: string) => ({ name, state: v.liveSources[k] ? ('live' as const) : ('demo' as const) });
+  const sample = v.issues.some((i) => i.source === 'sample');
+  const src = (k: keyof SentinelView['liveSources'], name: string) => ({ name, state: v.liveSources[k] ? ('live' as const) : sample ? ('sample' as const) : ('missing' as const) });
   const sources = [src('crawler', 'Site crawler'), src('gsc', 'Google Search Console'), src('ga4', 'GA4'), src('crux', 'PageSpeed/CrUX'), src('backlinks', 'Ahrefs/Semrush'), src('ai_engines', 'AI engines'), src('shopify', 'Shopify')];
   return {
     id: `${kind.toUpperCase()}-${end.toISOString().slice(0, 10)}`, kind, periodStart: start.toISOString().slice(0, 10), periodEnd: end.toISOString().slice(0, 10), generatedAt: now.toISOString(),
-    sources, dataNotes: sources.filter((s) => s.state !== 'live').map((s) => `${s.name}: not connected — section uses DEMO sample data or is unavailable.`),
+    sources, dataNotes: sources.filter((s) => s.state !== 'live').map((s) => `${s.name}: not connected — ${s.state === 'sample' ? 'section uses sample data' : 'this section has no data until it is connected'}.`),
     deliveries,
   };
 }
@@ -289,7 +290,7 @@ export function buildMonthlyReport(v: SentinelView, now: Date): MonthlyReport {
       `Ship the top ${Math.min(3, v.briefs.length)} approved content briefs before the next seasonal window.`,
       'Connect missing data sources (see report notes) so next month\'s report uses live data.',
     ],
-    evidenceBasis: `Issue counts generated from ${v.audit.length} audit-log entries (issue.detected / verification.run). ${gscLive ? '' : 'Organic clicks shown are DEMO sample data (GSC not connected); revenue and YoY require GA4 and ≥12 months of history.'}`,
+    evidenceBasis: `Issue counts generated from ${v.audit.length} audit-log entries (issue.detected / verification.run). ${gscLive ? '' : 'Organic clicks need Google Search Console (not connected); revenue and YoY require GA4 and ≥12 months of history.'}`,
   };
 }
 

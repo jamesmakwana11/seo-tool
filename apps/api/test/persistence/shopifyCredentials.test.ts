@@ -25,7 +25,7 @@ async function boot(url: string) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-shopify-db-'));
   const mock = createMockShopify();
   const env = loadEnv({
-    NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'db-session-secret-value-for-shopify-test', LOG_LEVEL: 'silent',
+    NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'db-session-secret-value-for-shopify-test', LOG_LEVEL: 'silent',
     ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password, CRAWLER_BASE_URL: STOREFRONT, CRAWLER_ALLOW_LIVE: 'true',
     CHANGE_SNAPSHOT_DIR: path.join(tmp, 'changes'), CRAWLER_WORK_DIR: path.join(tmp, 'work'), DATABASE_URL: url,
   });

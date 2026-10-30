@@ -18,7 +18,7 @@ async function setup(env: Record<string, string> = {}) {
   const site = await startFixtureSite();
   const container = await createContainer({
     env: loadEnv({
-      NODE_ENV: 'test', SEED_DEMO_DATA: 'false', SESSION_SECRET: 'q'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: site.origin,
+      NODE_ENV: 'test', SEED_TEST_FIXTURES: 'false', SESSION_SECRET: 'q'.repeat(40), LOG_LEVEL: 'silent', CRAWLER_BASE_URL: site.origin,
       ADMIN_EMAIL: ADMIN.email, ADMIN_INITIAL_PASSWORD: ADMIN.password, LIGHTHOUSE_CHROME_FLAGS: '--no-sandbox', ...env,
     }),
   });
