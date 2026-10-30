@@ -20,7 +20,7 @@ export async function seedDemoData(repos: Repositories, now = new Date()): Promi
     await repos.credentials.insert({ id: e.email.toLowerCase(), employeeId: e.id, hash, salt, updatedAt: now.toISOString() });
   }
   await all(repos.sitePages, s.catalog.pages);
-  await all(repos.pageTexts, s.pageTexts.map((p) => ({ ...p, id: p.url, source: 'demo' as const })));
+  await all(repos.pageTexts, s.pageTexts.map((p) => ({ ...p, id: p.url, source: 'sample' as const })));
   await all(repos.issues, s.issues);
   await all(repos.groups, s.groups);
   await all(repos.exclusions, s.exclusions);
@@ -42,7 +42,7 @@ export async function seedDemoData(repos: Repositories, now = new Date()): Promi
   await all(repos.prospects, s.prospects);
   await all(repos.disavow, s.disavow);
   await repos.metrics.set({
-    source: 'demo', siteSize: s.siteSize, healthHistory: s.healthHistory, cwv: s.cwv, indexation: s.indexation, visibility: s.visibility,
+    source: 'sample', siteSize: s.siteSize, healthHistory: s.healthHistory, cwv: s.cwv, indexation: s.indexation, visibility: s.visibility,
     aiTrend: s.aiTrend, aiPrompts: s.aiPrompts, backlinks: s.backlinks, refTrend: s.refTrend, competitors: s.competitors, localHealth: s.localHealth,
     striking: s.striking, ctrRewrites: s.ctrRewrites, clusters: s.clusters, contentScores: s.contentScores, criticalAlerts: s.criticalAlerts, errors: s.errors,
   });
