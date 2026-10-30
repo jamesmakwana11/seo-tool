@@ -66,6 +66,21 @@ describe('role-based access: Admin and Super Admin', () => {
     expect(emp.body[0].email).toBeUndefined();
   });
 
+  it('allows a role manager to read the permission matrix without granting employee-directory access', async () => {
+    const { h } = await setup();
+    const matrix = await h.container.repos.permissions.get();
+    matrix.seo_specialist = matrix.seo_specialist
+      .filter((p) => p !== 'employees.view')
+      .concat('roles.manage');
+    await h.container.repos.permissions.set(matrix);
+
+    const seoManager = h.as(await h.token(FIXTURE.seoLead));
+    expect((await seoManager.get('/api/employees')).status).toBe(403);
+    const permissions = await seoManager.get('/api/permissions');
+    expect(permissions.status).toBe(200);
+    expect(permissions.body.seo_specialist).toContain('roles.manage');
+  });
+
   it('keeps Super Admin from losing permissions or demoting themself', async () => {
     const { superAdmin } = await setup();
     const m = (await superAdmin.get('/api/permissions')).body;

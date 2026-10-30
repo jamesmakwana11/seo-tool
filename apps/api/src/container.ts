@@ -56,7 +56,7 @@ export interface ContainerOptions {
   scope?: string;
 }
 
-/** Composition root: wires repositories (in-memory, Phase 2) → adapters → services. No storage implementation leaks into services. */
+/** Composition root: wires PostgreSQL-backed or in-memory repositories → adapters → services. No storage implementation leaks into services. */
 export async function createContainer(o: ContainerOptions) {
   const env = o.env;
   const log = o.log ?? createLogger(env.LOG_LEVEL);

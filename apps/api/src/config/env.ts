@@ -45,8 +45,8 @@ const schema = z.object({
 
   // Production hosting
   /**
-   * The only storage implementation is TEMPORARY in-memory (no database has been authorized). In production the server
-   * refuses to start unless this is explicitly true, so nobody deploys it believing data is persisted.
+   * Explicitly allow temporary in-memory storage without DATABASE_URL. Production-only staging/pilot escape hatch;
+   * all saved data is lost on restart. Production should use PostgreSQL via DATABASE_URL.
    */
   ALLOW_EPHEMERAL_STORAGE: bool(false),
   /** First account (Super Admin), created on a clean start when no employees exist. The password is read once, hashed, never logged. */

@@ -20,13 +20,13 @@ One container runs everything: the Express API serves the built React app from t
 | Scheduler | in the API process | Off unless `SCHEDULER_ENABLED=true`: daily smart crawl 02:00 IST, weekly full crawl, 00:30 IST escalations, 08:00 IST digest |
 | Health | `GET /healthz` (liveness), `GET /api/health` (storage + crawler readiness) | |
 
-Because data and the scheduler live in one process, run **exactly one always-on instance** (no autoscaling, no
-spin-down-when-idle tier: an idle shutdown erases data and skips scheduled crawls).
+Because the scheduler and background jobs live in one process, run **exactly one always-on instance** (no autoscaling,
+no spin-down-when-idle tier: an idle shutdown pauses scheduled crawls and background jobs; PostgreSQL preserves saved data).
 
 ## Recommended platform
 
 Any Docker host with HTTPS, env vars and a managed PostgreSQL offering works. Recommended: **Render** (Docker web
-service, Singapore region for India, managed PostgreSQL available later in the same region). Equivalent alternatives:
+service and managed PostgreSQL database, both in the Singapore region for India). Equivalent alternatives:
 Railway, Fly.io, Google Cloud Run (min-instances=1, max-instances=1, CPU always allocated).
 
 Service requirements: 1 instance, ~0.5 vCPU / 512 MB RAM is enough for full crawls of 50,000+ pages (measured: peak
@@ -45,16 +45,16 @@ crashing the service.
 1. Push this repository to GitHub (the `Dockerfile` is at the repo root).
 2. Render → New → Web Service → connect the repo → Runtime **Docker**, region **Singapore**, an always-on paid
    instance type, instances = 1, health check path `/healthz`.
-3. Add the environment variables below (mark secrets as secret). Do not add `DATABASE_URL` — it is not used yet.
+3. Create a Render PostgreSQL database in the same region as the web service. Copy its **Internal Database URL** into the web service as `DATABASE_URL` (secret). Add the remaining required environment variables below. Do not use `ALLOW_EPHEMERAL_STORAGE=true` for production: it disables durable storage and all data is lost on restart.
 4. Deploy. Render builds the image and gives you `https://<service>.onrender.com`.
 5. Verify:
    ```bash
    curl -s https://<service>.onrender.com/healthz            # {"ok":true}
-   curl -s https://<service>.onrender.com/api/health          # storage.kind = "in_memory", crawler readiness
+   curl -s https://<service>.onrender.com/api/health          # storage.kind = "postgres", crawler readiness
    cd apps/web && npx playwright install chromium             # once, locally
    BASE_URL=https://<service>.onrender.com ADMIN_EMAIL=… ADMIN_PASSWORD=… node e2e/prod-smoke.mjs
    ```
-6. Sign in with `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD`, change the password under Profile, then invite people.
+6. Sign in with `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD`, change the password under Profile, then invite people. Verify `/api/health` reports PostgreSQL storage before adding production data.
    (Invitation and reset emails are only sent when SMTP is configured.)
 7. Optional custom domain: add it in Render, create the CNAME at your DNS provider, then set `APP_BASE_URL` to it.
 

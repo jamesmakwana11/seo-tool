@@ -321,7 +321,7 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
   add({ method: 'get', path: '/api/employees', permission: 'employees.view', description: 'Employees (with issues.view only: names and roles for the issue board)', handle: (req) => admin.listEmployees(actorOf(req)) });
   add({ method: 'post', path: '/api/employees', permission: 'employees.manage', description: 'Invite an employee', handle: (req) => admin.createEmployee(actorOf(req), req.body) });
   add({ method: 'patch', path: '/api/employees/:id', permission: 'employees.manage', description: 'Update an employee', handle: (req) => admin.updateEmployee(actorOf(req), prm(req, 'id'), req.body ?? {}) });
-  add({ method: 'get', path: '/api/permissions', permission: 'employees.view', description: 'Permission matrix', handle: (req) => admin.getPermissionMatrix(actorOf(req)) });
+  add({ method: 'get', path: '/api/permissions', permission: 'roles.manage', description: 'Permission matrix', handle: (req) => admin.getPermissionMatrix(actorOf(req)) });
   add({ method: 'put', path: '/api/permissions', permission: 'roles.manage', description: 'Update the permission matrix', handle: (req) => admin.updatePermissionMatrix(actorOf(req), req.body) });
 
   // -------------------------------------------------------------- config & integrations

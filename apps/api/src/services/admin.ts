@@ -126,7 +126,7 @@ export function createAdminService(ctx: Ctx, auth: AuthService, diag: Diagnostic
       await audit(ctx, actor, 'employee.update', 'employee', id, `Updated ${next.name}`, { before, after: { role: next.role, teamIds: next.teamIds, status: next.status } });
       return next;
     },
-    async getPermissionMatrix(actor: Actor) { await need(ctx, actor, 'employees.view'); return r.permissions.get(); },
+    async getPermissionMatrix(actor: Actor) { await need(ctx, actor, 'roles.manage'); return r.permissions.get(); },
     async updatePermissionMatrix(actor: Actor, m: PermissionMatrix) {
       await need(ctx, actor, 'roles.manage');
       for (const role of Object.keys(ROLE_LABELS) as Role[]) {
