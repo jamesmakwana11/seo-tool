@@ -44,6 +44,8 @@ export function createIntegrationRegistry(deps: {
   connectors: Connector[];
   clock: () => Date;
   log: MinimalLogger;
+  /** Integrations connected on their own screen (Claude AI): their status comes from their service. */
+  external?: Partial<Record<IntegrationId, () => Promise<{ connected: boolean; lastTestAt?: string; lastTestOk?: boolean; lastTestResult?: string; model?: string; modelName?: string; canStore?: boolean; storeProblem?: string }>>>;
 }): IntegrationRegistryWithSync {
   const { env, repos, clock, log } = deps;
   const byId = new Map(deps.connectors.map((c) => [c.id, c]));
@@ -93,7 +95,25 @@ export function createIntegrationRegistry(deps: {
     return base;
   }
 
+  async function externalStatus(id: IntegrationId): Promise<IntegrationStatus | undefined> {
+    const fn = deps.external?.[id];
+    if (!fn) return undefined;
+    const entry = catalogEntry(id);
+    const s = await fn();
+    const state: IntegrationState = s.connected ? (s.lastTestOk === false ? 'connection_failed' : 'connected') : s.lastTestOk === false ? 'connection_failed' : 'not_configured';
+    const stateDetail = s.connected
+      ? s.lastTestOk === false ? `Connected, but the last call failed: ${s.lastTestResult ?? 'unknown error'}` : `Connected — model ${s.modelName ?? s.model}. The API key is stored encrypted on the server.`
+      : s.storeProblem ?? (s.lastTestResult && s.lastTestOk === false ? s.lastTestResult : 'Not connected — enter an Anthropic API key below and choose a model.');
+    return {
+      id, name: entry.name, category: entry.category, usedFor: entry.usedFor, accessNeeded: entry.accessNeeded, costNote: entry.costNote,
+      state, stateDetail: redact(stateDetail, secrets()), envVars: [], configuredVars: [], lastTestAt: s.lastTestAt, lastTestResult: s.lastTestResult,
+      dependentFeatures: entry.dependentFeatures, settings: {},
+    };
+  }
+
   async function status(id: IntegrationId): Promise<IntegrationStatus> {
+    const ext = await externalStatus(id);
+    if (ext) return ext;
     const settings = (await repos.integrationSettings.get(id))?.settings ?? {};
     const { entry, envVars, optional, set, provided, missing, connector } = varsFor(id, settings);
     const stored = (await repos.integrationTests.get(id)) as StoredIntegrationTest | undefined;
@@ -167,6 +187,7 @@ export function createIntegrationRegistry(deps: {
     },
 
     async test(id) {
+      if (deps.external?.[id]) throw new ApiError(400, 'USE_OWN_TEST', 'Test this integration with its own Test connection button (it uses the key entered there).');
       const settings = (await repos.integrationSettings.get(id))?.settings ?? {};
       const { connector, missing } = varsFor(id, settings);
       if (!connector) throw new ApiError(400, 'NO_CONNECTOR', `No connector is available for ${id}.`);
@@ -234,6 +255,7 @@ export function createIntegrationRegistry(deps: {
 
     async isConnected(id) {
       const s = await status(id);
+      if (deps.external?.[id]) return s.state === 'connected';
       if (s.state !== 'connected' && s.state !== 'partial' && s.state !== 'sync_failed') return false;
       const t = await repos.integrationTests.get(id);
       return t?.ok === true;

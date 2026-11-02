@@ -17,6 +17,7 @@ Shopify connection and SEO editor: `docs/SHOPIFY_SEO_EDITOR.md`.
 Change Monitor (crawl-to-crawl changes, screenshots, rendered HTML / CSS / JS / theme source differences): `docs/CHANGE_MONITOR.md`.
 Website sync (Sync Now, Auto Sync every 12 hours — crawl only new and changed pages after the first crawl): `docs/WEBSITE_SYNC.md`.
 Roles (Super Admin: every section; Admin: Overview and SEO operations): `docs/ROLES.md`.
+AI SEO suggestions with Claude and Fix All across every field: `docs/AI_SEO.md`.
 Run locally with live crawling: `LOCAL_CRAWLING.md`. Deployment (Docker, env vars, production checks, PostgreSQL status): `DEPLOYMENT.md`.
 
 Status documents: `FEATURE_TRACEABILITY.md` (generated: `npm run traceability`), `FRONTEND_STATUS.md`, `BACKEND_STATUS.md`.

@@ -7,7 +7,7 @@
  * Nothing here talks to Shopify; the service reads the resource, calls these, and writes only after confirmation.
  */
 import { load } from 'cheerio';
-import { assessSeoField, DEFAULT_SEO_GUIDELINES, isAllCaps, type CrawledUrl, type FieldAssessment, type H1SourceReport, type SeoFieldType, type SeoGuidelines, type ShopifyFieldDraft, type ShopifyFieldSuggestion, type ShopifyFieldValidation, type ShopifyResourceKind } from '@sentinel/shared';
+import { assessSeoField, DEFAULT_SEO_GUIDELINES, generatesDescription, isAllCaps, type CrawledUrl, type FieldAssessment, type H1SourceReport, type SeoFieldType, type SeoGuidelines, type ShopifyFieldDraft, type ShopifyFieldSuggestion, type ShopifyFieldValidation, type ShopifyResourceKind } from '@sentinel/shared';
 import { mutationFor, type ShopifyResource } from './resources';
 
 /** Length and wording guidelines (Settings → Thresholds & scoring). */
@@ -27,6 +27,8 @@ export interface DraftContext {
   limits?: Limits;
   /** Important keywords of the store (Settings): a suggestion never drops one that is in the current value. */
   keywords?: string[];
+  /** Another product / collection uses the same description text (found by Fix All's catalog scan). */
+  descriptionDuplicate?: boolean;
 }
 
 // ---------------------------------------------------------------------------------------------- text helpers
@@ -363,7 +365,8 @@ export function buildFields(c: DraftContext): ShopifyFieldDraft[] {
   const descText = descriptionText(res.bodyHtml) || descriptionText(res.summaryHtml ?? '');
   const fields: ShopifyFieldDraft[] = [];
   /** A field with its assessment and suggestion; high-confidence suggestions are pre-selected, others shown for review. */
-  const push = (key: string, current: string, sug: ShopifyFieldSuggestion | undefined, assessment: FieldAssessment | undefined, hint?: string) => {
+  const push = (key: string, current: string, sug0: ShopifyFieldSuggestion | undefined, assessment: FieldAssessment | undefined, hint?: string) => {
+    const sug = sug0 ? { ...sug0, source: sug0.source ?? ('rules' as const), ...(assessment?.target && !sug0.target ? { target: assessment.target } : {}) } : undefined;
     const changed = !!sug && !sug.keep && norm(sug.value) !== norm(current);
     const value = changed ? sug!.value : current;
     fields.push({
@@ -407,17 +410,24 @@ export function buildFields(c: DraftContext): ShopifyFieldDraft[] {
   // ---- tags (products, articles): duplicates and blanks removed; never adds tags
   if (res.kind === 'product' || res.kind === 'article') {
     const cur = (res.tags ?? []).join(', ');
-    const a = assessSeoField('tags', (res.tags ?? []).join(','), { guidelines: L });
+    const a = assessSeoField('tags', (res.tags ?? []).join(','), { guidelines: L, pageType: res.kind });
     push('tags', cur, suggestTags(res.tags ?? [], a), a);
   }
-  // ---- description / content: extra H1s demoted to H2
+  // ---- description / content: judged as text (missing, thin, duplicated…); extra H1s demoted to H2. A new description
+  // is written only by the AI writer (rules never invent product text); without it, thin descriptions need a person.
   {
     const cur = res.bodyHtml;
     const bodyH1 = bodyHeadings(cur).filter((h) => h.level === 1).length;
     const themeH1 = c.pageH1s.length - bodyH1 > 0 || c.h1Basis === 'none';
     const proposed = bodyH1 && themeH1 ? demoteBodyH1(cur) : undefined;
     const reason = `${bodyH1} H1 in the ${res.kind === 'product' || res.kind === 'collection' ? 'description' : 'content'} while the theme already prints an H1 — demoted to H2. Text unchanged.`;
-    push('bodyHtml', cur, proposed ? { value: proposed, reason, keep: false, confidence: 'high' } : undefined, undefined,
+    const a = assessSeoField('description', htmlToText(cur, { skipHeadings: false }), { guidelines: L, pageType: res.kind, duplicate: c.descriptionDuplicate, title: res.title });
+    const needsText = generatesDescription(res.kind) && a.verdict !== 'good';
+    const sug: ShopifyFieldSuggestion | undefined = proposed
+      ? { value: proposed, reason, keep: false, confidence: 'high', purpose: 'h1_demotion' }
+      : needsText ? NEEDS_PERSON(cur, `${a.problems.filter((p) => p.severity !== 'note').map((p) => p.message).join(' ')} Connect Claude AI (Settings → Integrations) to get a description written from the product’s content, or write one here.`)
+        : a.verdict === 'good' && generatesDescription(res.kind) ? KEEP(cur, 'The description is fine — keep it.') : undefined;
+    push('bodyHtml', cur, sug, generatesDescription(res.kind) ? a : undefined,
       'Edit headings (H2/H3) and add internal links (<a href="/collections/…">) here. Only links to this site are expected.');
   }
   if (res.kind === 'article') push('summaryHtml', res.summaryHtml ?? '', undefined, undefined);

@@ -19,11 +19,11 @@ Nothing has been run against deodap.in or any live third-party API: no credentia
 | NOT STARTED | 2 |
 | IN PROGRESS | 0 |
 | IMPLEMENTED | 14 |
-| TESTED | 228 |
+| TESTED | 229 |
 | BLOCKED | 2 |
-| PARTIAL | 87 |
+| PARTIAL | 89 |
 | REMOVED | 2 |
-| **Total requirements** | **335** |
+| **Total requirements** | **338** |
 
 Status meanings: **TESTED** = implemented and covered by an automated test or recorded verification (evidence column cites it).
 **IMPLEMENTED** = code exists and works in the app, not covered by a dedicated automated test. **PARTIAL** = some of the requirement
@@ -440,6 +440,14 @@ the owner's request. Sample data (test fixtures only) never counts as "connected
 | CUS-SYNC-03 | owner request | Sync Now button | /crawls, Dashboard | POST /api/monitor/run | Admin, SEO | P2 | **TESTED** | POST /api/monitor/run; 409 NO_BASELINE_CRAWL before the first crawl — API monitor |  |
 | CUS-SYNC-04 | owner request | Auto Sync every 12 hours with on/off, last and next sync time, sync history | /crawls Website sync | PATCH /api/monitor/settings, scheduler | Admin | P2 | **TESTED** | Due 12 hours after the last sync / crawl; toggle off and on; last and next sync in the status — API monitor "every 12 hours" |  |
 | CUS-SYNC-05 | owner request | Production-only application: no sample-data labels, sample data, mock mode or role preview outside the test suites | all screens | env, auth | Admin, SEO, Dev (view) | P2 | **TESTED** | Fixtures load only under NODE_ENV=test — API production; no preview sign-in — API auth; web app http-only |  |
+
+## Owner request · AI SEO suggestions, Fix All, Claude AI
+
+| ID | Source | Requirement | Frontend | API / service | Roles | Phase | Status | Evidence / test | Dependency / blocker |
+|---|---|---|---|---|---|---|---|---|---|
+| CUS-AI-01 | owner request | AI SEO suggestions from page / product / collection / image context with field-specific length targets (SEO title ~50–60, meta ~140–160; own rules for title, description, alt text, tags); keep good values; current, proposed, count, range, reason shown | SEO editor, SEO Optimization, Fix All | ai/seoWriter, shopify/aiDraft | Admin, SEO | P2 | **PARTIAL** | Targets, checks, corrective retry, review fallback, keep-good, image attached for alt text — API ai/claude-seo against a mock Anthropic API | Not verified against the live Anthropic API (no key provided); quality of real model output to be reviewed on real products |
+| CUS-AI-02 | owner request | Fix All covers title, description, SEO title, meta description, H1, image alt text and tags; counts before applying; exclusions; batched, verified writes | Fix All dialog | shopify/bulk | Admin, SEO | P2 | **TESTED** | All fields by default; catalog scan finds products outside the crawl; duplicate descriptions get unique suggestions; selected changes verified after writing — API ai/claude-seo, shopify/bulk-fix |  |
+| CUS-AI-03 | owner request | Claude AI integration: key entered in the app, stored encrypted, model choice, test / connect / disconnect / status; used for suggestions and Fix All | /settings/integrations | /api/ai/claude* | Admin | P2 | **PARTIAL** | Connect / test / model / disconnect; key encrypted, never returned or logged; Admin and SEO Specialist refused — API ai/claude-seo (mock Anthropic API) | Not verified against the live Anthropic API — needs a key |
 
 ## Prompt §2/§7/§9/§14 · Documentation, process & database gate
 

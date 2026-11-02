@@ -131,6 +131,14 @@ export interface ShopifyFieldSuggestion {
   keep: boolean;
   /** high: safe to apply in bulk; review: changes wording — a person should look at it first. */
   confidence: 'high' | 'review';
+  /** ai: written by the connected AI model from the page's content; rules: built from the page's existing text. */
+  source?: 'ai' | 'rules';
+  /** The AI model that wrote it (source ai). */
+  model?: string;
+  /** The length a value should aim for (from the assessment), shown next to the character count. */
+  target?: [number, number];
+  /** Content field (bodyHtml): a new description, or only extra H1s demoted to H2. */
+  purpose?: 'description' | 'h1_demotion';
 }
 
 export type H1Source = 'title' | 'body' | 'theme' | 'unknown';
@@ -187,6 +195,8 @@ export interface ShopifyDraft {
   h1: H1SourceReport;
   /** Things the editor cannot change through the API (theme work) and other notes. */
   notes: string[];
+  /** Whether the suggestions were written by the connected AI model, and why not where not. */
+  ai?: { used: boolean; model?: string; note?: string; generated?: number; failed?: number; errorCode?: string };
   status: 'draft' | 'applied' | 'partial' | 'failed';
   result?: ShopifyApplyResult;
 }
@@ -268,10 +278,10 @@ export interface ShopifyThemeProposal {
 // ------------------------------------------------------------------------------------------ bulk SEO fixes
 
 /** Field groups a bulk fix can change. links = internal links in the description / content HTML. */
-export type SeoBulkField = 'seoTitle' | 'seoDescription' | 'title' | 'h1' | 'imageAlt' | 'tags' | 'links';
+export type SeoBulkField = 'seoTitle' | 'seoDescription' | 'title' | 'description' | 'h1' | 'imageAlt' | 'tags' | 'links';
 
 export const SEO_BULK_FIELD_LABELS: Record<SeoBulkField, string> = {
-  seoTitle: 'SEO titles', seoDescription: 'Meta descriptions', title: 'Titles', h1: 'H1 headings', imageAlt: 'Image alt text', tags: 'Tags', links: 'Internal links',
+  seoTitle: 'SEO titles', seoDescription: 'Meta descriptions', title: 'Titles', description: 'Descriptions', h1: 'H1 headings', imageAlt: 'Image alt text', tags: 'Tags', links: 'Internal links',
 };
 
 export interface SeoBulkStartInput {
@@ -297,6 +307,10 @@ export interface SeoBulkChange {
   included: boolean;
   /** review: wording changes a person should check — not selected until someone selects it. */
   confidence: 'high' | 'review';
+  /** Who wrote the proposed value: the AI model, or rules reusing the page's own text. */
+  source?: 'ai' | 'rules';
+  /** Target length (characters; tags: number of tags) the value aims for. */
+  target?: [number, number];
   result?: { status: 'verified' | 'applied_unverified' | 'failed' | 'conflict' | 'skipped'; message?: string; after?: string };
 }
 
@@ -347,6 +361,8 @@ export interface SeoBulkJob {
   scan: { pagesScanned: number; candidates: number; capped: boolean; cap: number };
   summary: { pages: number; changes: number; selectedPages: number; selectedChanges: number; reviewChanges: number; byField: Partial<Record<SeoBulkField, { pages: number; changes: number }>>; manual: number };
   manual: SeoBulkManual[];
+  /** AI suggestions in this job: the model used, how many fields it wrote, and why it was not used where it was not. */
+  ai?: { provider: 'claude' | null; model?: string; generated: number; failed: number; note?: string };
   result?: {
     finishedAt: string;
     verified: number;
@@ -409,7 +425,7 @@ export interface SeoOptimizationRow {
   editable: boolean;
   /** Why it cannot be fixed here (homepage, pagination URL, theme H1…). */
   manualReason?: string;
-  suggestion?: { value: string; reason: string; keep: boolean; confidence: 'high' | 'review' } | null;
+  suggestion?: { value: string; reason: string; keep: boolean; confidence: 'high' | 'review'; source?: 'ai' | 'rules'; model?: string; target?: [number, number] } | null;
   /** Why no suggestion (Shopify not connected, resource not found…). */
   suggestionNote?: string;
 }

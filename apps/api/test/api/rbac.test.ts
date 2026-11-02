@@ -75,7 +75,10 @@ describe('role-based access: Admin and Super Admin', () => {
     await h.container.repos.permissions.set(matrix);
 
     const seoManager = h.as(await h.token(FIXTURE.seoLead));
-    expect((await seoManager.get('/api/employees')).status).toBe(403);
+    // No employee directory: only the names and roles the issue board shows.
+    const directory = await seoManager.get('/api/employees');
+    expect(directory.status).toBe(200);
+    expect(directory.body[0].email).toBeUndefined();
     const permissions = await seoManager.get('/api/permissions');
     expect(permissions.status).toBe(200);
     expect(permissions.body.seo_specialist).toContain('roles.manage');

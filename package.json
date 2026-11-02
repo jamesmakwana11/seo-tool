@@ -2,7 +2,7 @@
   "name": "deodap-seo-sentinel",
   "private": true,
   "version": "0.1.0",
-  "description": "DeoDap SEO Sentinel — daily SEO audit, recommendation and task-operations platform (internal).",
+  "description": "DeoDap SEO Sentinel \u2014 daily SEO audit, recommendation and task-operations platform (internal).",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -15,13 +15,14 @@
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "traceability": "tsx tools/traceability/generate.mjs",
-    "build:prod": "npm run build:http -w @sentinel/web && npm run build -w @sentinel/api",
+    "build:prod": "node tools/remove-obsolete-files.mjs && npm run build:http -w @sentinel/web && npm run build -w @sentinel/api",
     "start": "node apps/api/dist/server.js",
     "dev:web:http": "npm run dev:http -w @sentinel/web",
     "dev:api:env": "npm run dev:env -w @sentinel/api",
     "start:api:env": "npm run start:env -w @sentinel/api",
     "build:native": "node tools/build-native.mjs",
-    "test:native": "node tools/build-native.mjs --test"
+    "test:native": "node tools/build-native.mjs --test",
+    "clean:obsolete": "node tools/remove-obsolete-files.mjs"
   },
   "engines": {
     "node": ">=20.12"

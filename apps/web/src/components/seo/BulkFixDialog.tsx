@@ -168,14 +168,36 @@ export function BulkFixDialog({ start, title, onClose }: { start?: SeoBulkStartI
 
 function Summary({ job }: { job: SeoBulkJob }) {
   const s = job.summary;
+  const byField = Object.entries(s.byField) as [SeoBulkField, { pages: number; changes: number }][];
   return (
-    <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="bulk-summary">
-      <Fig k="Pages to fix" v={s.pages} />
-      <Fig k="Changes selected" v={s.selectedChanges} sub={`of ${s.changes}`} />
-      <Fig k="To review first" v={s.reviewChanges} sub="wording changes, not selected" />
-      <Fig k="Need a person" v={s.manual} sub="see the list below" />
-    </dl>
+    <div className="space-y-2">
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="bulk-summary">
+        <Fig k="Pages to fix" v={s.pages} />
+        <Fig k="Changes selected" v={s.selectedChanges} sub={`of ${s.changes}`} />
+        <Fig k="To review first" v={s.reviewChanges} sub="wording changes, not selected" />
+        <Fig k="Need a person" v={s.manual} sub="see the list below" />
+      </dl>
+      {byField.length > 0 && (
+        <p className="text-xs text-muted" data-testid="bulk-by-field">
+          Affected: {byField.map(([f, v]) => `${SEO_BULK_FIELD_LABELS[f]} — ${v.changes} field${v.changes === 1 ? '' : 's'} on ${v.pages} page${v.pages === 1 ? '' : 's'}`).join(' · ')}
+        </p>
+      )}
+      {job.ai && (
+        <p className={`text-xs ${job.ai.provider && !job.ai.note ? 'text-muted' : 'text-med-ink'}`} data-testid="bulk-ai">
+          {job.ai.provider ? `Suggestions written by Claude (${job.ai.model}): ${job.ai.generated} field(s)${job.ai.failed ? `, ${job.ai.failed} could not be written` : ''}. ` : ''}{job.ai.note ?? ''}
+        </p>
+      )}
+    </div>
   );
+}
+
+const textOf = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+/** Character count (tags: number of tags) against the target the suggestion aims for. */
+function Length({ c }: { c: SeoBulkItem['changes'][number] }) {
+  const n = c.field === 'tags' ? c.proposed.split(',').filter((t) => t.trim()).length : (c.key === 'bodyHtml' ? textOf(c.proposed) : c.proposed).length;
+  const unit = c.field === 'tags' ? 'tags' : 'chars';
+  const off = c.target && (n < c.target[0] || (c.key !== 'bodyHtml' && n > c.target[1]));
+  return <span className={`tabular-nums ${off ? 'text-med-ink' : 'text-muted'}`}>{n} {unit}{c.target ? ` · target ${c.target[0]}–${c.target[1]}` : ''}</span>;
 }
 
 function Fig({ k, v, sub }: { k: string; v: number; sub?: string }) {
@@ -226,12 +248,18 @@ function ItemRow({ it, editable, onSelect }: { it: SeoBulkItem; editable: boolea
                   <span className="font-medium">{c.label}</span>
                   {c.problems.map((p) => <Badge key={p} tone="med">{p}</Badge>)}
                   {c.confidence === 'review' && <Badge tone="signal">Review wording</Badge>}
+                  {c.source === 'ai' && <Badge tone="opp" title="Written by Claude from the page’s content">Claude</Badge>}
                   {c.result && <Badge tone={RESULT_TONE[c.result.status]}>{RESULT_LABEL[c.result.status]}</Badge>}
                 </div>
                 {c.key !== 'bodyHtml' ? (
                   <div className="grid gap-1 sm:grid-cols-2">
-                    <p className="break-words text-ink-soft"><span className="text-muted">Now: </span>{c.current || <em className="text-faint">empty</em>}</p>
-                    <p className="break-words text-ink"><span className="text-muted">New: </span>{c.proposed}</p>
+                    <p className="break-words text-ink-soft"><span className="text-muted">Now: </span>{c.current || <em className="text-faint">empty</em>}<span className="block text-muted tabular-nums">{c.field === 'tags' ? `${c.current.split(',').filter((t) => t.trim()).length} tags` : `${c.current.length} chars`}</span></p>
+                    <p className="break-words text-ink"><span className="text-muted">New: </span>{c.proposed}<span className="block"><Length c={c} /></span></p>
+                  </div>
+                ) : c.field === 'description' ? (
+                  <div className="grid gap-1 sm:grid-cols-2">
+                    <p className="break-words text-ink-soft"><span className="text-muted">Now: </span>{textOf(c.current).slice(0, 300) || <em className="text-faint">empty</em>}<span className="block text-muted tabular-nums">{textOf(c.current).length} chars</span></p>
+                    <p className="break-words text-ink"><span className="text-muted">New: </span>{textOf(c.proposed).slice(0, 400)}{textOf(c.proposed).length > 400 ? '…' : ''}<span className="block"><Length c={c} /></span></p>
                   </div>
                 ) : <p className="text-ink-soft">Content HTML changed (text kept).</p>}
                 <p className="text-muted">{c.reason}</p>

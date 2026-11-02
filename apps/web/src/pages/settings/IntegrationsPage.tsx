@@ -10,6 +10,7 @@ import { errorMessage, useApiMutation, useApiQuery, useSiteKey } from '@/api/hoo
 import { useAuth } from '@/auth/AuthContext';
 import { Async, Badge, Button, Field, IconButton, Input, KV, Mono, Notice, PageHeader, Panel, Select } from '@/components/ui/primitives';
 import { IntegrationStateBadge } from '@/components/settings/ConfigSection';
+import { ClaudeCard } from '@/components/settings/ClaudeCard';
 import { fmtDateTime } from '@/lib/format';
 
 const CATEGORY_LABEL: Record<IntegrationStatus['category'], string> = {
@@ -29,8 +30,8 @@ export default function IntegrationsPage() {
         description="Data sources and delivery channels Sentinel needs (PDF §15, notification adapters per prompt §5.16). Each card says what it powers, what access to request, and which server environment variables to set."
       />
       <div className="space-y-5">
-        <Notice tone="signal" icon={<KeyRound className="h-4 w-4" />} title="Secrets never go through the browser">
-          API keys, tokens and passwords are set as environment variables on the API server only. This screen shows variable <em>names</em> and whether they are set — never values. The settings editor accepts non-secret options only and rejects anything that looks like a key, token or password. An integration is shown as “Connected” only after a successful connection test from the server.
+        <Notice tone="signal" icon={<KeyRound className="h-4 w-4" />} title="Secrets are never shown in the browser">
+          Most API keys, tokens and passwords are set as environment variables on the API server: this screen shows variable <em>names</em> and whether they are set — never values. The settings editor accepts non-secret options only. Claude AI is the exception: its API key is entered on its card once, stored encrypted on the server and never shown again. An integration is shown as “Connected” only after a successful connection test from the server.
         </Notice>
         <Async q={q} rows={8}>
           {(list) => {
@@ -42,7 +43,7 @@ export default function IntegrationsPage() {
               <>
                 <p className="text-sm text-muted"><span className="font-semibold tabular-nums text-ink">{connected}</span> of {list.length} connected</p>
                 <div className="grid grid-cols-1 gap-5 xl:grid-cols-2" data-testid="primary-integrations">
-                  {primary.map((i) => <IntegrationCard key={i.id} i={i} />)}
+                  {primary.map((i) => (i.id === 'claude' ? <ClaudeCard key={i.id} i={i} /> : <IntegrationCard key={i.id} i={i} />))}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
                   <label htmlFor="more-integrations" className="text-sm font-medium text-ink">More integrations</label>

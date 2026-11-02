@@ -81,10 +81,11 @@ describe('bulk SEO fixes', () => {
     const byUrl = Object.fromEntries(it.map((x) => [new URL(x.url).pathname, x]));
     // The chopper: SEO title (too long, theme suffix counted), meta description (missing), image alt, extra H1 in the description.
     const chopper = byUrl['/products/vegetable-chopper'];
-    expect(chopper.changes.map((c) => c.key).sort()).toEqual(['bodyHtml', 'imageAlt:gid://shopify/MediaImage/501', 'seoDescription', 'seoTitle', 'title']);
+    // Fix All covers every field: the duplicate tag is removed too.
+    expect(chopper.changes.map((c) => c.key).sort()).toEqual(['bodyHtml', 'imageAlt:gid://shopify/MediaImage/501', 'seoDescription', 'seoTitle', 'tags', 'title']);
     // The H1 is the 92-character product title: a shortened wording is listed for review, not selected.
     expect(chopper.changes.find((c) => c.key === 'title')).toMatchObject({ field: 'h1', included: false, confidence: 'review' });
-    expect(chopper.changes.filter((c) => c.included).map((c) => c.key).sort()).toEqual(['bodyHtml', 'imageAlt:gid://shopify/MediaImage/501', 'seoDescription', 'seoTitle']);
+    expect(chopper.changes.filter((c) => c.included).map((c) => c.key).sort()).toEqual(['bodyHtml', 'imageAlt:gid://shopify/MediaImage/501', 'seoDescription', 'seoTitle', 'tags']);
     const title = chopper.changes.find((c) => c.key === 'seoTitle')!;
     expect(title.proposed.length + ' – DeoDap Test'.length).toBeLessThanOrEqual(60);
     expect(title.reason).toMatch(/theme adds/);
@@ -155,7 +156,7 @@ describe('bulk SEO fixes', () => {
     expect(done.result!.issues.find((x) => x.issueId === 'ISS-B1')!.outcome).toBe('resolved');
     expect((await h.c.repos.issues.get('ISS-B3'))!.status).toBe('NEW');
     expect((await h.c.repos.issues.get('ISS-B2'))!.status).toBe('NEW');
-  });
+  }, 20_000); // the 429 retry waits for Shopify's backoff
 
   it('fixes from the Issues board: eligible issues mapped to fields, the rest explained', async () => {
     const r = await h.seo.post('/api/seo/bulk-fix', { scope: 'issues' });

@@ -214,6 +214,10 @@ export const REQUIREMENTS = [
   R('CUS-SYNC-03', 'owner request', 'Sync Now button', '/crawls, Dashboard', 'POST /api/monitor/run', ADS, 'P2'),
   R('CUS-SYNC-04', 'owner request', 'Auto Sync every 12 hours with on/off, last and next sync time, sync history', '/crawls Website sync', 'PATCH /api/monitor/settings, scheduler', ADM, 'P2'),
   R('CUS-SYNC-05', 'owner request', 'Production-only application: no sample-data labels, sample data, mock mode or role preview outside the test suites', 'all screens', 'env, auth', ALL, 'P2'),
+  // ================================================================ CUSTOM — AI suggestions (owner request, Nov 2026)
+  R('CUS-AI-01', 'owner request', 'AI SEO suggestions from page / product / collection / image context with field-specific length targets (SEO title ~50–60, meta ~140–160; own rules for title, description, alt text, tags); keep good values; current, proposed, count, range, reason shown', 'SEO editor, SEO Optimization, Fix All', 'ai/seoWriter, shopify/aiDraft', ADS, 'P2'),
+  R('CUS-AI-02', 'owner request', 'Fix All covers title, description, SEO title, meta description, H1, image alt text and tags; counts before applying; exclusions; batched, verified writes', 'Fix All dialog', 'shopify/bulk', ADS, 'P2'),
+  R('CUS-AI-03', 'owner request', 'Claude AI integration: key entered in the app, stored encrypted, model choice, test / connect / disconnect / status; used for suggestions and Fix All', '/settings/integrations', '/api/ai/claude*', ADM, 'P2'),
   // ================================================================ CUSTOM — documentation & process
   R('CUS-DOC-01', 'prompt §2', 'FEATURE_TRACEABILITY.md with one entry per requirement', 'docs', '—', '—', 'P1'),
   R('CUS-DOC-02', 'prompt §7.4', 'FRONTEND_STATUS.md', 'docs', '—', '—', 'P1'),

@@ -179,6 +179,9 @@ function DraftEditor({ d, onApply, onClosed }: { d: ShopifyDraft; onApply: () =>
           </ul>
         )}
       </section>
+      {d.ai && (d.ai.used
+        ? <p className="text-xs text-muted" data-testid="draft-ai">Suggestions written by Claude ({d.ai.model}) from this page’s content{d.ai.generated ? ` — ${d.ai.generated} field(s)` : ''}. Every value is checked against its target length before it is offered.{d.ai.note ? ` ${d.ai.note}` : ''}</p>
+        : d.ai.note ? <Notice tone="med" title="AI suggestions not used">{d.ai.note}</Notice> : null)}
       {!!d.notes.length && <Notice tone="med" title="Needs theme work (not changed here)">{d.notes.map((n) => <p key={n}>{n}</p>)}</Notice>}
       {d.result && <ResultView d={d} />}
       <section className="space-y-4">
@@ -212,18 +215,20 @@ function FieldEditor({ f, draftId, onSave, saving }: { f: ShopifyFieldDraft; dra
           <span className="font-medium">{f.label}</span>
           <Badge tone={f.applyVia === 'theme' ? 'med' : 'neutral'} title={f.mutation}>{f.applyVia === 'theme' ? 'Theme edit' : f.mutation ?? 'Admin API'}</Badge>
           {f.source === 'suggested' && <Badge tone="signal">Suggested</Badge>}
+          {f.suggestion?.source === 'ai' && !f.suggestion.keep && <Badge tone="opp" title={`Written by Claude${f.suggestion.model ? ` (${f.suggestion.model})` : ''} from the page’s content`}>Claude</Badge>}
           {f.source === 'manual' && <Badge>Edited</Badge>}
         </div>
         {themeH1 ? <ThemeH1Button draftId={draftId} text={v} disabled={!can('shopify.theme') || !v.trim() || v === f.current} /> : <Checkbox label="Apply" checked={f.include} disabled={!changed || saving} onChange={(inc) => onSave({ include: inc })} />}
       </div>
-      {f.assessment && <Assessment a={f.assessment} />}
+      {f.assessment && <Assessment a={f.assessment} tags={f.key === 'tags'} />}
       {f.reason && <p className="mt-1 text-xs text-ink-soft">{f.reason}</p>}
       {f.suggestion && (f.suggestion.keep ? (
         <p className="mt-1 text-xs text-ok-ink" data-testid="keep-current">✓ {f.suggestion.reason}</p>
-      ) : f.suggestion.value !== v && f.suggestion.value !== f.current && !isHtml ? (
+      ) : f.suggestion.value !== v && f.suggestion.value !== f.current && (!isHtml || f.suggestion.purpose === 'description') ? (
         <div className="mt-2 rounded-ctl border border-signal/30 bg-signal-tint/40 p-2 text-xs" data-testid="suggestion">
           <div className="flex flex-wrap items-start justify-between gap-2">
-            <p className="min-w-0 break-words"><span className="font-medium">Suggested{f.suggestion.confidence === 'review' ? ' — check the wording' : ''}:</span> “{f.suggestion.value}”</p>
+            <p className="min-w-0 break-words"><span className="font-medium">Suggested{f.suggestion.confidence === 'review' ? ' — check the wording' : ''}:</span> “{isHtml ? plain(f.suggestion.value) : f.suggestion.value}”
+              <span className="ml-1 tabular-nums text-muted">({suggestionLength(f.key, f.suggestion.value)}{f.suggestion.target ? ` · target ${f.suggestion.target[0]}–${f.suggestion.target[1]}` : ''})</span></p>
             <Button size="sm" disabled={saving} onClick={() => { setV(f.suggestion!.value); onSave({ proposed: f.suggestion!.value, include: true }); }}>Use suggestion</Button>
           </div>
           <p className="mt-0.5 text-ink-soft">{f.suggestion.reason}</p>
@@ -236,7 +241,7 @@ function FieldEditor({ f, draftId, onSave, saving }: { f: ShopifyFieldDraft; dra
           <pre className={`max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-ctl border border-line bg-raised/60 p-2 text-xs ${isHtml ? 'font-mono' : 'font-sans'}`}>{f.current || <em className="text-faint">empty</em>}</pre>
         </div>
         <div>
-          <div className="mb-1 flex justify-between text-xs text-muted"><span>Proposed</span><span className="tabular-nums">{v.length} chars</span></div>
+          <div className="mb-1 flex justify-between text-xs text-muted"><span>Proposed</span><span className="tabular-nums">{suggestionLength(f.key, v)}{f.suggestion?.target ? ` · target ${f.suggestion.target[0]}–${f.suggestion.target[1]}` : ''}</span></div>
           {long ? <Textarea value={v} onChange={(e) => setV(e.target.value)} rows={isHtml ? 8 : 3} className={isHtml ? 'font-mono text-xs' : 'text-sm'} aria-label={`${f.label} proposed`} />
             : <Input value={v} onChange={(e) => setV(e.target.value)} aria-label={`${f.label} proposed`} />}
           <div className="mt-1 flex gap-2">
@@ -288,13 +293,18 @@ function ThemeH1Button({ draftId, text, disabled }: { draftId: string; text: str
   );
 }
 
+const plain = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+/** Length as the field counts it: characters (description: of its text), or the number of tags. */
+const suggestionLength = (key: string, v: string) => (key === 'tags' ? `${v.split(',').filter((t) => t.trim()).length} tags` : `${(key === 'bodyHtml' || key === 'summaryHtml' ? plain(v) : v).length} chars`);
+
 /** What is wrong with the current value (or that it is good). Notes are shown muted: no change is needed for them. */
-function Assessment({ a }: { a: NonNullable<ShopifyFieldDraft['assessment']> }) {
+function Assessment({ a, tags }: { a: NonNullable<ShopifyFieldDraft['assessment']>; tags?: boolean }) {
+  const r = a.target ?? a.range;
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1" aria-label="Assessment">
       {a.verdict === 'good' && <Badge tone="ok">Good</Badge>}
       {a.problems.map((p) => <Badge key={p.code} tone={p.severity === 'fix' ? 'crit' : p.severity === 'improve' ? 'med' : 'neutral'} title={p.message}>{SEO_PROBLEM_LABELS[p.code]}</Badge>)}
-      {a.range && <span className="text-xs text-muted">{a.length} chars · recommended {a.range[0]}–{a.range[1]}</span>}
+      {r && <span className="text-xs text-muted">{a.length} {tags ? 'tags' : 'chars'} · recommended {r[0]}–{r[1]}</span>}
     </div>
   );
 }

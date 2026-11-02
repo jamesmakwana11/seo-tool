@@ -15,7 +15,7 @@
  * Progress is reported and the job can be cancelled between resources.
  */
 import {
-  assessSeoField, CHECKS_BY_ID, isIssueOpen, SEO_BULK_FIELD_LABELS, SEO_OPTIMIZATION_FIELDS, SEO_PROBLEM_LABELS, seoGuidelinesFrom,
+  assessSeoField, CHECKS_BY_ID, generatesDescription, isIssueOpen, SEO_BULK_FIELD_LABELS, SEO_OPTIMIZATION_FIELDS, SEO_PROBLEM_LABELS, seoGuidelinesFrom,
   type CrawledUrl, type CrawlPagesQuery, type FieldAssessment, type Issue, type SeoBulkChange, type SeoBulkField, type SeoBulkIssueCheck, type SeoBulkItem,
   type SeoBulkItemsPage, type SeoBulkJob, type SeoBulkManual, type SeoBulkStartInput, type SeoGuidelines, type SeoOptimizationField,
   type SeoOptimizationPage, type SeoOptimizationQuery, type SeoOptimizationRow, type ShopifyDraft, type ShopifyFieldDraft, type ShopifyFieldValidation,
@@ -26,7 +26,8 @@ import { badRequest, conflict, ApiError } from '../lib/errors';
 import { randomToken } from '../lib/passwords';
 import { audit, type Actor, type Ctx } from '../services/context';
 import type { AdminClient } from './client';
-import { suggestTags } from './drafts';
+import { htmlToText, suggestTags } from './drafts';
+import type { AiDraftOptions } from './aiDraft';
 import { listResources, parseStorefrontPath, type ShopifyResource } from './resources';
 
 /** What the bulk fixer needs from the rest of the server (wired in the container). */
@@ -47,7 +48,7 @@ export interface BulkHelpers {
   client(): AdminClient;
   resolveUrl(url: string): Promise<{ res?: ShopifyResource; problem?: string }>;
   fetchById(c: AdminClient, kind: ShopifyResource['kind'], id: string): Promise<ShopifyResource | undefined>;
-  buildDraft(actor: Actor, res: ShopifyResource, url: string | undefined, opts?: { crawlRow?: CrawledUrl }): Promise<ShopifyDraft>;
+  buildDraft(actor: Actor, res: ShopifyResource, url: string | undefined, opts?: { crawlRow?: CrawledUrl; ai?: AiDraftOptions | false; descriptionDuplicate?: boolean; skipStorefront?: boolean }): Promise<ShopifyDraft>;
   validate(d: ShopifyDraft, f: ShopifyFieldDraft, value: string): Promise<ShopifyFieldValidation>;
   applyOne(d: ShopifyDraft, c: AdminClient, actor: Actor): Promise<ShopifyDraft>;
   lock(): boolean;
@@ -64,7 +65,11 @@ const PLAN_CONCURRENCY = 3;
 const APPLY_BATCH = 10;
 /** Checks whose findings map to fields the editor can write. */
 const CHECK_FIELDS: Record<string, SeoBulkField[]> = { 'ONP-TITLE': ['seoTitle'], 'ONP-META': ['seoDescription'], 'ONP-H1': ['h1'], 'ONP-IMAGES': ['imageAlt'], 'TECH-BROKEN-INTERNAL': ['links'] };
-const ALL_FIELDS: SeoBulkField[] = ['seoTitle', 'seoDescription', 'h1', 'imageAlt', 'links', 'title', 'tags'];
+const ALL_FIELDS: SeoBulkField[] = ['seoTitle', 'seoDescription', 'h1', 'imageAlt', 'links', 'title', 'description', 'tags'];
+/** Fields only Shopify knows (not visible in a crawl): found by reading the catalog. */
+const CATALOG_FIELDS: SeoBulkField[] = ['title', 'description', 'tags'];
+/** Products / collections / pages read per kind when scanning the catalog (50 per request). */
+export const CATALOG_SCAN_CAP = 5000;
 
 const norm = (s?: string | null) => (s ?? '').replace(/\s+/g, ' ').trim();
 const urlKey = (u: string) => { try { const x = new URL(u); x.hash = ''; let s = x.toString(); if (x.pathname !== '/' && s.endsWith('/') && !x.search) s = s.slice(0, -1); return s.toLowerCase(); } catch { return u.toLowerCase(); } };
@@ -104,15 +109,16 @@ export function assessRow(field: SeoBulkField, r: CrawledUrl, g: SeoGuidelines):
   }
 }
 
-/** Which bulk field a draft field belongs to. bodyHtml: the H1 demotion (h1) — links are planned separately. */
-function bulkFieldOf(key: string): SeoBulkField | undefined {
+/** Which bulk field a draft field belongs to. bodyHtml: a new description, or the H1 demotion (h1) — links are planned separately. */
+function bulkFieldOf(f: Pick<ShopifyFieldDraft, 'key' | 'suggestion' | 'assessment'>): SeoBulkField | undefined {
+  const key = f.key;
   if (key === 'seoTitle' || key === 'seoDescription' || key === 'title' || key === 'h1' || key === 'tags') return key;
   if (key.startsWith('imageAlt:')) return 'imageAlt';
-  if (key === 'bodyHtml') return 'h1';
+  if (key === 'bodyHtml') return f.suggestion?.purpose === 'h1_demotion' ? 'h1' : f.assessment ? 'description' : 'h1';
   return undefined;
 }
 
-interface Candidate { url: string; row?: CrawledUrl; fields: Set<SeoBulkField>; issueIds: Set<string> }
+interface Candidate { url: string; row?: CrawledUrl; fields: Set<SeoBulkField>; issueIds: Set<string>; descriptionDuplicate?: boolean }
 
 export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
   const { ctx } = h;
@@ -121,6 +127,11 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
   let job: SeoBulkJob | undefined;
   let items: SeoBulkItem[] = [];
   let running: Promise<void> | undefined;
+  /** AI use in the current job: off after the key is rejected / too many rate-limit failures. */
+  let aiOff: string | undefined;
+  let aiRateFailures = 0;
+  /** Values proposed in this job per field (normalised): the same suggestion on two pages is flagged for review. */
+  let proposedBy = new Map<string, string>();
 
   const guidelines = async () => seoGuidelinesFrom((await r.config.get()).thresholds);
   const touch = (p?: Partial<SeoBulkJob['progress']>) => { if (job) { if (p) job.progress = { ...job.progress, ...p }; job.updatedAt = iso(); } };
@@ -234,10 +245,64 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
       if (!bad.length) continue;
       const why = manualReasonFor(row.url);
       if (why) { addManual({ reason: why, detail: bad.map((f) => SEO_BULK_FIELD_LABELS[f]).join(', '), url: row.url }); continue; }
-      // Title and tags are not visible in the crawl: judged for pages planned anyway.
-      add(row.url, [...bad, ...fields.filter((f) => f === 'title' || f === 'tags')], row);
+      // Title, description and tags are not visible in the crawl: judged for pages planned anyway (and by the catalog scan).
+      add(row.url, [...bad, ...fields.filter((f) => CATALOG_FIELDS.includes(f))], row);
     }
+    if (!filtered) await scanCatalog(fields.filter((f) => CATALOG_FIELDS.includes(f)), g, add, out);
     return [...out.values()];
+  }
+
+  /**
+   * Titles, descriptions and tags live in Shopify, not in the crawl: products, collections and pages are read from the
+   * catalog (50 per request, at most CATALOG_SCAN_CAP per kind) and judged — missing, thin, too long, duplicated across
+   * the catalog, keyword-stuffed. Pages that need work become candidates (with the fields that need it).
+   */
+  async function scanCatalog(fields: SeoBulkField[], g: SeoGuidelines, add: (url: string, f: SeoBulkField[], row?: CrawledUrl) => void, out: Map<string, Candidate>) {
+    if (!fields.length || !h.connected()) return;
+    const base = await h.siteBase();
+    if (!base) return;
+    touch({ phase: 'Reading products, collections and pages in Shopify', message: undefined });
+    type Seen = { url: string; kind: ShopifyResource['kind']; title: string; desc: string; bad: Set<SeoBulkField> };
+    const seen: Seen[] = [];
+    const titleCount = new Map<string, number>();
+    const descCount = new Map<string, number>();
+    const key = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+    for (const kind of ['product', 'collection', 'page'] as const) {
+      const want = fields.filter((f) => f === 'title' || (f === 'description' && generatesDescription(kind)) || (f === 'tags' && kind === 'product'));
+      if (!want.length) continue;
+      let cursor: string | undefined;
+      let read = 0;
+      do {
+        if (job!.cancelRequested) return;
+        const page = await h.call((c) => listResources(c, kind, undefined, cursor, want.includes('description')));
+        for (const res of page.items) {
+          const desc = want.includes('description') ? htmlToText(res.bodyHtml) : '';
+          const s: Seen = { url: `${base}${res.path}`, kind, title: res.title, desc, bad: new Set() };
+          if (want.includes('title') && assessSeoField('title', res.title, { guidelines: g, pageType: kind }).verdict !== 'good') s.bad.add('title');
+          if (want.includes('description') && assessSeoField('description', desc, { guidelines: g, pageType: kind, title: res.title }).verdict !== 'good') s.bad.add('description');
+          if (want.includes('tags') && assessSeoField('tags', (res.tags ?? []).join(','), { guidelines: g, pageType: kind }).verdict !== 'good') s.bad.add('tags');
+          titleCount.set(`${kind}:${key(res.title)}`, (titleCount.get(`${kind}:${key(res.title)}`) ?? 0) + 1);
+          if (desc.length >= 40) descCount.set(key(desc).slice(0, 600), (descCount.get(key(desc).slice(0, 600)) ?? 0) + 1);
+          seen.push(s);
+        }
+        read += page.items.length;
+        job!.scan.pagesScanned += page.items.length;
+        touch({ done: job!.scan.pagesScanned });
+        cursor = page.nextCursor;
+        if (read >= CATALOG_SCAN_CAP && cursor) { job!.scan.capped = true; break; }
+      } while (cursor);
+    }
+    for (const s of seen) {
+      if (fields.includes('title') && (titleCount.get(`${s.kind}:${key(s.title)}`) ?? 0) > 1) s.bad.add('title');
+      const dupDesc = s.desc.length >= 40 && (descCount.get(key(s.desc).slice(0, 600)) ?? 0) > 1;
+      if (dupDesc && fields.includes('description') && generatesDescription(s.kind)) s.bad.add('description');
+      if (!s.bad.size) continue;
+      const why = manualReasonFor(s.url);
+      if (why) continue;
+      add(s.url, [...s.bad]);
+      const c = out.get(urlKey(s.url));
+      if (c && dupDesc) c.descriptionDuplicate = true;
+    }
   }
 
   function manualReasonForCheck(checkId: string): string {
@@ -274,13 +339,16 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
     const found = await h.resolveUrl(c.url).catch((e: Error) => ({ problem: e.message, res: undefined }));
     if (!found.res) { addManual({ reason: 'Not found in Shopify: the URL may redirect, be deleted, or belong to an app.', detail: found.problem ?? '', url: c.url }); return; }
     const res = found.res;
-    const d = await h.buildDraft(actor, res, c.url, { crawlRow: c.row });
+    const d = await h.buildDraft(actor, res, c.url, { crawlRow: c.row, ai: aiOff ? false : { only: c.fields }, descriptionDuplicate: c.descriptionDuplicate });
+    noteAi(d);
     const changes: SeoBulkChange[] = [];
     const keys = new Set<string>();
     const h1Src = d.h1.sources[0]?.source;
     for (const f of d.fields) {
-      let field = bulkFieldOf(f.key);
+      let field = bulkFieldOf(f);
       if (!field || !c.fields.has(field)) continue;
+      // The theme prints the title as the H1: one change, listed under H1 (it explains both).
+      if (f.key === 'title' && h1Src === 'title' && c.fields.has('h1') && d.fields.some((x) => x.key === 'h1' && x.applyVia === 'admin_api')) continue;
       // The H1 printed from the title is the title in Shopify: one change on the title field.
       let key = f.key;
       if (f.key === 'h1' && h1Src === 'title') key = 'title';
@@ -288,7 +356,7 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
         if (f.suggestion && !f.suggestion.keep && f.assessment?.verdict !== 'good') addManual({ reason: 'H1 printed by the theme: change it with a reviewed theme change (SEO editor → H1 → Change in theme).', detail: `“${f.current || '(no H1)'}”`, url: c.url, field: 'h1', suggestion: f.suggestion.value !== f.current ? f.suggestion.value : undefined });
         continue;
       }
-      const s = f.key === 'h1' && h1Src === 'title' ? d.fields.find((x) => x.key === 'title')?.suggestion : f.key === 'bodyHtml' ? (f.source === 'suggested' ? { value: f.proposed, reason: f.reason, keep: false, confidence: 'high' as const } : undefined) : f.suggestion;
+      const s = f.key === 'h1' && h1Src === 'title' ? d.fields.find((x) => x.key === 'title')?.suggestion : f.key === 'bodyHtml' ? (f.suggestion ?? (f.source === 'suggested' ? { value: f.proposed, reason: f.reason, keep: false, confidence: 'high' as const } : undefined)) : f.suggestion;
       if (!s || s.keep) continue; // good value: left unchanged
       if (keys.has(key)) continue;
       if (norm(s.value) === norm(f.key === 'h1' && h1Src === 'title' ? d.fields.find((x) => x.key === 'title')!.current : f.current)) {
@@ -300,9 +368,19 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
       if (!v.ok) { addManual({ reason: `Cannot be written: ${v.errors[0]}`, detail: target.label, url: c.url, field }); continue; }
       if (key === 'title' && f.key === 'h1') field = 'h1';
       keys.add(key);
+      // The same suggestion already proposed for another page: duplicates are what Fix All removes — review it.
+      let confidence = s.confidence;
+      let reason = s.reason;
+      if (field !== 'imageAlt' && field !== 'tags' && field !== 'links') {
+        const pk = `${key === 'bodyHtml' ? 'description' : key}:${(key === 'bodyHtml' ? htmlToText(s.value) : s.value).replace(/\s+/g, ' ').trim().toLowerCase()}`;
+        const other = proposedBy.get(pk);
+        if (other && other !== c.url) { confidence = 'review'; reason = `${reason} Check: the same value is suggested for ${other} — make it unique.`; }
+        else proposedBy.set(pk, c.url);
+      }
       changes.push({
-        key, field, label: key === 'title' && f.key === 'h1' ? 'H1 heading (the theme prints the title)' : key === 'bodyHtml' ? 'Extra H1 in the content → H2' : target.label, current: target.current, proposed: s.value, reason: s.reason,
-        problems: problemText(f.assessment ?? { verdict: 'good', problems: [], length: 0 }), included: s.confidence === 'high', confidence: s.confidence,
+        key, field, label: key === 'title' && f.key === 'h1' ? 'H1 heading (the theme prints the title)' : key === 'bodyHtml' ? (field === 'description' ? 'Description' : 'Extra H1 in the content → H2') : target.label, current: target.current, proposed: s.value, reason,
+        problems: problemText(f.assessment ?? { verdict: 'good', problems: [], length: 0 }), included: confidence === 'high', confidence,
+        ...(s.source ? { source: s.source } : {}), ...(s.target ? { target: s.target } : {}),
       });
     }
     if (c.fields.has('links') && c.row && (c.row.brokenLinks?.length ?? 0) > 0) {
@@ -319,6 +397,22 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
       ...(c.row?.auditScore !== undefined ? { score: { before: c.row.auditScore } } : {}),
     });
     void scope;
+  }
+
+  /** Records how a draft's suggestions were made; stops using AI for the job when it cannot work (key rejected, rate limits). */
+  function noteAi(d: ShopifyDraft) {
+    if (!job || !d.ai) return;
+    const a = (job.ai ??= { provider: d.ai.model ? 'claude' : null, generated: 0, failed: 0 });
+    if (d.ai.model) { a.provider = 'claude'; a.model = d.ai.model; }
+    a.generated += d.ai.generated ?? 0;
+    a.failed += d.ai.failed ?? 0;
+    if (!d.ai.model && d.ai.note && !a.note) a.note = d.ai.note;
+    if (d.ai.errorCode === 'auth' || d.ai.errorCode === 'permission') { aiOff = d.ai.note; a.note = `${d.ai.note} AI was turned off for the rest of this fix.`; }
+    else if (d.ai.errorCode === 'rate_limited' || d.ai.errorCode === 'overloaded') {
+      aiRateFailures++;
+      a.note = d.ai.note;
+      if (aiRateFailures >= 5) { aiOff = 'rate limit'; a.note = `Claude AI kept hitting the rate limit, so the remaining pages use rule-based suggestions. Run Fix All again later for AI suggestions on them.`; }
+    }
   }
 
   async function scan(actor: Actor, input: SeoBulkStartInput) {
@@ -371,7 +465,7 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
     const res = await h.fetchById(c, it.kind!, it.resourceId!);
     if (!res) { for (const ch of chosen) ch.result = { status: 'failed', message: `The ${it.kind} no longer exists in Shopify.` }; it.status = 'failed'; return; }
     // The live page decides where the H1 comes from now; the reviewed values decide what is written.
-    const d = await h.buildDraft(actor, res, it.url);
+    const d = await h.buildDraft(actor, res, it.url, { ai: false });
     for (const f of d.fields) f.include = false;
     for (const ch of chosen) {
       const f = d.fields.find((x) => x.key === ch.key);
@@ -488,12 +582,13 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
 
   /** Short-lived suggestions per page (a list page asks for at most 50 at a time). */
   const suggestCache = new Map<string, { at: number; d?: ShopifyDraft; problem?: string }>();
-  async function draftFor(actor: Actor, url: string, row?: CrawledUrl) {
-    const k = urlKey(url);
+  async function draftFor(actor: Actor, url: string, row: CrawledUrl | undefined, field: SeoBulkField) {
+    const k = `${field}:${urlKey(url)}`;
     const hit = suggestCache.get(k);
     if (hit && ctx.clock().getTime() - hit.at < 5 * 60_000) return hit;
     const found = await h.resolveUrl(url).catch((e: Error) => ({ problem: e.message, res: undefined }));
-    const v = found.res ? { at: ctx.clock().getTime(), d: await h.buildDraft(actor, found.res, url, { crawlRow: row }) } : { at: ctx.clock().getTime(), problem: found.problem ?? 'Not found in Shopify.' };
+    // AI (when connected) writes only this list's field.
+    const v = found.res ? { at: ctx.clock().getTime(), d: await h.buildDraft(actor, found.res, url, { crawlRow: row, ai: { only: new Set([field]) } }) } : { at: ctx.clock().getTime(), problem: found.problem ?? 'Not found in Shopify.' };
     suggestCache.set(k, v);
     if (suggestCache.size > 500) suggestCache.delete(suggestCache.keys().next().value as string);
     return v;
@@ -531,7 +626,7 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
     const g = await guidelines();
     const limit = Math.min(Math.max(Number(q.limit) || 25, 1), 50);
     const offset = Math.max(Number(q.offset) || 0, 0);
-    if (field === 'tags') return tagsList(q, g, limit);
+    if (field === 'tags') return tagsList(actor, q, g, limit);
     if (!deps) throw new ApiError(409, 'NO_CRAWL', 'Crawl data is not available on this server.');
     const src = await deps.rowsOf(q.runId);
     if (!src) return { field, total: 0, offset, limit, rows: [], counts: {}, guidelines: g, note: 'No finished crawl of this website yet. Run a crawl in the Crawl Center — the lists are built from its pages.' };
@@ -585,7 +680,7 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
       while (i < need.length) {
         const row = need[i++];
         try {
-          const v = await draftFor(actor, row.url, window.find((w) => w.row.url === row.url)?.row);
+          const v = await draftFor(actor, row.url, window.find((w) => w.row.url === row.url)?.row, meta.bulkField);
           if (!v.d) { row.suggestion = null; row.suggestionNote = v.problem; continue; }
           const s = suggestionFromDraft(meta.bulkField, v.d);
           row.suggestion = s.s;
@@ -599,22 +694,38 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
     return { field, runId: src.run.id, total, offset, limit, rows, counts, guidelines: g };
   }
 
-  async function tagsList(q: SeoOptimizationQuery, g: SeoGuidelines, limit: number): Promise<SeoOptimizationPage> {
+  async function tagsList(actor: Actor, q: SeoOptimizationQuery, g: SeoGuidelines, limit: number): Promise<SeoOptimizationPage> {
     if (!h.connected()) return { field: 'tags', total: 0, offset: 0, limit, rows: [], counts: {}, guidelines: g, note: 'Tags live in Shopify: connect Shopify (Settings → Shopify) to list them.' };
     await h.requireEditable();
-    const page = await h.call((c) => listResources(c, 'product', q.q, q.cursor));
+    // With the description: products without tags get AI tag suggestions from their content (when Claude is connected).
+    const page = await h.call((c) => listResources(c, 'product', q.q, q.cursor, true));
     const base = await h.siteBase();
     const counts: Record<string, number> = {};
     const rows: SeoOptimizationRow[] = [];
+    const aiTags: { row: SeoOptimizationRow; res: ShopifyResource }[] = [];
     for (const res of page.items) {
       const tags = res.tags ?? [];
-      const a = assessSeoField('tags', tags.join(','), { guidelines: g });
+      const a = assessSeoField('tags', tags.join(','), { guidelines: g, pageType: 'product' });
       counts.all = (counts.all ?? 0) + 1;
       counts[a.verdict === 'good' ? 'good' : 'needs_work'] = (counts[a.verdict === 'good' ? 'good' : 'needs_work'] ?? 0) + 1;
       for (const p of a.problems) counts[p.code] = (counts[p.code] ?? 0) + 1;
       if (q.problem && (q.problem === 'needs_work' ? a.verdict === 'good' : q.problem === 'good' ? a.verdict !== 'good' : !a.problems.some((p) => p.code === q.problem))) continue;
-      rows.push({ url: `${base}${res.path}`, title: res.title, pageType: 'product', current: tags.join(', '), assessment: a, issueIds: [], editable: true, suggestion: suggestTags(tags, a) });
+      rows.push({ url: `${base}${res.path}`, title: res.title, pageType: 'product', current: tags.join(', '), assessment: a, issueIds: [], editable: true, suggestion: { ...suggestTags(tags, a), source: 'rules' as const } });
+      if (a.problems.some((p) => p.code === 'missing')) aiTags.push({ row: rows[rows.length - 1], res });
     }
+    // Products without tags: the AI writer suggests tags from each product's content (a few at a time).
+    let ai = 0;
+    await Promise.all(Array.from({ length: Math.min(3, aiTags.length) }, async () => {
+      while (ai < aiTags.length) {
+        const { row, res } = aiTags[ai++];
+        try {
+          const d = await h.buildDraft(actor, res, row.url, { ai: { only: new Set<SeoBulkField>(['tags']) }, skipStorefront: true });
+          const f = d.fields.find((x) => x.key === 'tags');
+          if (f?.suggestion?.source === 'ai') row.suggestion = f.suggestion;
+          else if (d.ai?.note) row.suggestionNote = d.ai.note;
+        } catch (e) { row.suggestionNote = `Shopify could not be read: ${(e as Error).message}`; }
+      }
+    }));
     return { field: 'tags', total: rows.length, offset: 0, limit: page.items.length, rows: rows.slice(0, limit * 2), counts, guidelines: g, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}), note: 'Products in Shopify, 50 per page, most recently changed first.' };
   }
 
@@ -627,7 +738,8 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
       if (job?.state === 'ready' && raw.scope === undefined) throw badRequest('scope is required.');
       const scope = raw.scope;
       if (scope !== 'pages' && scope !== 'issues' && scope !== 'urls') throw badRequest('scope must be pages, issues or urls.');
-      const fields = (Array.isArray(raw.fields) && raw.fields.length ? raw.fields.filter((f): f is SeoBulkField => ALL_FIELDS.includes(f as SeoBulkField)) : ALL_FIELDS.filter((f) => f !== 'title' && f !== 'tags'));
+      // Fix All: every field — SEO title and meta description, title, description, H1, image alt text, tags and links.
+      const fields = (Array.isArray(raw.fields) && raw.fields.length ? raw.fields.filter((f): f is SeoBulkField => ALL_FIELDS.includes(f as SeoBulkField)) : [...ALL_FIELDS]);
       if (!fields.length) throw badRequest('Choose at least one field.');
       const at = iso();
       job = {
@@ -638,6 +750,9 @@ export function createBulkFixer(h: BulkHelpers, deps: SeoOpsDeps | undefined) {
         ...(raw.runId ? { runId: String(raw.runId) } : {}),
       };
       items = [];
+      aiOff = undefined;
+      aiRateFailures = 0;
+      proposedBy = new Map();
       const filter = raw.filter && typeof raw.filter === 'object' ? (Object.fromEntries(Object.entries(raw.filter).filter(([k, v]) => ['q', 'status', 'indexable', 'problem', 'crawlState', 'source', 'template', 'score', 'check'].includes(k) && typeof v === 'string' && v)) as CrawlPagesQuery) : undefined;
       const input: SeoBulkStartInput = { scope, fields, ...(filter && Object.keys(filter).length ? { filter } : {}), ...(raw.runId ? { runId: String(raw.runId) } : {}), ...(Array.isArray(raw.issueIds) ? { issueIds: raw.issueIds.map(String) } : {}), ...(Array.isArray(raw.urls) ? { urls: raw.urls.map(String) } : {}) };
       const mine = job;

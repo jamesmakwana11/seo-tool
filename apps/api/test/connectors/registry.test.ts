@@ -18,10 +18,10 @@ function setup(env = makeEnv(), responses: (() => Response)[] = []) {
 }
 
 describe('integration registry', () => {
-  it('lists all 14 catalog entries; empty env → not_configured everywhere, nothing connected', async () => {
+  it('lists all 15 catalog entries; empty env → not_configured everywhere, nothing connected', async () => {
     const { reg } = setup(emptyEnv());
     const list = await reg.list();
-    expect(list).toHaveLength(14);
+    expect(list).toHaveLength(15);
     for (const s of list) {
       // SHOPIFY_API_VERSION / OPENAI_MODEL have defaults but are not in any envVars list
       expect(s.state).toBe('not_configured');

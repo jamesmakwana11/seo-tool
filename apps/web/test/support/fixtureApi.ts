@@ -555,6 +555,12 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
     }),
     listLighthouseRuns: () => call('listLighthouseRuns', () => { need('crawls.view'); return []; }),
     // Shopify: mock mode never talks to a store — every action explains that it needs the API server.
+    // Claude AI: the test adapter never talks to Anthropic.
+    getClaudeStatus: () => call('getClaudeStatus', () => { need('integrations.view'); return { connected: false, canStore: true, persistent: false, usage: { requests: 0, failures: 0 } }; }),
+    testClaude: () => call('testClaude', () => { need('integrations.manage'); return { ok: false, message: 'This test adapter cannot reach Anthropic.' }; }),
+    connectClaude: () => call('connectClaude', () => { need('integrations.manage'); throw new ApiError(409, 'CLAUDE_TEST_FAILED', 'This test adapter cannot reach Anthropic.'); }),
+    updateClaudeModel: () => call('updateClaudeModel', () => { need('integrations.manage'); throw new ApiError(409, 'CLAUDE_NOT_CONNECTED', 'Claude AI is not connected.'); }),
+    disconnectClaude: () => call('disconnectClaude', () => { need('integrations.manage'); return { connected: false, canStore: true, persistent: false, usage: { requests: 0, failures: 0 } }; }),
     getShopifyStatus: () => call('getShopifyStatus', () => {
       need('integrations.view');
       return {

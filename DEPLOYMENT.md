@@ -58,6 +58,14 @@ crashing the service.
    (Invitation and reset emails are only sent when SMTP is configured.)
 7. Optional custom domain: add it in Render, create the CNAME at your DNS provider, then set `APP_BASE_URL` to it.
 
+### Updating an existing deployment from a release ZIP
+
+Replace the project folder with the new release instead of unzipping it on top of the old one: unzipping adds and
+changes files but never deletes the ones a release removed. A leftover source file breaks the TypeScript build — for
+example `apps/api/src/repositories/seedDemo.ts` (removed with demo mode) fails with `"demo" is not assignable to type
+DataSource`. `npm run build:prod` (and so the Docker build) first runs `tools/remove-obsolete-files.mjs`, which removes
+the known leftovers and prints each one; delete those from the repository as well (`git rm …`).
+
 ### Any other Docker host
 
 ```bash

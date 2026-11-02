@@ -83,7 +83,7 @@ function FieldList({ field }: { field: SeoOptimizationField }) {
           </div>
         )}
       />
-      {range && <p className="-mt-2 mb-3 text-xs text-muted">Recommended length: {range} characters — a little outside is only noted. Change it in <Link className="text-signal hover:underline" to="/settings/thresholds">Thresholds &amp; scoring</Link>.</p>}
+      {range && <p className="-mt-2 mb-3 text-xs text-muted">Problems are flagged outside {range} characters — a little outside is only noted. New suggestions aim for {field === 'titles' ? '50–60' : field === 'meta-descriptions' ? '140–160' : field === 'h1' ? '20–70 (simple pages and collections shorter)' : 'a concise description of the image'}{field === 'image-alt' ? '' : ' characters'}. Change it in <Link className="text-signal hover:underline" to="/settings/thresholds">Thresholds &amp; scoring</Link>.</p>}
       {d?.note && <div className="mb-3"><Notice tone="signal">{d.note}</Notice></div>}
       {res.error && <Notice tone="crit" title="The list could not be loaded">{errorMessage(res.error)}</Notice>}
       <Panel bodyClassName="p-3">
@@ -153,7 +153,8 @@ function FieldList({ field }: { field: SeoOptimizationField }) {
                         : r.suggestion.keep ? <p className="text-ok-ink">Keep — {r.suggestion.reason.replace(/^Already good — keep it\.$/, 'already good.')}</p>
                           : (
                             <>
-                              <p className="break-words font-medium text-ink">{r.suggestion.value || <em className="text-faint">—</em>}{r.suggestion.confidence === 'review' && <Badge tone="signal" className="ml-1">review wording</Badge>}</p>
+                              <p className="break-words font-medium text-ink">{r.suggestion.value || <em className="text-faint">—</em>}{r.suggestion.confidence === 'review' && <Badge tone="signal" className="ml-1">review wording</Badge>}{r.suggestion.source === 'ai' && <Badge tone="opp" className="ml-1" title="Written by Claude from the page’s content">Claude</Badge>}</p>
+                              {r.suggestion.value && <p className="tabular-nums text-muted">{tags ? `${r.suggestion.value.split(',').filter((t) => t.trim()).length} tags` : `${r.suggestion.value.length} chars`}{r.suggestion.target ? ` · target ${r.suggestion.target[0]}–${r.suggestion.target[1]}` : ''}</p>}
                               <p className="text-muted">{r.suggestion.reason}</p>
                               {r.suggestionNote && <p className="text-muted">{r.suggestionNote}</p>}
                             </>

@@ -69,7 +69,7 @@ export function createMockShopify() {
   const pageOut = (p: Page) => ({ id: p.id, handle: p.handle, title: p.title, body: p.body, updatedAt: p.updatedAt, titleTag: p.meta.title_tag ? { value: p.meta.title_tag } : null, descTag: p.meta.description_tag ? { value: p.meta.description_tag } : null });
   const artOut = (a: Article) => ({ ...pageOut(a), summary: a.summary, tags: a.tags, blog: { handle: a.blog }, image: a.image });
 
-  function graphql(op: string, v: Record<string, unknown>): unknown {
+  function graphql(op: string, v: Record<string, unknown>, raw = ''): unknown {
     switch (op) {
       case 'SentinelScopes': return { shop: { name: 'DeoDap Test', myshopifyDomain: SHOP }, currentAppInstallation: { accessScopes: scopes.map((handle) => ({ handle })) } };
       case 'SentinelShop': return { shop: { name: 'DeoDap Test' } };
@@ -88,7 +88,12 @@ export function createMockShopify() {
         const h = JSON.parse(String(v.q).replace(/^handle:/, '')) as string;
         return { r: { nodes: [...[...pages.values()].filter((x) => x.handle === h).map(pageOut), ...[...articles.values()].filter((x) => x.handle === h).map(artOut)] } };
       }
-      case 'SentinelList': return { r: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [...products.values()].map(prodOut) } };
+      case 'SentinelList': {
+        // The list query names its root: products, collections, pages or articles.
+        const root = /r: (products|collections|pages|articles)\(/.exec(raw)?.[1] ?? 'products';
+        const nodes = root === 'collections' ? [...collections.values()].map(colOut) : root === 'pages' ? [...pages.values()].map(pageOut) : root === 'articles' ? [...articles.values()].map(artOut) : [...products.values()].map(prodOut);
+        return { r: { pageInfo: { hasNextPage: false, endCursor: null }, nodes } };
+      }
       case 'SentinelProductUpdate': {
         const inp = v.product as Partial<Product> & { id: string };
         const p = products.get(inp.id);
@@ -227,7 +232,7 @@ export function createMockShopify() {
       }
     }
     calls.push({ op, variables, raw: body });
-    return json({ data: graphql(op, variables), extensions: { cost: cost() } });
+    return json({ data: graphql(op, variables, body), extensions: { cost: cost() } });
   };
 
   return {

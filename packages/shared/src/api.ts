@@ -301,6 +301,16 @@ export interface SentinelApi {
   listLighthouseRuns(): Promise<LighthouseRun[]>;
 
   // Shopify connection + SEO editor (the access token never reaches the browser)
+  // ---- Claude AI (Integrations): the API key is sent once to the server, stored encrypted, never returned.
+  getClaudeStatus(): Promise<ClaudeStatus>;
+  /** Checks a key (the one entered, or the saved one) and lists the models it can use. Nothing is saved. */
+  testClaude(input: { apiKey?: string; model?: string }): Promise<ClaudeTestResult>;
+  /** Tests the key and model, then stores the key encrypted and makes Claude the provider for SEO suggestions. */
+  connectClaude(input: { apiKey: string; model: string }): Promise<ClaudeStatus>;
+  /** Changes the model of the saved connection (checked against the provider first). */
+  updateClaudeModel(input: { model: string }): Promise<ClaudeStatus>;
+  /** Removes the stored key. */
+  disconnectClaude(): Promise<ClaudeStatus>;
   getShopifyStatus(): Promise<ShopifyStatus>;
   /** Starts OAuth: returns the Shopify authorize URL to open (state is single-use and expires in 10 minutes). */
   startShopifyOAuth(shop: string): Promise<{ authorizeUrl: string }>;
@@ -571,4 +581,36 @@ export interface MonitorStatus {
   openErrors: number;
   /** Newest first. */
   events: MonitorEvent[];
+}
+
+// ------------------------------------------------------------------ Claude AI
+
+export interface ClaudeModelOption { id: string; name: string; createdAt?: string }
+
+export interface ClaudeStatus {
+  connected: boolean;
+  /** The model used for suggestions (id), and its display name when known. */
+  model?: string;
+  modelName?: string;
+  connectedAt?: string;
+  connectedBy?: string;
+  lastTestAt?: string;
+  lastTestOk?: boolean;
+  /** Plain-language result of the last test or call (never contains the key). */
+  lastTestResult?: string;
+  /** False when the server has no key material to encrypt credentials with (then nothing can be saved). */
+  canStore: boolean;
+  storeProblem?: string;
+  /** False without DATABASE_URL: the saved key is lost when the server restarts. */
+  persistent: boolean;
+  /** Suggestions generated / failed since the server started (all websites). */
+  usage: { requests: number; failures: number; lastError?: string; lastErrorAt?: string };
+}
+
+export interface ClaudeTestResult {
+  ok: boolean;
+  message: string;
+  /** Models the key can use (newest first), when the key works. */
+  models?: ClaudeModelOption[];
+  rateLimited?: boolean;
 }

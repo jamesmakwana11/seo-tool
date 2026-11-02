@@ -8,7 +8,8 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const googleToken = () => json(200, { access_token: 'ya29.access-token-SECRET', expires_in: 3600, token_type: 'Bearer' });
 
 /** Successful provider responses per connector (URL-matched). */
-const SUCCESS: Record<Exclude<IntegrationId, 'email'>, Responder> = {
+// Claude AI is connected on its own screen (key entered in the app), not through an env-var connector.
+const SUCCESS: Record<Exclude<IntegrationId, 'email' | 'claude'>, Responder> = {
   crawler: () => text(200, 'User-agent: *\nDisallow: /cart\nSitemap: https://deodap.in/sitemap.xml\n'),
   gsc: (url) => (url === TOKEN_URL ? googleToken() : json(200, { siteEntry: [{ siteUrl: 'https://deodap.in/', permissionLevel: 'siteOwner' }] })),
   ga4: (url) => (url === TOKEN_URL ? googleToken() : json(200, { name: 'properties/123456789', displayName: 'DeoDap Web' })),
@@ -35,7 +36,7 @@ function connector(id: IntegrationId, responder: Responder, env = makeEnv(), mai
   return { c, f };
 }
 
-const HTTP_IDS = Object.keys(SUCCESS) as Exclude<IntegrationId, 'email'>[];
+const HTTP_IDS = Object.keys(SUCCESS) as Exclude<IntegrationId, 'email' | 'claude'>[];
 
 describe('connectors — common contract', () => {
   it('exposes all 14 catalog integrations', () => {

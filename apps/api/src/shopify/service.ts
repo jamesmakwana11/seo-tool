@@ -34,7 +34,9 @@ import { firstBasePath, registerBasePath } from '../http/basePath';
 import { audit, can, need, type Actor, type Ctx } from '../services/context';
 import { createBulkFixer, type SeoOpsDeps } from './bulk';
 import { createAdminClient, ShopifyApiError, type AdminClient } from './client';
-import { bodyHeadings, buildFields, detectH1Sources, sourceTexts, suggestText, themeNotes, validateField, type Limits } from './drafts';
+import { bodyHeadings, buildFields, detectH1Sources, htmlToText, sourceTexts, suggestText, themeNotes, validateField, type Limits } from './drafts';
+import { aiSuggestion, createAiCache, pickFields, runAi, type AiDraftOptions } from './aiDraft';
+import type { ClaudeService } from '../ai/service';
 import { authorizeUrl, createStateStore, exchangeCode, missingScopes, normalizeShop, OAuthError, verifyQueryHmac, CALLBACK_MAX_AGE_S } from './oauth';
 import { adminUrl, fetchByHandle, fetchById, fieldValue, isGid, listResources, mutationFor, parseStorefrontPath, sameValue, summarize, writeOps, type ShopifyResource } from './resources';
 import { EDITABLE_FILE, getTheme, lineDiff, listThemeFiles, listThemes, md5, MAX_THEME_FILE_BYTES, readThemeFile, readThemeFiles, SNAPSHOT_FILE, writeThemeFile } from './theme';
@@ -56,6 +58,8 @@ export interface ShopifyDeps {
   secretBox?: SecretBox;
   /** Bulk SEO fixes: the crawl's rows (streamed), page re-checks after a fix, and issue confirmation after a passed re-check. */
   seo?: SeoOpsDeps;
+  /** Claude AI (Integrations): when connected, suggestions are written by it from the page's content. */
+  claude?: ClaudeService;
 }
 
 /** Credentials entered in the app (decrypted, in memory only). */
@@ -369,19 +373,74 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
     return rest;
   }
 
-  /** `opts.crawlRow`: plan from the crawl's row (no storefront request) — bulk planning; applying always reads the live page. */
-  async function buildDraft(actor: Actor, res: ShopifyResource, url: string | undefined, existing?: ShopifyDraft, opts: { crawlRow?: CrawledUrl } = {}): Promise<ShopifyDraft> {
+  const aiCache = createAiCache();
+  /**
+   * `opts.crawlRow`: plan from the crawl's row (no storefront request) — bulk planning; applying always reads the live page.
+   * `opts.ai`: false = rule-based suggestions only (applying reviewed values); otherwise Claude writes the fields that
+   * need work when it is connected (optionally only some fields, avoiding values other pages use).
+   */
+  async function buildDraft(actor: Actor, res: ShopifyResource, url: string | undefined, existing?: ShopifyDraft, opts: { crawlRow?: CrawledUrl; ai?: AiDraftOptions | false; descriptionDuplicate?: boolean; skipStorefront?: boolean } = {}): Promise<ShopifyDraft> {
     const base = await siteBase();
     const pageUrl = url ?? (base ? `${base}${res.path}` : undefined);
     const found = opts.crawlRow ? { row: opts.crawlRow, at: undefined } : pageUrl ? await deps.latestRow(pageUrl).catch(() => undefined) : undefined;
     // The H1 as the live storefront shows it now (one request); the latest crawl only when the page cannot be fetched.
-    const liveH1s = pageUrl && !opts.crawlRow ? await storefrontH1s(pageUrl) : undefined;
+    const liveH1s = pageUrl && !opts.crawlRow && !opts.skipStorefront ? await storefrontH1s(pageUrl) : undefined;
     const pageH1s = liveH1s ?? found?.row.h1 ?? [];
     const basis: H1SourceReport['basis'] = liveH1s ? 'storefront' : found ? 'crawl' : 'none';
     const observedAt = liveH1s ? iso() : found?.at;
-    const dctx = { res, shopName: conn?.shopName, siteHost: base ? hostOf(base) : '', row: found?.row, pageH1s, h1Basis: basis, observedAt, limits: await limits(), keywords: await storeKeywords() };
+    const dctx = { res, shopName: conn?.shopName, siteHost: base ? hostOf(base) : '', row: found?.row, pageH1s, h1Basis: basis, observedAt, limits: await limits(), keywords: await storeKeywords(), descriptionDuplicate: opts.descriptionDuplicate };
     const h1 = detectH1Sources(res, pageH1s, basis, observedAt);
     const fields = buildFields(dctx);
+    // ---- AI suggestions (Claude) for the fields that need work; the rule-based ones stay where it cannot help.
+    const h1Cur0 = h1.sources[0]?.text ?? '';
+    const h1Assess0 = assessSeoField('h1', h1Cur0, { guidelines: dctx.limits, pageType: res.kind, h1Count: h1.pageH1s.length, duplicate: (found?.row.flags ?? []).includes('dup-h1') });
+    let aiInfo: ShopifyDraft['ai'];
+    let aiH1: ShopifyFieldDraft['suggestion'];
+    if (opts.ai !== false && deps.claude) {
+      if (!(await deps.claude.isConnected())) aiInfo = { used: false, note: 'Claude AI is not connected, so these suggestions reuse the page’s own text. Connect it under Settings → Integrations for suggestions written from the page’s content.' };
+      else {
+        const norm = (s: string) => (s ?? '').replace(/\s+/g, ' ').trim();
+        const effective = norm(res.seoTitle) || norm(res.title);
+        const tag = norm(found?.row.title ?? '');
+        const suffix = tag && tag !== effective && tag.toLowerCase().startsWith(effective.toLowerCase()) && tag.length - effective.length <= 40 ? tag.slice(effective.length) : '';
+        const pick = pickFields(res, fields, { current: h1Cur0, assessment: h1Assess0, source: h1.sources[0]?.source }, dctx.limits, opts.ai ?? {}, suffix);
+        if (pick.length) {
+          const allText = [res.title, res.seoTitle, res.seoDescription, htmlToText(res.bodyHtml), (res.tags ?? []).join(' ')].join(' ').toLowerCase();
+          const model = (await deps.claude.model()) ?? '';
+          const input = {
+            kind: res.kind, title: res.title, descriptionText: htmlToText(res.bodyHtml) || htmlToText(res.summaryHtml ?? ''), tags: res.tags ?? [], shopName: conn?.shopName, url: pageUrl,
+            keywords: dctx.keywords.filter((k) => k.trim() && allText.includes(k.toLowerCase().trim())), fields: pick,
+          };
+          const cacheKey = [res.id, res.updatedAt ?? '', model, ...pick.map((f) => `${f.key}=${f.current}|${(f.avoid ?? []).join('/')}|${f.target?.join('-') ?? ''}`)].join('\u0001');
+          const { result, error } = await runAi(deps.claude, input, aiCache, cacheKey, ctx.clock().getTime());
+          if (error) aiInfo = { used: false, model, note: `Claude AI could not write suggestions (${error.message}). The suggestions below reuse the page’s own text.`, failed: pick.length, errorCode: error.code };
+          else if (result) {
+            let generated = 0;
+            for (const f of pick) {
+              const w = result.values[f.key];
+              if (!w) continue;
+              generated++;
+              if (f.key === 'h1') { aiH1 = aiSuggestion(f, w, result.model, h1Cur0); continue; }
+              const field = fields.find((x) => x.key === f.key);
+              if (!field) continue;
+              const sug = aiSuggestion(f, w, result.model, field.current);
+              if (f.key === 'seoTitle' && suffix) sug.reason = `${sug.reason} The theme adds “${suffix.trim()}”, so the title tag will read “${sug.value}${suffix}” (${sug.value.length + suffix.length} characters).`;
+              field.suggestion = sug;
+              field.proposed = sug.value;
+              field.reason = sug.reason;
+              field.source = 'suggested';
+              field.include = sug.confidence === 'high';
+              field.validation = validateField(field.key, sug.value, { res, siteHost: base ? hostOf(base) : '', limits: dctx.limits, current: field.current, sources: sourceTexts(res, conn?.shopName), source: 'suggested', keywords: dctx.keywords });
+            }
+            const failedKeys = Object.keys(result.failed);
+            aiInfo = {
+              used: generated > 0, model: result.model, generated, failed: failedKeys.length,
+              ...(failedKeys.length ? { note: `Claude could not write a usable value for ${failedKeys.length} field(s) (${failedKeys.map((k) => `${fields.find((x) => x.key === k)?.label ?? k}: ${result.failed[k]}`).join('; ')}). Those keep the rule-based suggestion.` } : {}),
+            };
+          }
+        } else aiInfo = { used: false, model: (await deps.claude.model()) ?? undefined, generated: 0 };
+      }
+    }
     // ---- H1 heading: its own field, written to wherever the live H1 comes from.
     {
       const src = h1.sources[0];
@@ -392,11 +451,11 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
           : 'Theme file — change in theme (diff, backup and confirmation)';
       const at = fields.findIndex((f) => f.key === 'title') + 1;
       const titleField = fields.find((f) => f.key === 'title');
-      const assessment = assessSeoField('h1', cur, { guidelines: dctx.limits, pageType: res.kind, h1Count: h1.pageH1s.length, duplicate: (found?.row.flags ?? []).includes('dup-h1') });
+      const assessment = h1Assess0;
       // From the title: the Title field's suggestion is the H1 suggestion (one value in Shopify); from the content: its own.
       const suggestion = src?.source === 'title' && titleField
         ? { value: titleField.proposed, reason: titleField.proposed === cur ? (assessment.verdict === 'good' ? 'Already good — keep it.' : `${assessment.problems.filter((p) => p.severity !== 'note').map((p) => p.message).join(' ')} The theme prints the title as the H1: edit the Title field (one value).`) : `The theme prints the title as the H1, so the Title suggestion applies: ${titleField.reason}`, keep: titleField.proposed === cur && assessment.verdict === 'good', confidence: titleField.suggestion?.confidence ?? 'review' as const }
-        : cur ? suggestText('h1', cur, assessment, { res, shopName: conn?.shopName, limits: dctx.limits, descText: '', keywords: dctx.keywords }) : undefined;
+        : aiH1 ?? (cur ? { ...suggestText('h1', cur, assessment, { res, shopName: conn?.shopName, limits: dctx.limits, descText: '', keywords: dctx.keywords }), source: 'rules' as const, ...(assessment.target ? { target: assessment.target } : {}) } : undefined);
       const proposed = src?.source === 'body' && suggestion && !suggestion.keep ? suggestion.value : cur;
       fields.splice(at > 0 ? at : fields.length, 0, {
         key: 'h1', label: 'H1 heading', current: cur, proposed, reason: proposed !== cur ? suggestion!.reason : '', source: proposed !== cur ? 'suggested' : 'unchanged', applyVia: via, mutation: where,
@@ -418,7 +477,7 @@ export function createShopifyService(ctx: Ctx, deps: ShopifyDeps) {
     draftSources.set(id, sourceTexts(res, conn?.shopName));
     return {
       id, kind: res.kind, resourceId: res.id, handle: res.handle, resourceTitle: res.title, url: pageUrl, adminUrl: adminUrl(conn!.shop, res),
-      createdBy: existing?.createdBy ?? actor.name, createdAt: existing?.createdAt ?? at, updatedAt: at, fields, h1, notes, status: 'draft',
+      createdBy: existing?.createdBy ?? actor.name, createdAt: existing?.createdAt ?? at, updatedAt: at, fields, h1, notes, status: 'draft', ...(aiInfo ? { ai: aiInfo } : {}),
     };
   }
 

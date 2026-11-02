@@ -902,6 +902,7 @@ export type IntegrationId =
   | 'openai'
   | 'gemini'
   | 'perplexity'
+  | 'claude'
   | 'email'
   | 'whatsapp'
   | 'slack'

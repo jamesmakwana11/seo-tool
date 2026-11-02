@@ -139,7 +139,7 @@ export function createWorkspaces(primary: Container) {
     return createContainer({
       env: { ...primary.env, CRAWLER_BASE_URL: w.url.replace(/\/$/, ''), SEED_TEST_FIXTURES: false },
       repos, log: primary.log, clock: primary.clock, fetchImpl: primary.fetchImpl, diagnostics: primary.diagnostics,
-      persistence: db, scope: w.id,
+      persistence: db, scope: w.id, claude: primary.claude,
     });
   }
 

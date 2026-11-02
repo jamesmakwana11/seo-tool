@@ -15,12 +15,13 @@ import { createLighthouseService } from './lighthouse/service';
 import { createShopifyService } from './shopify/service';
 import { createMonitorService } from './monitor/monitor';
 import { createSecretBox } from './security/secretBox';
+import { createClaudeService, type ClaudeService } from './ai/service';
 import { isLocalHost } from './crawler/url';
 import { createReverifier } from './analysis/reverify';
 import { crawlerUserAgent } from './connectors/connectors';
 import { createConnectors, createDeliveryAdapters, createDeliveryService, createIntegrationRegistry, createLlmAdapter, createTaskOpsAdapter, type FetchLike, type MailTransportFactory } from './connectors';
 import type { RetryPolicy } from './notifications/delivery';
-import type { Ctx } from './services/context';
+import { audit, type Ctx } from './services/context';
 import type { CrawlEngine, Reverifier } from './services/ports';
 import { createAuthService } from './services/auth';
 import { createTaskService } from './services/tasks';
@@ -54,6 +55,8 @@ export interface ContainerOptions {
   persistence?: Persistence;
   /** Website the container serves (database scope); the primary website when absent. */
   scope?: string;
+  /** Claude AI connection shared by every website (created by the primary website's container). */
+  claude?: ClaudeService;
 }
 
 /** Composition root: wires PostgreSQL-backed or in-memory repositories → adapters → services. No storage implementation leaks into services. */
@@ -129,7 +132,13 @@ export async function createContainer(o: ContainerOptions) {
 
   const fetchImpl = o.fetchImpl;
   const connectors = createConnectors(env, fetchImpl, { mailTransport: o.mailTransport });
-  const integrations = createIntegrationRegistry({ env, repos, connectors, clock, log });
+  // Claude AI: one connection for the server, stored with the primary website (other websites receive it).
+  const claudeAudit: { fn?: (actor: { id: string; name: string }, action: string, summary: string) => Promise<void> } = {};
+  const claude: ClaudeService = o.claude ?? createClaudeService({
+    repos, box: createSecretBox(env), fetchImpl: fetchImpl ?? ((input, init) => fetch(input, init)), clock, log,
+    audit: async (actor, action, summary) => { await claudeAudit.fn?.(actor, action, summary); },
+  });
+  const integrations = createIntegrationRegistry({ env, repos, connectors, clock, log, external: { claude: () => claude.status() } });
   const adapters = createDeliveryAdapters(env, fetchImpl, { mailTransport: o.mailTransport });
   const delivery = createDeliveryService({ repos, adapters, clock, log, retry: o.retry });
   const taskOps = createTaskOpsAdapter({ env, fetchImpl, appBaseUrl: env.APP_BASE_URL });
@@ -194,6 +203,7 @@ export async function createContainer(o: ContainerOptions) {
   });
 
   const ctx: Ctx = { env, repos, log, clock, integrations, delivery, taskOps, llm, engine, engineInfo, reverifier, sessionSecret: env.SESSION_SECRET ?? randomToken(32), persistence: o.persistence, scope };
+  if (!o.claude) claudeAudit.fn = async (actor, action, summary) => { await audit(ctx, { ...actor, role: 'super_admin', teamIds: [], permissions: [] }, action, 'integration', 'claude', summary); };
   const recent: ReturnType<DiagnosticsSource['recent']> = [];
   const diagnostics: DiagnosticsSource = o.diagnostics ?? { endpoints: [], recent: () => recent };
 
@@ -244,7 +254,7 @@ export async function createContainer(o: ContainerOptions) {
   const lighthouse = createLighthouseService(ctx, env, baseEngine.collector, { allowLoopback: engineOpts.allowLoopback ?? false, userAgent: engineOpts.userAgent });
   // SHOPIFY_ADMIN_TOKEN belongs to the primary website only; added websites connect their own store with OAuth.
   const shopify = createShopifyService(ctx, {
-    fetchImpl, collector: baseEngine.collector, latestRow: (u) => crawls.latestRow(u), useEnvToken: !o.repos, scope, secretBox: createSecretBox(env),
+    fetchImpl, collector: baseEngine.collector, latestRow: (u) => crawls.latestRow(u), useEnvToken: !o.repos, scope, secretBox: createSecretBox(env), claude,
     seo: {
       rowsOf: (id) => crawls.rowsOf(id), filteredRows: (id, q, max) => crawls.filteredRows(id, q, max), recordRecheck: (u, fresh) => crawls.recordRecheck(u, fresh), markChanged: (urls) => crawls.markChanged(urls),
       confirmIssueFixed: (actor, id, check) => issues.confirmFixedByRecheck(actor, id, check),
@@ -281,6 +291,7 @@ export async function createContainer(o: ContainerOptions) {
     /** Injected outbound fetch (tests); undefined in production → adapters use global fetch. */
     fetchImpl,
     services: { auth, tasks, issues, rules, crawls, changes, captures, imageAudits, reports, insights, admin, lighthouse, shopify, monitor },
+    claude,
     scheduler,
     refreshVerifierInputs,
     runEscalations: () => runEscalations(ctx, issues),
