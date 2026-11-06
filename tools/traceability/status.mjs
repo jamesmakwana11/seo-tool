@@ -170,6 +170,7 @@ export const STATUS = {
   'CUS-TEAM-02': s('TESTED', 'Tasks with priority / due date / status, Overdue derived from the due date, members see and update only their own tasks — API team/devteam, web devTeamPages'),
   'CUS-TEAM-03': s('TESTED', 'Assignment, completion and comment notifications; due-soon reminder once, overdue reminder once a day; manual reminders; history; read / unread — API team/devteam'),
   'CUS-TEAM-04': s('TESTED', 'Encrypted Google secrets, mappings, CWV / report history, members, activation links, tasks, reminders and notifications survive a restart; secrets never plain in a row; changed encryption secret reported — API persistence/googleTeam (PostgreSQL 16)'),
+  'CUS-TEAM-05': s('TESTED', 'Download menu on all 69 routed screens (PDF + Excel downloaded and validated on each in a real browser; all four formats on 19); every row of client and server-paged tables; writers checked with qpdf, openpyxl, python-docx, LibreOffice — web export'),
   'CUS-SYNC-01': s('TESTED', 'Default and maximum 10,000; a capped crawl stops at the budget — API gocrawl/smart-budget'),
   'CUS-SYNC-02': s('TESTED', 'New product + collection, edited title, deleted product found and crawled alone, merged into the full results, issues updated; fixed title removed from the issue; next sync finds nothing — API monitor "website sync"'),
   'CUS-SYNC-03': s('TESTED', 'POST /api/monitor/run; 409 NO_BASELINE_CRAWL before the first crawl — API monitor'),

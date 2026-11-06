@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { AlertTriangle, Inbox, Loader2, RotateCcw, Activity, CircleCheck, Info, OctagonAlert, TriangleAlert, type LucideIcon, TrendingDown, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { CountUp } from '@/lib/motion';
+import { useExport } from '@/lib/export/context';
 
 // ------------------------------------------------------------------ Button
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subtle';
@@ -25,6 +26,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   return (
     <button
       ref={ref}
+      data-export-skip
       type={rest.type ?? 'button'}
       disabled={disabled || loading}
       className={clsx(
@@ -43,7 +45,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 
 export function IconButton({ label, className, children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
   return (
-    <button type="button" aria-label={label} title={label} className={clsx('inline-flex h-8 w-8 items-center justify-center rounded-ctl text-muted hover:bg-raised hover:text-ink', className)} {...rest}>
+    <button type="button" data-export-skip aria-label={label} title={label} className={clsx('inline-flex h-8 w-8 items-center justify-center rounded-ctl text-muted hover:bg-raised hover:text-ink', className)} {...rest}>
       {children}
     </button>
   );
@@ -54,30 +56,33 @@ export function Panel({ title, actions, children, className, bodyClassName, subt
   // Content panels read as one surface (no header rule); flush lists/tables keep a hairline under the header.
   const flush = /(^|\s)p-0(\s|$)/.test(bodyClassName ?? '');
   return (
-    <section id={id} className={clsx('min-w-0 rounded-panel border border-line bg-surface shadow-card', className)}>
+    <section id={id} data-export-panel className={clsx('min-w-0 rounded-panel border border-line bg-surface shadow-card', className)}>
       {(title || actions) && (
         <header className={clsx('flex flex-wrap items-start justify-between gap-2 px-5 pt-4', flush ? 'border-b border-line pb-3' : 'pb-0')}>
           <div className="min-w-0">
-            {title && <h2 className="text-[15px] font-semibold tracking-[-0.012em] text-ink">{title}</h2>}
+            {title && <h2 data-export-panel-title className="text-[15px] font-semibold tracking-[-0.012em] text-ink">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
           </div>
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>
       )}
-      <div className={clsx('p-5', (title || actions) && !flush ? 'pt-4' : undefined, bodyClassName)}>{children}</div>
+      <div data-export-panel-body className={clsx('p-5', (title || actions) && !flush ? 'pt-4' : undefined, bodyClassName)}>{children}</div>
     </section>
   );
 }
 
-export function PageHeader({ title, description, actions, meta }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; meta?: ReactNode }) {
+export function PageHeader({ title, description, actions, meta, noExport }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; meta?: ReactNode; noExport?: boolean }) {
+  // Every screen gets the Download menu (PDF, Excel, Word, CSV) inside the app shell.
+  const exp = useExport();
+  const Menu = !noExport ? exp?.Menu : undefined;
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div data-export-header className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.022em] text-ink sm:text-[24px]">{title}</h1>
-        {description && <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-muted">{description}</p>}
-        {meta && <div className="mt-2 flex flex-wrap items-center gap-2">{meta}</div>}
+        <h1 data-export-title className="text-[22px] font-semibold leading-tight tracking-[-0.022em] text-ink sm:text-[24px]">{title}</h1>
+        {description && <p data-export-desc className="mt-1.5 max-w-3xl text-sm leading-relaxed text-muted">{description}</p>}
+        {meta && <div data-export-meta className="mt-2 flex flex-wrap items-center gap-2">{meta}</div>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {(actions || Menu) && <div className="flex flex-wrap items-center gap-2">{Menu && <Menu />}{actions}</div>}
     </div>
   );
 }
@@ -92,15 +97,15 @@ export function Stat({ label, value, hint, tone, to, icon }: { label: string; va
   const body = (
     <>
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 truncate text-[12.5px] font-medium text-muted">{label}</div>
+        <div data-export-label className="min-w-0 truncate text-[12.5px] font-medium text-muted">{label}</div>
         {Icon && <span className={clsx('-mr-1 -mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg', tone ? STAT_ICON_TONE[tone] : 'bg-signal-tint text-signal')}><Icon className="h-[15px] w-[15px]" strokeWidth={2} aria-hidden /></span>}
       </div>
-      <div className={clsx('mt-1 text-[26px] font-semibold leading-tight tracking-[-0.025em] tabular-nums', tone === 'crit' ? 'text-crit-ink' : tone === 'med' ? 'text-med-ink' : tone === 'low' ? 'text-low-ink' : tone === 'ok' ? 'text-ok-ink' : tone === 'signal' ? 'text-signal' : 'text-ink')}>{value}</div>
-      {hint && <div className="mt-0.5 truncate text-xs text-muted">{hint}</div>}
+      <div data-export-value className={clsx('mt-1 text-[26px] font-semibold leading-tight tracking-[-0.025em] tabular-nums', tone === 'crit' ? 'text-crit-ink' : tone === 'med' ? 'text-med-ink' : tone === 'low' ? 'text-low-ink' : tone === 'ok' ? 'text-ok-ink' : tone === 'signal' ? 'text-signal' : 'text-ink')}>{value}</div>
+      {hint && <div data-export-hint className="mt-0.5 truncate text-xs text-muted">{hint}</div>}
     </>
   );
   const cls = 'group block min-w-0 rounded-panel border border-line bg-surface px-4 py-3.5 shadow-card transition-[border-color,box-shadow,transform] duration-200 ease-out';
-  return to ? <Link to={to} className={clsx(cls, 'hover:-translate-y-0.5 hover:border-signal/40 hover:shadow-lift')}>{body}</Link> : <div className={cls}>{body}</div>;
+  return to ? <Link data-export-kpi to={to} className={clsx(cls, 'hover:-translate-y-0.5 hover:border-signal/40 hover:shadow-lift')}>{body}</Link> : <div data-export-kpi className={cls}>{body}</div>;
 }
 
 const KPI_TINT = { violet: 'bg-[#F1ECFE]', blue: 'bg-[#ECF1FE]', lilac: 'bg-[#F6EEFC]', rose: 'bg-[#FDF0F2]' } as const;
@@ -115,22 +120,22 @@ export function KpiCard({ label, value, decimals, format, icon: Icon, tint = 'vi
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
-        <span className="pt-1 text-[13px] font-medium text-ink-soft">{label}</span>
+        <span data-export-label className="pt-1 text-[13px] font-medium text-ink-soft">{label}</span>
         <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-signal shadow-[0_1px_2px_rgba(37,34,56,0.06)] transition-transform duration-200 group-hover:scale-105"><Icon className="h-[18px] w-[18px]" strokeWidth={1.9} aria-hidden /></span>
       </div>
       <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[28px] font-semibold leading-none tracking-[-0.03em] tabular-nums text-ink">{value === null ? '—' : <CountUp value={value} decimals={decimals} format={format} />}</span>
+        <span data-export-value className="text-[28px] font-semibold leading-none tracking-[-0.03em] tabular-nums text-ink">{value === null ? '—' : <CountUp value={value} decimals={decimals} format={format} />}</span>
         {trend && (
           <span className={clsx('inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums', trend.good ? 'text-ok-ink' : 'text-crit-ink')}>
             {trend.up ? <TrendingUp className="h-3.5 w-3.5" aria-hidden /> : <TrendingDown className="h-3.5 w-3.5" aria-hidden />}{trend.text}
           </span>
         )}
       </div>
-      {note && <div className="mt-2 truncate text-xs text-muted">{note}</div>}
+      {note && <div data-export-hint className="mt-2 truncate text-xs text-muted">{note}</div>}
     </>
   );
   const cls = clsx('group block min-w-0 rounded-panel px-5 py-4 transition-[transform,box-shadow] duration-200 ease-out', KPI_TINT[tint]);
-  return to ? <Link to={to} className={clsx(cls, 'hover:-translate-y-0.5 hover:shadow-lift')}>{body}</Link> : <div className={cls}>{body}</div>;
+  return to ? <Link data-export-kpi to={to} className={clsx(cls, 'hover:-translate-y-0.5 hover:shadow-lift')}>{body}</Link> : <div data-export-kpi className={cls}>{body}</div>;
 }
 
 // ------------------------------------------------------------------ Badge
@@ -304,7 +309,7 @@ export function Tabs<T extends string>({ value, onChange, items, className }: { 
 // ------------------------------------------------------------------ Key/value + misc
 export function KV({ items, cols = 2 }: { items: { k: ReactNode; v: ReactNode }[]; cols?: 1 | 2 | 3 }) {
   return (
-    <dl className={clsx('grid grid-cols-1 gap-x-6 gap-y-3', cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-3')}>
+    <dl data-export-kv className={clsx('grid grid-cols-1 gap-x-6 gap-y-3', cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-3')}>
       {items.map((it, i) => (
         <div key={i} className="min-w-0">
           <dt className="text-xs text-muted">{it.k}</dt>

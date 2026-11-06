@@ -4,6 +4,7 @@ import { Layers, Ban, Wand2 } from 'lucide-react';
 import { MODULE_LABELS, ISSUE_STATUS_LABELS, TEAMS, type AuditModule, type IssueFilter, type IssueStatus, type Severity, type TeamId, type PageTemplate } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiQuery } from '@/api/hooks';
+import { loadAllPages } from '@/lib/export/context';
 import { useEmployees } from '@/hooks/lookups';
 import { useAuth } from '@/auth/AuthContext';
 import { Async, Button, EmptyState, Input, PageHeader, Panel } from '@/components/ui/primitives';
@@ -75,6 +76,7 @@ export default function IssuesBoardPage() {
           <IssueTable
             issues={p.items}
             server={{ page: p.page, pageSize: p.pageSize, total: p.total, onPage: (n) => f.set('page', String(n)) }}
+            exportRows={() => loadAllPages((offset) => api.listIssues({ ...filter, page: Math.floor(offset / 200) + 1, pageSize: 200 }), 200)}
             empty={<EmptyState title="No issues match these filters" description="Clear filters to see everything, or include closed statuses." />}
             detectedAction={fixAll}
           />

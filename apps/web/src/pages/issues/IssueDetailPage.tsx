@@ -14,6 +14,7 @@ import { AllocationTrail } from '@/components/domain/allocation';
 import { DeltaBadge, IssueStatusBadge, SeverityBadge, SlaCountdown, SourceBadge, TeamBadge, TierBadge } from '@/components/domain/badges';
 import { EvidenceList, UrlList } from '@/components/domain/lists';
 import { fmtDateTime } from '@/lib/format';
+import { useExport } from '@/lib/export/context';
 
 type Tab = 'fix' | 'evidence' | 'history' | 'children';
 
@@ -25,6 +26,7 @@ export default function IssueDetailPage() {
 }
 
 function Detail({ d }: { d: IssueDetail }) {
+  const ExportMenu = useExport()?.Menu;
   const { issue, fixCard } = d;
   const { can } = useAuth();
   const [tab, setTab] = useState<Tab>('fix');
@@ -38,8 +40,8 @@ function Detail({ d }: { d: IssueDetail }) {
 
   return (
     <div>
-      <div className="mb-5">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
+      <div className="mb-5" data-export-header>
+        <div className="mb-2 flex flex-wrap items-center gap-2" data-export-meta>
           <SeverityBadge severity={issue.severity} />
           <IssueStatusBadge status={issue.status} />
           <TierBadge tier={issue.highestTier} />
@@ -48,8 +50,11 @@ function Detail({ d }: { d: IssueDetail }) {
           {issue.isTemplateGroup && <Badge tone="opp" icon={<Layers className="h-3 w-3" />}>Template-level · {issue.childIssueIds?.length} child issues</Badge>}
           {issue.supersededById && <Badge tone="neutral">Superseded by <Link className="ml-1 underline" to={`/issues/${issue.supersededById}`}>{issue.supersededById}</Link></Badge>}
         </div>
-        <h1 className="text-[22px] font-semibold leading-tight">{issue.title}</h1>
-        <p className="mt-1 text-sm text-muted">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h1 data-export-title className="text-[22px] font-semibold leading-tight">{issue.title}</h1>
+          {ExportMenu && <ExportMenu />}
+        </div>
+        <p data-export-desc className="mt-1 text-sm text-muted">
           <span className="font-mono">{issue.id}</span> · {MODULE_LABELS[issue.module]} · {check.name} ({check.id}, PDF p{check.pdfRef.page} §{check.pdfRef.section}) · detected {fmtDateTime(issue.detectedAt)} IST
         </p>
       </div>

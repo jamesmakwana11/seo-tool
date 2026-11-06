@@ -22,6 +22,8 @@ AI SEO suggestions with Claude and Fix All across every field: `docs/AI_SEO.md`.
 Google Analytics 4, Search Console and Core Web Vitals (connected from the Integrations screen, reports per website): `docs/GOOGLE_INTEGRATIONS.md`.
 
 Development Team — members, invitations, tasks, reminders and notifications: `docs/DEVELOPMENT_TEAM.md`.
+
+Download any screen as PDF, Excel, Word or CSV: `docs/DOWNLOADS.md`.
 Run locally with live crawling: `LOCAL_CRAWLING.md`. Deployment (Docker, env vars, production checks, PostgreSQL status): `DEPLOYMENT.md`.
 
 Status documents: `FEATURE_TRACEABILITY.md` (generated: `npm run traceability`), `FRONTEND_STATUS.md`, `BACKEND_STATUS.md`.

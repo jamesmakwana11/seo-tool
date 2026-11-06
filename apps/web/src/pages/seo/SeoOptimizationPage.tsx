@@ -4,6 +4,7 @@ import { ExternalLink, Search, Wand2 } from 'lucide-react';
 import { SEO_OPTIMIZATION_FIELDS, SEO_PROBLEM_LABELS, type SeoBulkStartInput, type SeoOptimizationField, type SeoOptimizationRow } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { errorMessage, useApiQuery } from '@/api/hooks';
+import { loadAllPages } from '@/lib/export/context';
 import { useAuth } from '@/auth/AuthContext';
 import { DataTable } from '@/components/ui/DataTable';
 import { Badge, Button, EmptyState, Input, LoadingBlock, Notice, PageHeader, Panel } from '@/components/ui/primitives';
@@ -92,6 +93,7 @@ function FieldList({ field }: { field: SeoOptimizationField }) {
           rowKey={(r) => r.url}
           caption={meta.label}
           server={tags ? undefined : { page, pageSize: PAGE_SIZE, total: d?.total ?? 0, onPage: setPage }}
+          exportRows={tags ? undefined : () => loadAllPages((offset, limit) => api.getSeoOptimization(field, { ...query, offset, limit }).then((r) => ({ items: r.rows, total: r.total })), 50, 2000)}
           pageSize={PAGE_SIZE}
           toolbar={
             <>

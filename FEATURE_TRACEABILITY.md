@@ -19,11 +19,11 @@ Nothing has been run against deodap.in or any live third-party API: no credentia
 | NOT STARTED | 2 |
 | IN PROGRESS | 0 |
 | IMPLEMENTED | 14 |
-| TESTED | 234 |
+| TESTED | 235 |
 | BLOCKED | 2 |
 | PARTIAL | 92 |
 | REMOVED | 2 |
-| **Total requirements** | **346** |
+| **Total requirements** | **347** |
 
 Status meanings: **TESTED** = implemented and covered by an automated test or recorded verification (evidence column cites it).
 **IMPLEMENTED** = code exists and works in the app, not covered by a dedicated automated test. **PARTIAL** = some of the requirement
@@ -466,6 +466,7 @@ the owner's request. Sample data (test fixtures only) never counts as "connected
 | CUS-TEAM-02 | owner request | Assign SEO issues and development tasks with priority, due date and status; track Pending, In progress, Completed and Overdue; each member sees their own tasks | /dev-team/tasks, /dev-team/my-tasks | /api/dev-team/tasks* | Admin, SEO, Dev (view) | P2 | **TESTED** | Tasks with priority / due date / status, Overdue derived from the due date, members see and update only their own tasks — API team/devteam, web devTeamPages |  |
 | CUS-TEAM-03 | owner request | In-app notifications on assignment, reminders for upcoming and overdue deadlines, manual reminders to one member or the whole team, notification history with read / unread | /notifications, /dev-team/reminders | /api/notifications*, /api/dev-team/reminders, scheduler | Admin, SEO, Dev (view) | P2 | **TESTED** | Assignment, completion and comment notifications; due-soon reminder once, overdue reminder once a day; manual reminders; history; read / unread — API team/devteam |  |
 | CUS-TEAM-04 | owner request | Everything stored permanently in the database (members, roles, invitations, tasks, reminders, notifications, Google credentials and mappings, analytics and CWV history); secrets encrypted at rest; managed from the UI only | — | PostgreSQL persistence | Admin | P3 | **TESTED** | Encrypted Google secrets, mappings, CWV / report history, members, activation links, tasks, reminders and notifications survive a restart; secrets never plain in a row; changed encryption secret reported — API persistence/googleTeam (PostgreSQL 16) |  |
+| CUS-TEAM-05 | owner request | Download option on every screen: PDF, Excel, Word and CSV of the screen's data (all table rows, KPIs, details, chart numbers, active filters) | every screen (page header) | server-paged lists load all rows | Admin, SEO, Dev (view) | P2 | **TESTED** | Download menu on all 69 routed screens (PDF + Excel downloaded and validated on each in a real browser; all four formats on 19); every row of client and server-paged tables; writers checked with qpdf, openpyxl, python-docx, LibreOffice — web export |  |
 
 ## Prompt §2/§7/§9/§14 · Documentation, process & database gate
 

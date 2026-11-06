@@ -1,7 +1,8 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { EmptyState, Input } from './primitives';
+import { EXPORT_ROW_CAP, useExport } from '@/lib/export/context';
 
 export interface Column<T> {
   key: string;
@@ -35,9 +36,14 @@ interface Props<T> {
    */
   server?: { page: number; pageSize: number; total: number; onPage: (p: number) => void; sort?: { key: string; dir: 'asc' | 'desc' }; onSort?: (s: { key: string; dir: 'asc' | 'desc' }) => void };
   rowClassName?: (r: T) => string | undefined;
+  /**
+   * Server-paged tables: every row matching the current filters (for the Download menu). Without it a server-paged
+   * table downloads the rows on screen.
+   */
+  exportRows?: () => Promise<T[]>;
 }
 
-export function DataTable<T>({ rows, columns, rowKey, onRowClick, search, searchPlaceholder = 'Search', pageSize = 25, empty, toolbar, initialSort, dense, caption, server, rowClassName }: Props<T>) {
+export function DataTable<T>({ rows, columns, rowKey, onRowClick, search, searchPlaceholder = 'Search', pageSize = 25, empty, toolbar, initialSort, dense, caption, server, rowClassName, exportRows }: Props<T>) {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState(initialSort);
   const [page, setPage] = useState(1);
@@ -58,7 +64,15 @@ export function DataTable<T>({ rows, columns, rowKey, onRowClick, search, search
   const total = server ? server.total : filtered.length;
   const ps = server ? server.pageSize : pageSize;
   const cur = server ? server.page : Math.min(page, Math.max(1, Math.ceil(total / ps)));
-  const visible = server ? filtered : filtered.slice((cur - 1) * ps, cur * ps);
+  // While a download is prepared, every row is rendered (all pages; server-paged tables load them).
+  const exp = useExport();
+  const expanding = !!exp?.expanding;
+  const [allRows, setAllRows] = useState<T[] | undefined>();
+  useEffect(() => {
+    if (!expanding) { setAllRows(undefined); return; }
+    if (server && exportRows && exp) exp.track(exportRows().then((r) => setAllRows(r.slice(0, EXPORT_ROW_CAP))));
+  }, [expanding]); // eslint-disable-line react-hooks/exhaustive-deps
+  const visible = expanding ? (server ? allRows ?? filtered : filtered.slice(0, EXPORT_ROW_CAP)) : server ? filtered : filtered.slice((cur - 1) * ps, cur * ps);
   const pages = Math.max(1, Math.ceil(total / ps));
   const go = (p: number) => (server ? server.onPage(p) : setPage(p));
   const curSort = server?.onSort ? server.sort : sort;
@@ -82,7 +96,7 @@ export function DataTable<T>({ rows, columns, rowKey, onRowClick, search, search
         </div>
       )}
       <div className="relative overflow-x-auto rounded-panel border border-line bg-surface shadow-card">
-        <table className="w-full min-w-[640px] border-collapse text-sm">
+        <table data-export-caption={caption} className="w-full min-w-[640px] border-collapse text-sm">
           {caption && <caption className="sr-only">{caption}</caption>}
           <thead>
             <tr className="border-b border-line bg-raised/70 text-left">

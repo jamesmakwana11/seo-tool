@@ -53,7 +53,7 @@ export function issueColumns(opts: { showModule?: boolean; showAllocator?: boole
   return cols;
 }
 
-export function IssueTable({ issues, showModule = true, empty, toolbar, server, detectedAction }: { issues: Issue[]; showModule?: boolean; empty?: ReactNode; toolbar?: ReactNode; server?: { page: number; pageSize: number; total: number; onPage: (p: number) => void }; detectedAction?: ReactNode }) {
+export function IssueTable({ issues, showModule = true, empty, toolbar, server, detectedAction, exportRows }: { issues: Issue[]; showModule?: boolean; empty?: ReactNode; toolbar?: ReactNode; server?: { page: number; pageSize: number; total: number; onPage: (p: number) => void }; detectedAction?: ReactNode; exportRows?: () => Promise<Issue[]> }) {
   const nav = useNavigate();
   return (
     <DataTable
@@ -66,6 +66,7 @@ export function IssueTable({ issues, showModule = true, empty, toolbar, server, 
       empty={empty}
       toolbar={toolbar}
       server={server}
+      exportRows={exportRows}
       caption="Issues"
     />
   );

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import clsx from 'clsx';
 import { Monitor, Play, Smartphone } from 'lucide-react';
 import {
-  CWV_LABELS, CWV_METRICS, CWV_THRESHOLDS, worstRating, type CwvMetric, type CwvRun, type CwvStrategy, type CwvValue,
+  CWV_LABELS, CWV_METRICS, CWV_RATING_LABELS, CWV_THRESHOLDS, worstRating, type CwvMetric, type CwvRun, type CwvStrategy, type CwvValue,
 } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiMutation, useApiQuery } from '@/api/hooks';
@@ -56,10 +56,11 @@ export default function CoreWebVitalsPage() {
 
 function MetricCell({ m, v, lab }: { m: CwvMetric | 'TBT'; v?: CwvValue; lab?: boolean }) {
   return (
-    <div className="min-w-0 rounded-ctl border border-line px-3 py-2.5" title={`${CWV_LABELS[m]} — ${threshold(m)}`}>
-      <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium text-muted">{m}{lab ? ' (lab)' : ''}</span>{v && <span className={clsx('h-2 w-2 rounded-full', v.rating === 'good' ? 'bg-ok' : v.rating === 'needs_improvement' ? 'bg-med' : 'bg-crit')} aria-hidden />}</div>
-      <div className={clsx('mt-0.5 text-lg font-semibold tabular-nums', v ? ratingText[v.rating] : 'text-faint')}>{v ? fmtValue(m, v.value) : '—'}</div>
-      <div className="truncate text-[11px] text-muted">{CWV_LABELS[m]}</div>
+    <div data-export-kpi className="min-w-0 rounded-ctl border border-line px-3 py-2.5" title={`${CWV_LABELS[m]} — ${threshold(m)}`}>
+      <span data-export-hint hidden>{v ? CWV_RATING_LABELS[v.rating] : 'No data'} · {CWV_LABELS[m]}</span>
+      <div className="flex items-center justify-between gap-2"><span data-export-label className="text-xs font-medium text-muted">{m}{lab ? ' (lab)' : ''}</span>{v && <span className={clsx('h-2 w-2 rounded-full', v.rating === 'good' ? 'bg-ok' : v.rating === 'needs_improvement' ? 'bg-med' : 'bg-crit')} aria-hidden />}</div>
+      <div data-export-value className={clsx('mt-0.5 text-lg font-semibold tabular-nums', v ? ratingText[v.rating] : 'text-faint')}>{v ? fmtValue(m, v.value) : '—'}</div>
+      <div className="truncate text-[11px] text-muted" data-export-skip>{CWV_LABELS[m]}</div>
     </div>
   );
 }

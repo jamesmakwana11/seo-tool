@@ -57,6 +57,17 @@ export function ChartLegend({ items }: { items: { label: string; color: string; 
   );
 }
 
+
+/** The numbers behind a chart, for the Download menu (never shown on screen). */
+function ChartData({ rows, columns }: { rows: unknown[][]; columns: string[] }) {
+  return (
+    <table data-export-only hidden>
+      <thead><tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+      <tbody>{rows.slice(0, 5000).map((r, i) => <tr key={i}>{r.map((v, j) => <td key={j}>{v === null || v === undefined ? '' : typeof v === 'number' ? String(Math.round(v * 1000) / 1000) : String(v)}</td>)}</tr>)}</tbody>
+    </table>
+  );
+}
+
 /* ------------------------------------------------------------------------------------------------ trend */
 
 export interface SeriesDef { key: string; label: string; color?: string; dashed?: boolean; axis?: 'left' | 'right' }
@@ -80,6 +91,7 @@ export function TrendChart<T extends Record<string, unknown>>({ data, x, series,
   const anim = { isAnimationActive: !reduced, animationDuration: 750, animationEasing: 'ease-out' as const };
   return (
     <div>
+      <ChartData columns={[String(x), ...series.map((sr) => sr.label)]} rows={data.map((d) => [xf(String(d[x])), ...series.map((sr) => d[sr.key])])} />
       {legend && series.length > 1 && <div className="mb-2 flex justify-end"><ChartLegend items={series.map((s, i) => ({ label: s.label, color: s.color ?? SERIES[i % SERIES.length], dashed: s.dashed }))} /></div>}
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={data} margin={{ top: 8, right: right ? 0 : 8, left: -12, bottom: 0 }}>
@@ -113,6 +125,7 @@ export function StackedBars<T extends Record<string, unknown>>({ data, x, series
   const reduced = useReducedMotion();
   return (
     <div>
+      <ChartData columns={[String(x), ...series.map((sr) => sr.label)]} rows={data.map((d) => [d[x], ...series.map((sr) => d[sr.key])])} />
       <div className="mb-2 flex justify-end"><ChartLegend items={series.map((s, i) => ({ label: s.label, color: s.color ?? SERIES[i % SERIES.length] }))} /></div>
       <ResponsiveContainer width="100%" height={height}>
         <BarChart data={data} layout={horizontal ? 'vertical' : 'horizontal'} margin={{ top: 4, right: 8, left: horizontal ? 4 : -14, bottom: 0 }} barCategoryGap={horizontal ? 7 : '30%'}>
@@ -151,6 +164,8 @@ export function PillBars<T extends Record<string, unknown>>({ data, x, y, name, 
   const [hover, setHover] = useState<number | null>(null);
   const xf = xFormat ?? ((v: string) => fmtShortDate(v));
   return (
+    <div>
+    <ChartData columns={[String(x), name]} rows={data.map((d) => [xf(String(d[x])), d[y]])} />
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 8, right: 4, left: -14, bottom: 0 }} barCategoryGap="22%" onMouseLeave={() => setHover(null)}>
         <defs>
@@ -167,6 +182,7 @@ export function PillBars<T extends Record<string, unknown>>({ data, x, y, name, 
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -186,6 +202,7 @@ export function DonutChart({ data, centerValue, centerLabel, size = 176 }: { dat
   };
   return (
     <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+      <ChartData columns={['Item', 'Value', 'Share']} rows={data.map((d) => [d.label, d.value, total ? `${Math.round((d.value / total) * 1000) / 10}%` : ''])} />
       <div className="relative shrink-0" style={{ width: size, height: size }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>

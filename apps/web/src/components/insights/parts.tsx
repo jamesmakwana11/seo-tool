@@ -39,10 +39,10 @@ export function Delta({ cur, prev, lowerIsBetter, asPoints }: { cur: number; pre
 /** Metric tile with its comparison. */
 export function MetricTile({ label, value, cur, prev, lowerIsBetter, asPoints, prevText, hint }: { label: string; value: ReactNode; cur: number; prev: number; lowerIsBetter?: boolean; asPoints?: boolean; prevText: string; hint?: string }) {
   return (
-    <div className="min-w-0 rounded-panel border border-line bg-surface px-4 py-3.5 shadow-card" title={hint}>
-      <div className="truncate text-[12.5px] font-medium text-muted">{label}</div>
-      <div className="mt-1 text-[24px] font-semibold leading-tight tracking-[-0.025em] tabular-nums text-ink">{value}</div>
-      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5"><Delta cur={cur} prev={prev} lowerIsBetter={lowerIsBetter} asPoints={asPoints} /><span className="truncate text-xs text-muted">was {prevText}</span></div>
+    <div data-export-kpi className="min-w-0 rounded-panel border border-line bg-surface px-4 py-3.5 shadow-card" title={hint}>
+      <div data-export-label className="truncate text-[12.5px] font-medium text-muted">{label}</div>
+      <div data-export-value className="mt-1 text-[24px] font-semibold leading-tight tracking-[-0.025em] tabular-nums text-ink">{value}</div>
+      <div data-export-hint className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5"><Delta cur={cur} prev={prev} lowerIsBetter={lowerIsBetter} asPoints={asPoints} /><span className="truncate text-xs text-muted">was {prevText}</span></div>
     </div>
   );
 }

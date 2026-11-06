@@ -7,6 +7,7 @@ import {
 } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { errorMessage, useApiMutation, useApiQuery } from '@/api/hooks';
+import { loadAllPages } from '@/lib/export/context';
 import { useAuth } from '@/auth/AuthContext';
 import { Badge, Button, EmptyState, Field, Input, LoadingBlock, Mono, Notice, PageHeader, Panel, ProgressBar, Select } from '@/components/ui/primitives';
 import { Drawer } from '@/components/ui/overlay';
@@ -213,6 +214,7 @@ function ImageList({ id, job }: { id: string; job: ImageAuditJob }) {
         onRowClick={setOpen}
         caption="Audited images"
         server={{ page, pageSize: PAGE_SIZE, total: res.data?.total ?? 0, onPage: setPage, sort, onSort: setSort }}
+        exportRows={() => loadAllPages((offset, limit) => api.listImageAudit(id, { ...query, offset, limit }).then((r) => ({ items: r.rows, total: r.total })), 500)}
         toolbar={
           <>
             <div className="relative w-full max-w-xs">

@@ -5,6 +5,8 @@ import { Bell, ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Menu as MenuIco
 import { WebsiteProvider } from '@/websites/WebsiteContext';
 import { WebsiteSelector } from '@/components/websites/WebsiteSelector';
 import { ROLE_LABELS, type SearchResult } from '@sentinel/shared';
+import { ExportProvider } from '@/lib/export/context';
+import { ExportMenu } from '@/components/export/ExportMenu';
 import { useAuth, useUser } from '@/auth/AuthContext';
 import { api } from '@/api/client';
 import { useApiQuery, useWebsiteId } from '@/api/hooks';
@@ -275,7 +277,9 @@ export function AppShell() {
           <div className="mx-auto w-full max-w-[1560px] px-3 py-5 sm:px-6">
             <div className="mb-4 xl:hidden"><Breadcrumbs /></div>
             {/* Keyed by website too: switching websites remounts the page so no form or local state carries over. */}
-            <div key={`${websiteId}:${loc.pathname}`} className="anim-page"><Outlet /></div>
+            <ExportProvider menu={ExportMenu}>
+              <div key={`${websiteId}:${loc.pathname}`} className="anim-page" data-export-root><Outlet /></div>
+            </ExportProvider>
           </div>
         </main>
       </div>

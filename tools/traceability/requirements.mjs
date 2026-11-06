@@ -228,6 +228,7 @@ export const REQUIREMENTS = [
   R('CUS-TEAM-02', 'owner request', 'Assign SEO issues and development tasks with priority, due date and status; track Pending, In progress, Completed and Overdue; each member sees their own tasks', '/dev-team/tasks, /dev-team/my-tasks', '/api/dev-team/tasks*', ALL, 'P2'),
   R('CUS-TEAM-03', 'owner request', 'In-app notifications on assignment, reminders for upcoming and overdue deadlines, manual reminders to one member or the whole team, notification history with read / unread', '/notifications, /dev-team/reminders', '/api/notifications*, /api/dev-team/reminders, scheduler', ALL, 'P2'),
   R('CUS-TEAM-04', 'owner request', 'Everything stored permanently in the database (members, roles, invitations, tasks, reminders, notifications, Google credentials and mappings, analytics and CWV history); secrets encrypted at rest; managed from the UI only', '—', 'PostgreSQL persistence', ADM, 'P3'),
+  R('CUS-TEAM-05', 'owner request', 'Download option on every screen: PDF, Excel, Word and CSV of the screen\'s data (all table rows, KPIs, details, chart numbers, active filters)', 'every screen (page header)', 'server-paged lists load all rows', ALL, 'P2'),
   // ================================================================ CUSTOM — documentation & process
   R('CUS-DOC-01', 'prompt §2', 'FEATURE_TRACEABILITY.md with one entry per requirement', 'docs', '—', '—', 'P1'),
   R('CUS-DOC-02', 'prompt §7.4', 'FRONTEND_STATUS.md', 'docs', '—', '—', 'P1'),

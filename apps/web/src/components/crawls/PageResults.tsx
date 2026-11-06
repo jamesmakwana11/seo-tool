@@ -8,6 +8,7 @@ import {
 import { AuditChecks, ScoreBadge } from './PageAudit';
 import { api } from '@/api/client';
 import { errorMessage, useApiQuery } from '@/api/hooks';
+import { loadAllPages } from '@/lib/export/context';
 import { Badge, EmptyState, Input, LoadingBlock, Mono, Notice, Panel } from '@/components/ui/primitives';
 import { Drawer } from '@/components/ui/overlay';
 import { useAuth } from '@/auth/AuthContext';
@@ -88,6 +89,7 @@ export function PageResults({ runId, active, check: checkProp, onCheck, scoreBan
         onRowClick={setOpen}
         caption="Crawled pages"
         server={{ page, pageSize: PAGE_SIZE, total: res.data?.total ?? 0, onPage: setPage, sort, onSort: setSort }}
+        exportRows={() => loadAllPages((offset, limit) => api.getCrawlPages(runId, { ...query, offset, limit }).then((r) => ({ items: r.rows, total: r.total })), 500)}
         toolbar={
           <>
             <div className="relative w-full max-w-xs">

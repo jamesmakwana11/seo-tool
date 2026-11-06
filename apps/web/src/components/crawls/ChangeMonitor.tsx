@@ -7,6 +7,7 @@ import {
 } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { errorMessage, useApiMutation, useApiQuery } from '@/api/hooks';
+import { loadAllPages } from '@/lib/export/context';
 import { useAuth } from '@/auth/AuthContext';
 import { Badge, Button, EmptyState, Input, KV, LoadingBlock, Notice, Panel } from '@/components/ui/primitives';
 import { Drawer } from '@/components/ui/overlay';
@@ -177,6 +178,7 @@ export function ChangesTab({ runId, active }: { runId: string; active?: boolean 
             onRowClick={setOpen}
             caption="Change records"
             server={{ page, pageSize: PAGE_SIZE, total: list.data?.total ?? 0, onPage: setPage }}
+            exportRows={() => loadAllPages((offset) => api.listChanges(runId, { ...query, page: Math.floor(offset / 200) + 1, pageSize: 200 }).then((r) => ({ items: r.items, total: r.total })), 200)}
             toolbar={
               <>
                 <div className="relative w-full max-w-xs">
