@@ -36,6 +36,8 @@ export const ROUTE_PERMISSIONS: Record<string, Permission> = {
   '/team/allocations': 'employees.view',
   '/issues/exclusions': 'issues.manage_exclusions',
   '/settings/integrations': 'integrations.view',
+  '/insights': 'analytics.view',
+  '/dev-team': 'devteam.view',
   '/settings/thresholds': 'settings.view',
   '/settings/crawl': 'settings.view',
   '/settings/notifications': 'notifications.configure',

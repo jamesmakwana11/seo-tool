@@ -129,7 +129,11 @@ export type Permission =
   | 'system.view'
   | 'diagnostics.view'
   | 'shopify.edit'
-  | 'shopify.theme';
+  | 'shopify.theme'
+  | 'google.manage'
+  | 'analytics.view'
+  | 'devteam.view'
+  | 'devteam.manage';
 
 export type PermissionMatrix = Record<Role, Permission[]>;
 
@@ -958,10 +962,14 @@ export type AlertType =
 export interface Notification {
   id: string;
   recipientId: string;
-  type: 'alert' | 'assignment' | 'sla' | 'review' | 'verification' | 'mention' | 'digest' | 'escalation' | 'system';
+  type: 'alert' | 'assignment' | 'sla' | 'review' | 'verification' | 'mention' | 'digest' | 'escalation' | 'system' | 'reminder';
   title: string;
   body: string;
   link?: string;
+  /** Development Team task this notification is about. */
+  taskId?: string;
+  /** Who caused it (assignment, manual reminder). */
+  fromName?: string;
   createdAt: ISODate;
   readAt?: ISODate;
   severity?: Severity;

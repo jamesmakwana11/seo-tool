@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
-import { AlarmClock, AtSign, BellRing, CheckCheck, ClipboardCheck, Eye, FileText, Info, ShieldCheck, TrendingUp, UserPlus, type LucideIcon } from 'lucide-react';
+import { AlarmClock, AtSign, BellRing, CheckCheck, ClipboardCheck, Eye, EyeOff, FileText, Hourglass, Info, ShieldCheck, TrendingUp, UserPlus, type LucideIcon } from 'lucide-react';
 import type { DeliveryAttempt, Notification } from '@sentinel/shared';
 import { api } from '@/api/client';
 import { useApiMutation, useApiQuery } from '@/api/hooks';
@@ -23,6 +23,7 @@ const TYPE: Record<NType, { label: string; icon: LucideIcon }> = {
   digest: { label: 'Digest', icon: FileText },
   escalation: { label: 'Escalation', icon: TrendingUp },
   system: { label: 'System', icon: Info },
+  reminder: { label: 'Reminder', icon: Hourglass },
 };
 
 type Tab = 'inbox' | 'deliveries';
@@ -35,7 +36,7 @@ export default function NotificationsPage() {
     <div>
       <PageHeader
         title="Notifications"
-        description="In-app notifications for you: Critical alerts, assignments, reviews, SLA warnings and digests (PDF §12.1–12.2)."
+        description="In-app notifications for you: Critical alerts, task assignments and reminders from the Development Team, comments, reviews and digests."
         actions={can('notifications.configure') ? <Link to="/settings/notifications" className="inline-flex h-9 items-center rounded-ctl border border-line-strong bg-surface px-3 text-sm font-medium shadow-card transition-colors hover:border-signal/40 hover:text-signal-dark">Alert settings</Link> : undefined}
       />
       {canDeliveries && (
@@ -55,6 +56,7 @@ function Inbox() {
   const [type, setType] = useState('');
   const markAll = useApiMutation(() => api.markNotificationRead('all'), { success: 'All notifications marked read', invalidate: [['notifications']] });
   const markOne = useApiMutation((id: string) => api.markNotificationRead(id), { success: 'Marked read', invalidate: [['notifications']] });
+  const markUnread = useApiMutation((id: string) => api.markNotificationUnread(id), { success: 'Marked unread', invalidate: [['notifications']] });
   // Opening a notification marks it read quietly (no toast — the user is navigating away).
   const markOpened = useApiMutation((id: string) => api.markNotificationRead(id), { invalidate: [['notifications']] });
 
@@ -73,7 +75,7 @@ function Inbox() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Stat label="Unread" value={unread} tone={unread ? 'signal' : undefined} />
               <Stat label="Critical alerts" value={list.filter((n) => n.type === 'alert').length} tone={list.some((n) => n.type === 'alert' && !n.readAt) ? 'crit' : undefined} />
-              <Stat label="Assignments" value={list.filter((n) => n.type === 'assignment').length} />
+              <Stat label="Assignments & reminders" value={list.filter((n) => n.type === 'assignment' || n.type === 'reminder').length} tone={list.some((n) => n.type === 'reminder' && n.severity === 'critical' && !n.readAt) ? 'crit' : undefined} />
               <Stat label="Total" value={list.length} />
             </div>
             <Panel
@@ -89,12 +91,12 @@ function Inbox() {
                     </button>
                   ))}
                 </div>
-                <FilterSelect label="Type" value={type} onChange={setType} options={types.map((t) => ({ value: t, label: TYPE[t].label }))} />
+                <FilterSelect label="Type" value={type} onChange={setType} options={types.map((t) => ({ value: t, label: TYPE[t]?.label ?? t }))} />
               </div>
               {rows.length ? (
                 <ul className="divide-y divide-line">
                   {rows.map((n) => {
-                    const Icon = TYPE[n.type].icon;
+                    const Icon = TYPE[n.type]?.icon ?? Info;
                     return (
                       <li key={n.id} className={clsx('flex items-start gap-3 px-4 py-3', !n.readAt && 'bg-signal-tint/40')}>
                         <span className={clsx('mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full', n.type === 'alert' || n.severity === 'critical' ? 'bg-crit-tint text-crit-ink' : 'bg-raised text-muted')} aria-hidden>
@@ -109,15 +111,20 @@ function Inbox() {
                           </div>
                           <p className="mt-0.5 text-sm text-ink-soft">{n.body}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                            <span>{TYPE[n.type].label}</span>
+                            <span>{TYPE[n.type]?.label ?? n.type}</span>
+                            {n.fromName && <span>from {n.fromName}</span>}
                             {n.severity && <SeverityBadge severity={n.severity} />}
                             <time dateTime={n.createdAt} title={`${fmtDateTime(n.createdAt)} IST`}>{fmtRelative(n.createdAt)}</time>
                             {n.readAt && <span>· read {fmtRelative(n.readAt)}</span>}
                           </div>
                         </div>
-                        {!n.readAt && (
+                        {!n.readAt ? (
                           <Button size="sm" variant="ghost" icon={<Eye className="h-3.5 w-3.5" />} disabled={markOne.isPending && markOne.variables === n.id} onClick={() => markOne.mutate(n.id)} aria-label={`Mark "${n.title}" read`}>
                             <span className="hidden sm:inline">Mark read</span>
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="ghost" icon={<EyeOff className="h-3.5 w-3.5" />} disabled={markUnread.isPending && markUnread.variables === n.id} onClick={() => markUnread.mutate(n.id)} aria-label={`Mark "${n.title}" unread`}>
+                            <span className="hidden sm:inline">Mark unread</span>
                           </Button>
                         )}
                       </li>

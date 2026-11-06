@@ -22,6 +22,7 @@ import { issueFixSummary,
   type IntegrationStatus, type Issue, type IssueDetail, type Permission, type PermissionMatrix, type Role, type SeedData,
   type SentinelApi, type SentinelConfig, type SentinelView, type SessionUser, type Task, type TeamId,
   type VerificationAttempt, type ContentBrief, type CrawlRun, type Notification, type IssueFilter,
+  type DevTask, type DevTaskView, type DevTeamMember, type GoogleStatus, type TeamReminder,
 } from '@sentinel/shared';
 
 const SESSION_KEY = 'sentinel.mock.session';
@@ -64,6 +65,24 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
   });
   setPriorityConfig(s.config);
   const recent: ApiDiagnostics['recent'] = [];
+  const googleMock = () => new ApiError(409, 'NOT_AVAILABLE_IN_MOCK', 'This test adapter cannot reach Google.');
+  const googleStatus = (): GoogleStatus => ({
+    canStore: true, persistent: false, oauth: { configured: false, secretSet: false, source: 'none', appUrlSource: 'none', problem: 'Enter the Client ID of the Google OAuth client.' },
+    accounts: [], psi: { connected: false, keySource: 'none' }, website: { id: active, name: websites.find((w) => w.id === active)?.name ?? active, url: websites.find((w) => w.id === active)?.url ?? '' },
+    ga4: { product: 'ga4', via: 'none', state: 'not_mapped', stateDetail: 'No GA4 property chosen for this website yet.' },
+    gsc: { product: 'gsc', via: 'none', state: 'not_mapped', stateDetail: 'No Search Console property chosen for this website yet.' },
+    cwv: { urls: [], autoDaily: true },
+  });
+  const devTasks: DevTask[] = [];
+  const devReminders: TeamReminder[] = [];
+  const devViews = (): DevTaskView[] => devTasks.map((t) => {
+    const overdue = t.status !== 'completed' && t.dueDate < now().toISOString().slice(0, 10);
+    return { ...t, overdue, displayStatus: overdue ? 'overdue' : t.status, assigneeName: globals.employees.find((e) => e.id === t.assigneeId)?.name, daysLeft: Math.round((Date.parse(t.dueDate) - now().getTime()) / 86_400_000) };
+  });
+  const devCounts = (list: DevTaskView[]) => ({ open: list.filter((t) => t.status !== 'completed').length, pending: list.filter((t) => t.displayStatus === 'pending').length, inProgress: list.filter((t) => t.displayStatus === 'in_progress').length, completed: list.filter((t) => t.status === 'completed').length, overdue: list.filter((t) => t.overdue).length });
+  const devMembers = (): DevTeamMember[] => globals.employees.filter((e) => e.teamIds.includes('development')).map((e) => ({
+    id: e.id, name: e.name, email: e.email, role: e.role, title: e.title, status: e.status, createdAt: e.createdAt, invitePending: e.status === 'invited', work: devCounts(devViews().filter((t) => t.assigneeId === e.id)),
+  }));
 
   // ---------------------------------------------------------------- session
   let sessionUserId: string | null = null;
@@ -555,6 +574,58 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
     }),
     listLighthouseRuns: () => call('listLighthouseRuns', () => { need('crawls.view'); return []; }),
     // Shopify: mock mode never talks to a store — every action explains that it needs the API server.
+    // Google: the test adapter never talks to Google — not connected, nothing stored.
+    getGoogleStatus: () => call('getGoogleStatus', () => { need('google.manage'); return googleStatus(); }),
+    saveGoogleOAuthClient: () => call('saveGoogleOAuthClient', () => { need('google.manage'); throw googleMock(); }),
+    removeGoogleOAuthClient: () => call('removeGoogleOAuthClient', () => { need('google.manage'); return googleStatus(); }),
+    startGoogleOAuth: () => call('startGoogleOAuth', () => { need('google.manage'); throw googleMock(); }),
+    testGoogleAccount: () => call('testGoogleAccount', () => { need('google.manage'); throw googleMock(); }),
+    disconnectGoogleAccount: () => call('disconnectGoogleAccount', () => { need('google.manage'); return googleStatus(); }),
+    listGa4Properties: () => call('listGa4Properties', () => { need('google.manage'); return []; }),
+    listGscSites: () => call('listGscSites', () => { need('google.manage'); return []; }),
+    setGoogleMapping: () => call('setGoogleMapping', () => { need('google.manage'); throw googleMock(); }),
+    clearGoogleMapping: (product) => call('clearGoogleMapping', () => { need('google.manage'); return { product, via: 'none' as const, state: 'not_mapped' as const, stateDetail: 'Not mapped.' }; }),
+    testGoogleMapping: () => call('testGoogleMapping', () => { need('google.manage'); throw googleMock(); }),
+    savePsiKey: () => call('savePsiKey', () => { need('google.manage'); throw googleMock(); }),
+    removePsiKey: () => call('removePsiKey', () => { need('google.manage'); return googleStatus(); }),
+    testPsi: () => call('testPsi', () => { need('google.manage'); throw googleMock(); }),
+    saveCwvSettings: (input) => call('saveCwvSettings', () => { need('google.manage'); return { urls: input.urls, autoDaily: input.autoDaily }; }),
+    getGa4Report: () => call('getGa4Report', () => { need('analytics.view'); throw new ApiError(409, 'NOT_CONNECTED', 'Google Analytics 4 is not connected for this website.'); }),
+    getGscReport: () => call('getGscReport', () => { need('analytics.view'); throw new ApiError(409, 'NOT_CONNECTED', 'Google Search Console is not connected for this website.'); }),
+    inspectGscUrl: () => call('inspectGscUrl', () => { need('analytics.view'); throw googleMock(); }),
+    getGoogleHistory: () => call('getGoogleHistory', () => { need('analytics.view'); return []; }),
+    getCwvReport: () => call('getCwvReport', () => { need('analytics.view'); return { connected: false, problem: 'PageSpeed Insights is not connected.', settings: { urls: [], autoDaily: true }, latest: [], history: [], running: false }; }),
+    runCwv: () => call('runCwv', () => { need('analytics.view'); throw new ApiError(409, 'NOT_CONNECTED', 'PageSpeed Insights is not connected.'); }),
+    // Development Team: an in-memory board.
+    getDevTeamOverview: () => call('getDevTeamOverview', () => { need('devteam.manage'); const members = devMembers(); return { members, counts: devCounts(devViews()), overdue: devViews().filter((t) => t.overdue), dueSoon: [], emailConfigured: false }; }),
+    listDevTeamMembers: () => call('listDevTeamMembers', () => { need('devteam.view'); return devMembers(); }),
+    inviteDevTeamMember: (input) => call('inviteDevTeamMember', () => {
+      need('devteam.manage');
+      if (globals.employees.some((e) => e.email === input.email.toLowerCase())) throw new ApiError(409, 'CONFLICT', 'That email already has an account.');
+      const e: Employee = { id: nid('emp'), name: input.name, email: input.email.toLowerCase(), role: input.role, teamIds: ['development'], title: input.title ?? '', status: 'invited', capacityHoursPerWeek: 40, createdAt: iso(), source: 'manual' };
+      globals.employees.push(e);
+      return { member: devMembers().find((m) => m.id === e.id)!, activation: { emailed: false, expiresAt: iso(), link: 'https://sentinel.test/reset-password?token=t&invite=1', note: 'Share this one-time activation link.' } };
+    }),
+    updateDevTeamMember: (id, input) => call('updateDevTeamMember', () => { need('devteam.manage'); const e = globals.employees.find((x) => x.id === id)!; Object.assign(e, input); return devMembers().find((m) => m.id === id)!; }),
+    setDevTeamMemberStatus: (id, status) => call('setDevTeamMemberStatus', () => { need('devteam.manage'); const e = globals.employees.find((x) => x.id === id)!; e.status = status; return devMembers().find((m) => m.id === id)!; }),
+    resendDevTeamInvite: (id) => call('resendDevTeamInvite', () => { need('devteam.manage'); return { member: devMembers().find((m) => m.id === id)!, activation: { emailed: false, expiresAt: iso(), link: 'https://sentinel.test/reset-password?token=t2&invite=1', note: 'Share this one-time activation link.' } }; }),
+    removeDevTeamMember: (id) => call('removeDevTeamMember', () => { need('devteam.manage'); const e = globals.employees.find((x) => x.id === id)!; e.teamIds = e.teamIds.filter((t) => t !== 'development'); e.status = 'suspended'; return { removed: true as const, unassigned: 0 }; }),
+    getDevTeamRoles: () => call('getDevTeamRoles', () => { need('devteam.manage'); return (['developer', 'seo_specialist'] as const).map((role) => ({ role, label: ROLE_LABELS[role], permissions: globals.permissions[role], grantable: (s.permissions[me().role] ?? []).filter((p: Permission) => !['roles.manage', 'employees.manage', 'devteam.manage', 'google.manage', 'integrations.manage', 'settings.manage', 'websites.manage'].includes(p) && !p.startsWith('tasks.')) })); }),
+    updateDevTeamRole: (role, perms) => call('updateDevTeamRole', () => { need('devteam.manage'); globals.permissions[role as 'developer'] = perms as Permission[]; return []; }),
+    listDevTeamWebsites: () => call('listDevTeamWebsites', () => websites.map((w) => ({ id: w.id, name: w.name }))),
+    listDevTasks: () => call('listDevTasks', () => { need('devteam.view'); return devViews(); }),
+    getDevTask: (id) => call('getDevTask', () => { const t = devViews().find((x) => x.id === id); if (!t) throw new ApiError(404, 'NOT_FOUND', 'Task not found.'); return t; }),
+    createDevTask: (input) => call('createDevTask', () => {
+      need('devteam.manage');
+      const t = { id: nid('DEV'), title: input.title, description: input.description ?? '', kind: input.kind, priority: input.priority, status: 'pending' as const, dueDate: input.dueDate, assigneeId: input.assigneeId, createdById: me().id, createdByName: me().name, createdAt: iso(), updatedAt: iso(), comments: [], history: [] };
+      devTasks.push(t);
+      return devViews().find((x) => x.id === t.id)!;
+    }),
+    updateDevTask: (id, patch) => call('updateDevTask', () => { const t = devTasks.find((x) => x.id === id)!; Object.assign(t, patch, { updatedAt: iso() }); return devViews().find((x) => x.id === id)!; }),
+    commentDevTask: (id, text) => call('commentDevTask', () => { const t = devTasks.find((x) => x.id === id)!; t.comments.push({ id: nid('c'), authorId: me().id, authorName: me().name, at: iso(), text }); return devViews().find((x) => x.id === id)!; }),
+    deleteDevTask: (id) => call('deleteDevTask', () => { need('devteam.manage'); devTasks.splice(devTasks.findIndex((x) => x.id === id), 1); return { deleted: true as const }; }),
+    listTeamReminders: () => call('listTeamReminders', () => { need('devteam.manage'); return [...devReminders]; }),
+    sendTeamReminder: (input) => call('sendTeamReminder', () => { need('devteam.manage'); const r = { id: nid('REM'), at: iso(), kind: 'manual' as const, sentById: me().id, sentByName: me().name, recipientIds: [], recipientNames: [], message: input.message }; devReminders.unshift(r); return r; }),
     // Claude AI: the test adapter never talks to Anthropic.
     getClaudeStatus: () => call('getClaudeStatus', () => { need('integrations.view'); return { connected: false, canStore: true, persistent: false, usage: { requests: 0, failures: 0 } }; }),
     testClaude: () => call('testClaude', () => { need('integrations.manage'); return { ok: false, message: 'This test adapter cannot reach Anthropic.' }; }),
@@ -863,6 +934,9 @@ export function createMockApi(opts: { latencyMs?: [number, number]; now?: () => 
     listNotifications: () => call('listNotifications', () => s.notifications.filter((n) => n.recipientId === me().id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))),
     markNotificationRead: (id) => call('markNotificationRead', () => {
       for (const n of s.notifications) if (n.recipientId === me().id && (id === 'all' || n.id === id) && !n.readAt) n.readAt = iso();
+    }),
+    markNotificationUnread: (id) => call('markNotificationUnread', () => {
+      for (const n of s.notifications) if (n.recipientId === me().id && n.id === id) n.readAt = undefined;
     }),
     listDeliveries: () => call('listDeliveries', () => { need('reports.view'); return [...s.deliveries].sort((a, b) => b.at.localeCompare(a.at)); }),
     updateAlertRules: (rules) => call('updateAlertRules', () => {

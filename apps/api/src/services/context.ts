@@ -26,6 +26,11 @@ export interface Ctx {
   /** PostgreSQL storage (absent = temporary in-memory storage) and the website this context serves. */
   persistence?: import('../repositories/postgres/persistence').Persistence;
   scope?: string;
+  /**
+   * Google connections made on the Integrations screen: an OAuth access token for a website's GA4 / Search Console
+   * mapping (undefined when the website uses the server's service account) and the PageSpeed Insights key.
+   */
+  google?: { syncToken(product: 'ga4' | 'gsc'): Promise<string | undefined>; psiKey(): Promise<string | undefined> };
 }
 
 /** The authenticated caller (or the system for scheduled jobs). */

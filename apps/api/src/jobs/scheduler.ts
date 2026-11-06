@@ -43,7 +43,13 @@ export function nextRun(expr: string, from: Date): Date | undefined {
   return undefined;
 }
 
-export interface SchedulerDeps { ctx: Ctx; crawls: CrawlService; issues: IssueService; reports: ReportService; monitor?: { tick(): Promise<void> } }
+export interface SchedulerDeps {
+  ctx: Ctx; crawls: CrawlService; issues: IssueService; reports: ReportService; monitor?: { tick(): Promise<void> };
+  /** Daily Core Web Vitals run (PageSpeed Insights) at 01:30 IST. */
+  cwv?: { tick(): Promise<void> };
+  /** Development Team reminders (due soon / overdue), every 15 minutes — primary website only. */
+  team?: { tick(): Promise<void> };
+}
 
 /**
  * In-process scheduler (enabled with SCHEDULER_ENABLED=true). Jobs:
@@ -53,6 +59,8 @@ export interface SchedulerDeps { ctx: Ctx; crawls: CrawlService; issues: IssueSe
  *  - daily digest at config.reporting.dailyDigestTime IST (08:00, PDF §12.1)
  *  - weekly rollup Monday, monthly report on config.reporting.monthlyDay (PDF §13)
  *  - incremental monitoring (sitemap / Shopify / webhook signals → conditional requests) every MONITOR_INTERVAL_MINUTES
+ *  - Core Web Vitals (PageSpeed Insights, mobile + desktop) at 01:30 IST when an API key is set
+ *  - Development Team reminders for tasks due within 24 hours or overdue, every 15 minutes
  * Each job runs at most once per matching minute; failures are logged and recorded, never retried silently.
  */
 export function createScheduler(d: SchedulerDeps) {
@@ -89,6 +97,8 @@ export function createScheduler(d: SchedulerDeps) {
     if (d.monitor) await once(`monitor:${stamp}`, () => d.monitor!.tick());
     if (cronMatches('30 0 * * *', now)) await once(`escalation:${stamp}`, () => runEscalations(ctx, d.issues));
     if (cronMatches('0 1 * * *', now)) await once(`sync:${stamp}`, () => runAllSyncs(ctx, { ingest: d.issues.ingestFindings }));
+    if (d.cwv && cronMatches('30 1 * * *', now)) await once(`cwv:${stamp}`, () => d.cwv!.tick());
+    if (d.team && cronMatches('*/15 * * * *', now)) await once(`team:${stamp}`, () => d.team!.tick());
     const [hh, mm] = cfg.reporting.dailyDigestTime.split(':').map(Number);
     if (cronMatches(`${mm} ${hh} * * *`, now)) await once(`digest:${stamp}`, () => d.reports.send(SYSTEM_ACTOR, 'daily'));
     if (cronMatches(`${mm} ${hh} * * 1`, now)) await once(`weekly:${stamp}`, () => d.reports.send(SYSTEM_ACTOR, 'weekly'));

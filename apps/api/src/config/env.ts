@@ -244,6 +244,12 @@ const schema = z.object({
   GA4_SERVICE_ACCOUNT_JSON: z.string().optional(),
   GA4_PROPERTY_ID: z.string().optional(),
   GOOGLE_API_KEY: z.string().optional(),
+  /**
+   * Optional fallback for the Google OAuth client (GA4 / Search Console sign-in). Normally entered on the Integrations
+   * screen instead (the secret is then stored encrypted in the database).
+   */
+  GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
   BACKLINK_PROVIDER: z.enum(['ahrefs', 'semrush']).optional(),
   AHREFS_API_TOKEN: z.string().optional(),
   SEMRUSH_API_KEY: z.string().optional(),

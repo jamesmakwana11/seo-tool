@@ -71,6 +71,14 @@ const P = {
   Audit: L(() => import('@/pages/admin/AuditLogPage')),
   System: L(() => import('@/pages/admin/SystemHealthPage')),
   Diagnostics: L(() => import('@/pages/admin/DiagnosticsPage')),
+  Analytics: L(() => import('@/pages/insights/AnalyticsPage')),
+  SearchConsole: L(() => import('@/pages/insights/SearchConsolePage')),
+  CoreWebVitals: L(() => import('@/pages/insights/CoreWebVitalsPage')),
+  DevTeam: L(() => import('@/pages/devteam/DevTeamPage')),
+  DevTasks: L(() => import('@/pages/devteam/DevTasksPage')),
+  DevTask: L(() => import('@/pages/devteam/DevTaskDetailPage')),
+  MyTasks: L(() => import('@/pages/devteam/MyTasksPage')),
+  Reminders: L(() => import('@/pages/devteam/RemindersPage')),
   NotFound: L(() => import('@/pages/NotFoundPage')),
 };
 
@@ -174,7 +182,16 @@ export function AppRoutes() {
 
         <Route path="ai-compliance/rules" element={g(P.Rules, 'rules.view')} />
         <Route path="settings/notifications" element={g(P.NotifSettings, 'notifications.configure')} />
-        <Route path="settings/integrations" element={g(P.Integrations, 'integrations.view')} />
+        <Route path="settings/integrations" element={g(P.Integrations, undefined, ['integrations.view', 'google.manage'])} />
+        <Route path="insights" element={<Navigate to="/insights/analytics" replace />} />
+        <Route path="insights/analytics" element={g(P.Analytics, 'analytics.view')} />
+        <Route path="insights/search-console" element={g(P.SearchConsole, 'analytics.view')} />
+        <Route path="insights/core-web-vitals" element={g(P.CoreWebVitals, 'analytics.view')} />
+        <Route path="dev-team" element={g(P.DevTeam, 'devteam.manage')} />
+        <Route path="dev-team/tasks" element={g(P.DevTasks, 'devteam.manage')} />
+        <Route path="dev-team/tasks/:id" element={g(P.DevTask, 'devteam.view')} />
+        <Route path="dev-team/my-tasks" element={g(P.MyTasks, 'devteam.view')} />
+        <Route path="dev-team/reminders" element={g(P.Reminders, 'devteam.manage')} />
         <Route path="settings/shopify" element={g(P.Shopify, 'integrations.view')} />
         <Route path="seo-editor" element={g(P.SeoEditor, undefined, ['shopify.edit', 'shopify.theme'])} />
         <Route path="optimize" element={<Navigate to="/optimize/titles" replace />} />
@@ -199,4 +216,5 @@ export const SMOKE_PATHS = [
   '/team/allocations', '/opportunities', '/opportunities/keywords', '/opportunities/gaps', '/opportunities/briefs', '/opportunities/clusters', '/opportunities/seasonal',
   '/opportunities/link-building', '/opportunities/mentions', '/competitors', '/reports/daily', '/reports/weekly', '/reports/monthly', '/reports/history',
   '/ai-compliance/rules', '/settings/notifications', '/settings/integrations', '/settings/shopify', '/seo-editor', '/optimize/titles', '/optimize/meta-descriptions', '/optimize/h1', '/optimize/image-alt', '/optimize/tags', '/settings/thresholds', '/settings/crawl', '/audit', '/system', '/diagnostics',
+  '/insights/analytics', '/insights/search-console', '/insights/core-web-vitals', '/dev-team', '/dev-team/tasks', '/dev-team/my-tasks', '/dev-team/reminders',
 ];

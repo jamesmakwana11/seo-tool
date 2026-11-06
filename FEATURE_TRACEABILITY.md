@@ -19,11 +19,11 @@ Nothing has been run against deodap.in or any live third-party API: no credentia
 | NOT STARTED | 2 |
 | IN PROGRESS | 0 |
 | IMPLEMENTED | 14 |
-| TESTED | 229 |
+| TESTED | 234 |
 | BLOCKED | 2 |
-| PARTIAL | 89 |
+| PARTIAL | 92 |
 | REMOVED | 2 |
-| **Total requirements** | **338** |
+| **Total requirements** | **346** |
 
 Status meanings: **TESTED** = implemented and covered by an automated test or recorded verification (evidence column cites it).
 **IMPLEMENTED** = code exists and works in the app, not covered by a dedicated automated test. **PARTIAL** = some of the requirement
@@ -448,6 +448,24 @@ the owner's request. Sample data (test fixtures only) never counts as "connected
 | CUS-AI-01 | owner request | AI SEO suggestions from page / product / collection / image context with field-specific length targets (SEO title ~50–60, meta ~140–160; own rules for title, description, alt text, tags); keep good values; current, proposed, count, range, reason shown | SEO editor, SEO Optimization, Fix All | ai/seoWriter, shopify/aiDraft | Admin, SEO | P2 | **PARTIAL** | Targets, checks, corrective retry, review fallback, keep-good, image attached for alt text — API ai/claude-seo against a mock Anthropic API | Not verified against the live Anthropic API (no key provided); quality of real model output to be reviewed on real products |
 | CUS-AI-02 | owner request | Fix All covers title, description, SEO title, meta description, H1, image alt text and tags; counts before applying; exclusions; batched, verified writes | Fix All dialog | shopify/bulk | Admin, SEO | P2 | **TESTED** | All fields by default; catalog scan finds products outside the crawl; duplicate descriptions get unique suggestions; selected changes verified after writing — API ai/claude-seo, shopify/bulk-fix |  |
 | CUS-AI-03 | owner request | Claude AI integration: key entered in the app, stored encrypted, model choice, test / connect / disconnect / status; used for suggestions and Fix All | /settings/integrations | /api/ai/claude* | Admin | P2 | **PARTIAL** | Connect / test / model / disconnect; key encrypted, never returned or logged; Admin and SEO Specialist refused — API ai/claude-seo (mock Anthropic API) | Not verified against the live Anthropic API — needs a key |
+
+## Owner request · Google integrations (GA4, Search Console, Core Web Vitals)
+
+| ID | Source | Requirement | Frontend | API / service | Roles | Phase | Status | Evidence / test | Dependency / blocker |
+|---|---|---|---|---|---|---|---|---|---|
+| CUS-GOOG-01 | owner request | Core Web Vitals via PageSpeed Insights: API key entered in the app, mobile and desktop separately, LCP / INP / CLS / FCP / TTFB with Good / Needs improvement / Poor, historical tracking, connection status for Admin | /settings/integrations, /insights/core-web-vitals | /api/google/psi-key, /api/insights/cwv* | Admin | P2 | **PARTIAL** | Key tested with a real PSI run before saving, stored encrypted; mobile + desktop runs in the background; field and lab vitals rated with Google thresholds; failures and rate limits recorded; daily run once per day; history — API google (mock Google) | Not verified against the live PageSpeed Insights API (no key provided) |
+| CUS-GOOG-02 | owner request | GA4: Google OAuth connection, account and property selection, users / sessions / engagement / traffic sources / conversions, website-wise reports, Admin manages connections | /settings/integrations, /insights/analytics | /api/google/oauth*, /api/google/mapping/ga4, /api/insights/ga4 | Admin | P2 | **PARTIAL** | OAuth client entered in the app; Connect with single-use state, offline access; account property list; mapping validated against the account; GA4 report with comparison windows, channels, sources, pages; cached; history stored — API google (mock Google) | Not verified against live Google OAuth / GA4 (needs the Google Cloud OAuth client) |
+| CUS-GOOG-03 | owner request | Search Console: Google OAuth connection, property selection, clicks / impressions / CTR / position, queries / pages / countries / devices, indexing data where supported, website-wise reports and historical comparisons | /settings/integrations, /insights/search-console | /api/google/mapping/gsc, /api/insights/gsc*, /api/insights/history | Admin | P2 | **PARTIAL** | Property list, mapping, clicks / impressions / CTR / position with previous-period or year-over-year comparison, queries / pages / countries / devices, sitemaps, URL inspection, stored history; existing data syncs use the account — API google (mock Google) | Not verified against the live Search Console API (needs the Google Cloud OAuth client) |
+| CUS-GOOG-04 | owner request | Connect, Disconnect, Reconnect and Test Connection for every Google integration; each website mapped to its own Google account and property | /settings/integrations | /api/google/* | Admin | P2 | **TESTED** | Connect / Reconnect (login_hint) / Test / Disconnect (revoked at Google); expired access asks to reconnect; per-website mapping; Admin and Super Admin only — API google, web integrationsPage |  |
+
+## Owner request · Development Team, tasks, reminders and notifications
+
+| ID | Source | Requirement | Frontend | API / service | Roles | Phase | Status | Evidence / test | Dependency / blocker |
+|---|---|---|---|---|---|---|---|---|---|
+| CUS-TEAM-01 | owner request | Development Team section: Admin adds members by name and email, assigns roles and permissions, invites with secure activation, edits, activates / deactivates / removes, sees members and their work status | /dev-team | /api/dev-team/members*, /api/dev-team/roles* | Admin | P2 | **TESTED** | Invite with one-time activation link (hash stored), activation, edit, deactivate (signed out), reactivate, remove (tasks unassigned); role permissions limited to what the Admin holds — API team/devteam, web devTeamPages |  |
+| CUS-TEAM-02 | owner request | Assign SEO issues and development tasks with priority, due date and status; track Pending, In progress, Completed and Overdue; each member sees their own tasks | /dev-team/tasks, /dev-team/my-tasks | /api/dev-team/tasks* | Admin, SEO, Dev (view) | P2 | **TESTED** | Tasks with priority / due date / status, Overdue derived from the due date, members see and update only their own tasks — API team/devteam, web devTeamPages |  |
+| CUS-TEAM-03 | owner request | In-app notifications on assignment, reminders for upcoming and overdue deadlines, manual reminders to one member or the whole team, notification history with read / unread | /notifications, /dev-team/reminders | /api/notifications*, /api/dev-team/reminders, scheduler | Admin, SEO, Dev (view) | P2 | **TESTED** | Assignment, completion and comment notifications; due-soon reminder once, overdue reminder once a day; manual reminders; history; read / unread — API team/devteam |  |
+| CUS-TEAM-04 | owner request | Everything stored permanently in the database (members, roles, invitations, tasks, reminders, notifications, Google credentials and mappings, analytics and CWV history); secrets encrypted at rest; managed from the UI only | — | PostgreSQL persistence | Admin | P3 | **TESTED** | Encrypted Google secrets, mappings, CWV / report history, members, activation links, tasks, reminders and notifications survive a restart; secrets never plain in a row; changed encryption secret reported — API persistence/googleTeam (PostgreSQL 16) |  |
 
 ## Prompt §2/§7/§9/§14 · Documentation, process & database gate
 

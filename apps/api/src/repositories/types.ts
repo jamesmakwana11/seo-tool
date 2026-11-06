@@ -3,7 +3,7 @@ import type {
   CrawlRun, CrawlSchedule, CrawledUrl, CtrRewrite, CustomRule, CwvTemplateMetric, DataSource, DeliveryAttempt, DisavowCandidate,
   Employee, Exclusion, HealthPoint, IntegrationId, Issue, IssueGroup, KeywordGap, LinkProspect, Notification, OpportunityItem,
   PermissionMatrix, ReferringDomainTrendPoint, SentinelConfig, SitePage, SitemapDiff, StrikingDistanceQuery, SystemErrorEntry,
-  Task, TopicCluster, VerificationAttempt, PageTemplate, PageTier,
+  Task, TopicCluster, VerificationAttempt, PageTemplate, PageTier, GoogleHistoryPoint,
 } from '@sentinel/shared';
 
 /**
@@ -81,6 +81,21 @@ export interface MonitorPageDoc {
   fingerprint: string;
   checkedAt: string;
 }
+/**
+ * Google connections (stored once, with the primary website): the OAuth client ("client"), the PageSpeed Insights key
+ * ("psi") and each connected Google account ("acct:<google user id>"). Secrets are SealedValue only.
+ */
+export interface GoogleConnectionDoc {
+  id: string;
+  kind: 'oauth_client' | 'psi' | 'account';
+  plain: Record<string, string>;
+  sealed: Record<string, import('../security/secretBox').SealedValue>;
+  meta: Record<string, unknown>;
+  updatedAt: string;
+  updatedBy?: string;
+}
+/** Daily GA4 / Search Console totals kept from every report fetch (id = YYYY-MM-DD). */
+export type GoogleHistoryDoc = GoogleHistoryPoint & { id: string };
 export interface IntegrationTestDoc { id: IntegrationId; at: string; ok: boolean; result: string; lastSuccessfulSyncAt?: string; lastSyncError?: string; rateLimited?: boolean }
 export interface PageTextDoc { id: string /* url */; url: string; template: PageTemplate; tier: PageTier; collectionHandle?: string; text: string; publishedAt?: string; source: DataSource }
 /** Last observed state of a URL — used for delta detection (yesterday vs today) and robots/script diffs. */
@@ -150,6 +165,16 @@ export interface Repositories {
   monitorState: Repository<MonitorStateDoc>;
   monitorPages: Repository<MonitorPageDoc>;
   monitorEvents: Repository<import('@sentinel/shared').MonitorEvent>;
+  /** Google OAuth client, PSI key and Google accounts (used from the primary website's set for every website). */
+  googleConnections: Repository<GoogleConnectionDoc>;
+  /** PageSpeed Insights runs of this website (Core Web Vitals history). */
+  cwvRuns: Repository<import('@sentinel/shared').CwvRun>;
+  /** Daily GA4 / Search Console totals of this website. */
+  googleHistory: Repository<GoogleHistoryDoc>;
+  /** Development Team tasks, reminders and notifications (shared by every website, like people and sign-in). */
+  devTasks: Repository<import('@sentinel/shared').DevTask>;
+  teamReminders: Repository<import('@sentinel/shared').TeamReminder>;
+  teamNotifications: Repository<Notification>;
   config: DocumentStore<SentinelConfig>;
   permissions: DocumentStore<PermissionMatrix>;
   metrics: DocumentStore<MetricsDoc>;

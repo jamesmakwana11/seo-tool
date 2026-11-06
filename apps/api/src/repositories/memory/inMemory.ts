@@ -116,6 +116,8 @@ export function createInMemoryRepositories(now = new Date(), f: RepositoryFactor
     mentions: r('mentions'), prospects: r('prospects'), disavow: r('disavow'), integrationSettings: r('integrationSettings'),
     integrationTests: r('integrationTests'), integrationSecrets: r('integrationSecrets'),
     monitorState: r('monitorState'), monitorPages: r('monitorPages'), monitorEvents: r('monitorEvents'),
+    googleConnections: r('googleConnections'), cwvRuns: r('cwvRuns'), googleHistory: r('googleHistory'),
+    devTasks: r('devTasks'), teamReminders: r('teamReminders'), teamNotifications: r('teamNotifications'),
     config: f.doc('config', defaultConfig(now)),
     permissions: f.doc('permissions', structuredClone(DEFAULT_PERMISSIONS)),
     metrics: f.doc('metrics', {

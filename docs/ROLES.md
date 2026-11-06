@@ -2,9 +2,10 @@
 
 | Role | Sidebar sections | Notes |
 |---|---|---|
-| **Super Admin** | Overview, SEO operations, Audit modules, Opportunities, Reporting, Team, Configuration | Always has every permission; the Roles & permissions screen cannot take any away. |
-| **Admin** | Overview, SEO operations | Dashboard, websites, health score, issues board, all pages, verification, Crawl Center, Image Audit, SEO editor, SEO optimization. |
-| SEO Specialist, Developer | as before | Unchanged. |
+| **Super Admin** | Overview, SEO operations, Google insights, Development team, Audit modules, Opportunities, Reporting, Team, Configuration | Always has every permission; the Roles & permissions screen cannot take any away. |
+| **Admin** | Overview, SEO operations, Google insights, Development team, Configuration → Integrations (Google section only) | Dashboard, websites, health score, issues board, all pages, verification, Crawl Center, Image Audit, SEO editor, SEO optimization; Google connections and reports (`google.manage`, `analytics.view`); the Development Team — members, the Developer / SEO Specialist role permissions, tasks, reminders (`devteam.manage`, `devteam.view`). |
+| SEO Specialist | as before, plus Google insights and My tasks | `analytics.view`, `devteam.view` added. |
+| Developer | as before, plus My tasks | `devteam.view` added. |
 
 Access is enforced three times, from one permission matrix (`packages/shared/src/config.ts`): the sidebar hides what the role
 cannot use, each page's route refuses it ("You don't have access to this page"), and every API call checks the permission on
@@ -22,6 +23,12 @@ to roles without `employees.view`).
   when no employee has that email. The password is hashed like every other account's and never logged. An existing account
   is never changed, so a password changed under Profile stays changed.
 - A Super Admin can also invite people and set roles under Team → Employees.
+
+## Google and Development Team permissions (Nov 2026)
+
+`google.manage`, `analytics.view`, `devteam.view`, `devteam.manage` (`TEAM_AND_GOOGLE_PERMISSIONS`). A stored matrix from
+before gets them once at start-up: Admin and Super Admin all four, SEO Specialist `analytics.view` + `devteam.view`,
+Developer `devteam.view`. See `docs/GOOGLE_INTEGRATIONS.md` and `docs/DEVELOPMENT_TEAM.md`.
 
 ## Upgrading a server started before the Super Admin role
 

@@ -24,6 +24,8 @@ const CRUMB: Record<string, string> = {
   weekly: 'Weekly rollup', monthly: 'Monthly executive', history: 'History', team: 'Team', employees: 'Employees', roles: 'Roles & permissions',
   allocations: 'Allocation history', settings: 'Settings', integrations: 'Integrations', thresholds: 'Thresholds & scoring', crawl: 'Crawl configuration',
   notifications: 'Notifications', rules: 'Custom rules', audit: 'Audit log', system: 'System health', diagnostics: 'API diagnostics', profile: 'Profile', search: 'Search',
+  insights: 'Google insights', analytics: 'Analytics', 'search-console': 'Search Console', 'core-web-vitals': 'Core Web Vitals',
+  'dev-team': 'Development team', tasks: 'Tasks', 'my-tasks': 'My tasks', reminders: 'Reminders',
 };
 
 function Breadcrumbs() {

@@ -10,11 +10,12 @@ import { ROLES, ROLE_HELP } from '@/components/team/roles';
 
 /** Legacy task permissions are kept in stored matrices for compatibility but are not shown — task management was removed. */
 const SHOWN = ALL_PERMISSIONS.filter((p) => !p.startsWith('tasks.'));
-const GROUP_ORDER = ['dashboard', 'websites', 'issues', 'fixcards', 'crawls', 'modules', 'opportunities', 'reports', 'rules', 'qa_gate', 'disavow', 'employees', 'roles', 'integrations', 'shopify', 'settings', 'notifications', 'audit', 'system', 'diagnostics'];
+const GROUP_ORDER = ['dashboard', 'websites', 'issues', 'fixcards', 'crawls', 'modules', 'opportunities', 'reports', 'rules', 'qa_gate', 'disavow', 'employees', 'roles', 'integrations', 'google', 'analytics', 'devteam', 'shopify', 'settings', 'notifications', 'audit', 'system', 'diagnostics'];
 const GROUP_LABELS: Record<string, string> = {
   dashboard: 'Dashboard', issues: 'Issues', fixcards: 'Fix Cards', websites: 'Websites', crawls: 'Crawls', modules: 'Audit modules', opportunities: 'Opportunities', reports: 'Reports',
   rules: 'AI compliance rules', qa_gate: 'QA gate', disavow: 'Disavow', employees: 'Employees', roles: 'Roles', integrations: 'Integrations', settings: 'Settings',
   notifications: 'Notifications', audit: 'Audit log', system: 'System health', diagnostics: 'Diagnostics', shopify: 'Shopify',
+  google: 'Google connections', analytics: 'Google insights', devteam: 'Development team',
 };
 const PERM_HELP: Partial<Record<Permission, string>> = {
   'fixcards.approve_proposal': 'Record approval of a proposed live-site change (never applied by Sentinel)',
@@ -26,6 +27,10 @@ const PERM_HELP: Partial<Record<Permission, string>> = {
   'employees.manage': 'Invite and edit employees',
   'shopify.edit': 'SEO editor: draft and apply content changes in Shopify (after confirmation)',
   'shopify.theme': 'Prepare theme file changes and write them to unpublished themes (never publishes)',
+  'google.manage': 'Connect Google accounts, the OAuth client and the PageSpeed Insights key; choose each website’s GA4 / Search Console properties',
+  'analytics.view': 'See the Analytics, Search Console and Core Web Vitals reports',
+  'devteam.view': 'See and update own Development Team tasks',
+  'devteam.manage': 'Invite and manage Development Team members, their role permissions, tasks and reminders',
 };
 
 const sortMatrix = (m: PermissionMatrix): PermissionMatrix => Object.fromEntries(ROLES.map((r) => [r, ALL_PERMISSIONS.filter((p) => m[r]?.includes(p))])) as PermissionMatrix;

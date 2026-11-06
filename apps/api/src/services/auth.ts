@@ -133,6 +133,12 @@ export function createAuthService(ctx: Ctx) {
       const { hash, salt } = await hashPassword(newPassword);
       await r.credentials.update({ ...cred, hash, salt, updatedAt: ctx.clock().toISOString() });
       await r.resetTokens.update({ ...rec, usedAt: ctx.clock().toISOString() });
+      // Accepting an invitation (choosing the first password with the activation link) activates the account.
+      const emp = await r.employees.get(cred.employeeId);
+      if (emp?.status === 'invited') {
+        await r.employees.update({ ...emp, status: 'active' });
+        await audit(ctx, SYSTEM_ACTOR, 'auth.activated', 'auth', emp.id, `${emp.name} activated the account`);
+      }
       // Revoke existing sessions for this user.
       for (const sess of await r.sessions.where({ employeeId: cred.employeeId })) if (!sess.revokedAt) await r.sessions.update({ ...sess, revokedAt: ctx.clock().toISOString() });
       await audit(ctx, SYSTEM_ACTOR, 'auth.reset', 'auth', cred.employeeId, 'Password reset completed; sessions revoked');

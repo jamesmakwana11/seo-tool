@@ -19,9 +19,9 @@ import type { Repositories } from '../types';
 import { InMemoryDocument, InMemoryRepository, createInMemoryRepositories, type RepositoryFactory } from '../memory/inMemory';
 import { MIGRATIONS } from './migrations';
 
-/** People, sign-in and permissions are shared by every website: stored once, under this scope. */
+/** People, sign-in, permissions and the Development Team (tasks, reminders, notifications) are shared by every website: stored once, under this scope. */
 export const SHARED_SCOPE = '_shared';
-export const SHARED_COLLECTIONS = new Set(['employees', 'credentials', 'resetTokens', 'sessions', 'permissions']);
+export const SHARED_COLLECTIONS = new Set(['employees', 'credentials', 'resetTokens', 'sessions', 'permissions', 'devTasks', 'teamReminders', 'teamNotifications']);
 
 type Op =
   | { t: 'rec'; scope: string; coll: string; id: string; doc: string | null }

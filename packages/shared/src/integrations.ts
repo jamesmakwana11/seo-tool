@@ -87,5 +87,9 @@ export function normalizeIntegrationProperty(id: PropertyIntegrationId, raw: str
   return id === 'gsc' ? normalizeGscProperty(raw) : normalizeGa4PropertyId(raw);
 }
 
-/** The integrations always shown on the Integrations screen; every other one is picked from a dropdown. */
-export const PRIMARY_INTEGRATIONS: readonly IntegrationId[] = ['crawler', 'gsc', 'ga4', 'claude'];
+/**
+ * The integrations always shown on the Integrations screen; every other one is picked from a dropdown. GA4, Search
+ * Console and PageSpeed Insights have their own Google section above (Google account sign-in, API key in the app); their
+ * server service-account / environment-variable cards stay available from the dropdown.
+ */
+export const PRIMARY_INTEGRATIONS: readonly IntegrationId[] = ['crawler', 'claude'];

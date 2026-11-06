@@ -29,3 +29,5 @@ export * from './imageAudit';
 export * from './batches';
 export * from './fixGuide';
 export * from './seoAssess';
+export * from './google';
+export * from './devTeam';

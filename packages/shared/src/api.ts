@@ -10,6 +10,14 @@ import type {
 } from './types';
 import type { LighthouseFormFactor, LighthouseRun, LighthouseStatus } from './lighthouse';
 import type {
+  CwvReport, CwvSiteSettings, Ga4PropertyOption, Ga4Report, GoogleHistoryPoint, GoogleProduct, GoogleSiteMapping, GoogleStatus, GoogleTestResult,
+  GscInspection, GscReport, GscSiteOption, ReportCompare, ReportRange,
+} from './google';
+import type {
+  DevInviteResult, DevTaskFilter, DevTaskInput, DevTaskStatus, DevTaskView, DevTeamMember, DevTeamMemberInput, DevTeamOverview, TeamReminder,
+  TeamReminderInput, TeamRolePermissions,
+} from './devTeam';
+import type {
   SeoBulkItemsPage, SeoBulkJob, SeoBulkStartInput, SeoOptimizationField, SeoOptimizationPage, SeoOptimizationQuery,
   ShopifyApplyBatchResult, ShopifyApplyPreview, ShopifyDraft, ShopifyResolveResult, ShopifyResourceKind, ShopifyResourceList, ShopifyStatus,
   ShopifyTheme, ShopifyThemeFile, ShopifyThemeProposal,
@@ -311,6 +319,52 @@ export interface SentinelApi {
   updateClaudeModel(input: { model: string }): Promise<ClaudeStatus>;
   /** Removes the stored key. */
   disconnectClaude(): Promise<ClaudeStatus>;
+  // ---- Google (Integrations → Google): OAuth client, accounts, PSI key, this website's mapping. Secrets never returned.
+  /** `origin` = the address the browser uses (for the redirect URI when no app address is configured). */
+  getGoogleStatus(origin?: string): Promise<GoogleStatus>;
+  saveGoogleOAuthClient(input: { clientId: string; clientSecret?: string; appUrl?: string; origin?: string }): Promise<GoogleStatus>;
+  removeGoogleOAuthClient(): Promise<GoogleStatus>;
+  /** Google sign-in URL to open (connect a new account, or reconnect `accountId`). */
+  startGoogleOAuth(input: { origin?: string; accountId?: string }): Promise<{ authorizeUrl: string; redirectUri: string }>;
+  testGoogleAccount(id: string): Promise<GoogleTestResult>;
+  disconnectGoogleAccount(id: string): Promise<GoogleStatus>;
+  listGa4Properties(accountId: string): Promise<Ga4PropertyOption[]>;
+  listGscSites(accountId: string): Promise<GscSiteOption[]>;
+  setGoogleMapping(product: GoogleProduct, input: { accountId: string; property: string }): Promise<{ mapping: GoogleSiteMapping; test: GoogleTestResult }>;
+  clearGoogleMapping(product: GoogleProduct): Promise<GoogleSiteMapping>;
+  testGoogleMapping(product: GoogleProduct): Promise<GoogleTestResult>;
+  savePsiKey(apiKey: string): Promise<GoogleStatus>;
+  removePsiKey(): Promise<GoogleStatus>;
+  testPsi(): Promise<GoogleTestResult>;
+  saveCwvSettings(input: { urls: string[]; autoDaily: boolean }): Promise<CwvSiteSettings>;
+  // ---- Google insights (reports of the current website)
+  getGa4Report(q: { range: ReportRange; compare: ReportCompare; force?: boolean }): Promise<Ga4Report>;
+  getGscReport(q: { range: ReportRange; compare: ReportCompare; force?: boolean }): Promise<GscReport>;
+  inspectGscUrl(url: string): Promise<GscInspection>;
+  getGoogleHistory(days: number): Promise<GoogleHistoryPoint[]>;
+  getCwvReport(): Promise<CwvReport>;
+  runCwv(): Promise<{ started: boolean; tests: number }>;
+
+  // ---- Development Team
+  getDevTeamOverview(): Promise<DevTeamOverview>;
+  listDevTeamMembers(): Promise<DevTeamMember[]>;
+  inviteDevTeamMember(input: DevTeamMemberInput & { origin?: string }): Promise<DevInviteResult>;
+  updateDevTeamMember(id: string, input: Partial<DevTeamMemberInput>): Promise<DevTeamMember>;
+  setDevTeamMemberStatus(id: string, status: 'active' | 'suspended'): Promise<DevTeamMember>;
+  resendDevTeamInvite(id: string, origin?: string): Promise<DevInviteResult>;
+  removeDevTeamMember(id: string): Promise<{ removed: true; unassigned: number }>;
+  getDevTeamRoles(): Promise<TeamRolePermissions[]>;
+  updateDevTeamRole(role: string, permissions: string[]): Promise<TeamRolePermissions[]>;
+  listDevTeamWebsites(): Promise<{ id: string; name: string }[]>;
+  listDevTasks(f?: DevTaskFilter): Promise<DevTaskView[]>;
+  getDevTask(id: string): Promise<DevTaskView>;
+  createDevTask(input: DevTaskInput): Promise<DevTaskView>;
+  updateDevTask(id: string, patch: Partial<DevTaskInput> & { status?: DevTaskStatus }): Promise<DevTaskView>;
+  commentDevTask(id: string, text: string): Promise<DevTaskView>;
+  deleteDevTask(id: string): Promise<{ deleted: true }>;
+  listTeamReminders(): Promise<TeamReminder[]>;
+  sendTeamReminder(input: TeamReminderInput): Promise<TeamReminder>;
+
   getShopifyStatus(): Promise<ShopifyStatus>;
   /** Starts OAuth: returns the Shopify authorize URL to open (state is single-use and expires in 10 minutes). */
   startShopifyOAuth(shop: string): Promise<{ authorizeUrl: string }>;
@@ -456,6 +510,7 @@ export interface SentinelApi {
   // notifications
   listNotifications(): Promise<Notification[]>;
   markNotificationRead(id: string | 'all'): Promise<void>;
+  markNotificationUnread(id: string): Promise<void>;
   listDeliveries(): Promise<DeliveryAttempt[]>;
   updateAlertRules(rules: AlertRule[]): Promise<AlertRule[]>;
 

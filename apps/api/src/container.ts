@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import path from 'node:path';
-import { ADMIN_PERMISSIONS, ALL_PERMISSIONS, PRIMARY_WEBSITE_ID, defaultConfig, setPriorityConfig, type Role } from '@sentinel/shared';
+import { ADMIN_PERMISSIONS, ALL_PERMISSIONS, PRIMARY_WEBSITE_ID, TEAM_AND_GOOGLE_PERMISSIONS, type Permission, defaultConfig, setPriorityConfig, type Role } from '@sentinel/shared';
 import type { Env } from './config/env';
 import { createLogger, type Logger } from './lib/logger';
 import { hashPassword, passwordPolicyError, randomToken } from './lib/passwords';
@@ -16,6 +16,9 @@ import { createShopifyService } from './shopify/service';
 import { createMonitorService } from './monitor/monitor';
 import { createSecretBox } from './security/secretBox';
 import { createClaudeService, type ClaudeService } from './ai/service';
+import { createGoogleCore, type GoogleCore } from './google/core';
+import { createGoogleSiteService, type GoogleSiteService } from './google/site';
+import { createDevTeamService } from './team/service';
 import { isLocalHost } from './crawler/url';
 import { createReverifier } from './analysis/reverify';
 import { crawlerUserAgent } from './connectors/connectors';
@@ -57,6 +60,8 @@ export interface ContainerOptions {
   scope?: string;
   /** Claude AI connection shared by every website (created by the primary website's container). */
   claude?: ClaudeService;
+  /** Google connections (OAuth client, accounts, PSI key) shared by every website (created by the primary website's container). */
+  googleCore?: GoogleCore;
 }
 
 /** Composition root: wires PostgreSQL-backed or in-memory repositories → adapters → services. No storage implementation leaks into services. */
@@ -99,6 +104,18 @@ export async function createContainer(o: ContainerOptions) {
     upgradedRoles = !matrix.super_admin;
     if (upgradedRoles) await repos.permissions.set({ ...matrix, super_admin: [...ALL_PERMISSIONS], admin: [...ADMIN_PERMISSIONS] });
   }
+  {
+    // Google connections, Google insights and the Development Team (added Nov 2026): a stored matrix from before gets
+    // them once — Admin manages them; SEO Specialists see the reports and their tasks; Developers see their tasks.
+    const matrix = await repos.permissions.get();
+    if (!(matrix.super_admin ?? []).includes('google.manage')) {
+      const add = (role: Role, perms: Permission[]) => [...new Set([...(matrix[role] ?? []), ...perms])];
+      await repos.permissions.set({
+        ...matrix, super_admin: add('super_admin', TEAM_AND_GOOGLE_PERMISSIONS), admin: add('admin', TEAM_AND_GOOGLE_PERMISSIONS),
+        seo_specialist: add('seo_specialist', ['analytics.view', 'devteam.view']), developer: add('developer', ['devteam.view']),
+      });
+    }
+  }
   if (!o.repos && env.ADMIN_EMAIL && env.ADMIN_INITIAL_PASSWORD && (await repos.employees.count()) === 0) {
     await bootstrapAdmin(repos, env, clock());
     log.info({ email: env.ADMIN_EMAIL }, 'created the first account (Super Admin) from ADMIN_EMAIL (password from ADMIN_INITIAL_PASSWORD — change it after first sign-in)');
@@ -138,7 +155,20 @@ export async function createContainer(o: ContainerOptions) {
     repos, box: createSecretBox(env), fetchImpl: fetchImpl ?? ((input, init) => fetch(input, init)), clock, log,
     audit: async (actor, action, summary) => { await claudeAudit.fn?.(actor, action, summary); },
   });
-  const integrations = createIntegrationRegistry({ env, repos, connectors, clock, log, external: { claude: () => claude.status() } });
+  // Google: one set of connections for the server (stored with the primary website); each website maps its own properties.
+  const googleAudit: { fn?: (actor: { id: string; name: string }, action: string, entityId: string, summary: string) => Promise<void> } = {};
+  const googleCore: GoogleCore = o.googleCore ?? createGoogleCore({
+    repos, box: createSecretBox(env), env, fetchImpl: fetchImpl ?? ((input, init) => fetch(input, init)), clock, log,
+    audit: async (actor, action, entityId, summary) => { await googleAudit.fn?.(actor, action, entityId, summary); },
+  });
+  const googleRef: { svc?: GoogleSiteService } = {};
+  const integrations = createIntegrationRegistry({
+    env, repos, connectors, clock, log, external: { claude: () => claude.status() },
+    override: {
+      status: async (id) => googleRef.svc?.overrideStatus(id),
+      test: async (id) => (googleRef.svc ? googleRef.svc.overrideTest(id) : false),
+    },
+  });
   const adapters = createDeliveryAdapters(env, fetchImpl, { mailTransport: o.mailTransport });
   const delivery = createDeliveryService({ repos, adapters, clock, log, retry: o.retry });
   const taskOps = createTaskOpsAdapter({ env, fetchImpl, appBaseUrl: env.APP_BASE_URL });
@@ -202,7 +232,13 @@ export async function createContainer(o: ContainerOptions) {
     previous: () => latestState,
   });
 
-  const ctx: Ctx = { env, repos, log, clock, integrations, delivery, taskOps, llm, engine, engineInfo, reverifier, sessionSecret: env.SESSION_SECRET ?? randomToken(32), persistence: o.persistence, scope };
+  const ctx: Ctx = {
+    env, repos, log, clock, integrations, delivery, taskOps, llm, engine, engineInfo, reverifier, sessionSecret: env.SESSION_SECRET ?? randomToken(32), persistence: o.persistence, scope,
+    google: { syncToken: async (p) => googleRef.svc?.syncToken(p), psiKey: () => googleCore.psiKey() },
+  };
+  const google = createGoogleSiteService(ctx, { core: googleCore, websites: () => googleCore.siteRegistry.list?.() ?? [] });
+  googleRef.svc = google;
+  if (!o.googleCore) googleAudit.fn = async (actor, action, entityId, summary) => { await audit(ctx, { ...actor, role: 'super_admin', teamIds: [], permissions: [] }, action, 'integration', entityId, summary); };
   if (!o.claude) claudeAudit.fn = async (actor, action, summary) => { await audit(ctx, { ...actor, role: 'super_admin', teamIds: [], permissions: [] }, action, 'integration', 'claude', summary); };
   const recent: ReturnType<DiagnosticsSource['recent']> = [];
   const diagnostics: DiagnosticsSource = o.diagnostics ?? { endpoints: [], recent: () => recent };
@@ -272,7 +308,9 @@ export async function createContainer(o: ContainerOptions) {
     latestCompleteRun: () => crawls.latestCompleteRun(), rowsOf: (id) => crawls.rowsOf(id), startSync: (actor, input) => crawls.startSync(actor, input),
     maxChecks: env.MONITOR_MAX_CHECKS, intervalMinutes: env.MONITOR_INTERVAL_MINUTES, maxSyncUrls: env.SYNC_MAX_URLS, schedulerEnabled: env.SCHEDULER_ENABLED,
   });
-  const scheduler = createScheduler({ ctx, crawls, issues, reports, monitor });
+  // Development Team (tasks, reminders, notifications): shared by every website; reminders run from the primary website only.
+  const devTeam = createDevTeamService(ctx, { websites: () => googleCore.siteRegistry.list?.().map((w) => ({ id: w.id, name: w.name })) ?? [] });
+  const scheduler = createScheduler({ ctx, crawls, issues, reports, monitor, cwv: { tick: () => google.cwvTick() }, ...(scope === PRIMARY_WEBSITE_ID ? { team: { tick: async () => { await devTeam.reminderTick(); } } } : {}) });
   schedulerRef = scheduler;
 
   /** Keep the reverifier's tier lookup and crawl baseline fresh. */
@@ -290,8 +328,9 @@ export async function createContainer(o: ContainerOptions) {
     env, log, clock, repos, ctx, diagnostics, recent, persistence: o.persistence, scope,
     /** Injected outbound fetch (tests); undefined in production → adapters use global fetch. */
     fetchImpl,
-    services: { auth, tasks, issues, rules, crawls, changes, captures, imageAudits, reports, insights, admin, lighthouse, shopify, monitor },
+    services: { auth, tasks, issues, rules, crawls, changes, captures, imageAudits, reports, insights, admin, lighthouse, shopify, monitor, google, devTeam },
     claude,
+    googleCore,
     scheduler,
     refreshVerifierInputs,
     runEscalations: () => runEscalations(ctx, issues),

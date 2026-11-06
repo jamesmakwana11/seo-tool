@@ -5,7 +5,7 @@ export const ROLES: Role[] = ['super_admin', 'admin', 'seo_specialist', 'develop
 
 export const ROLE_HELP: Record<Role, string> = {
   super_admin: 'Full access, including audit modules, opportunities, reporting, team, roles and configuration.',
-  admin: 'Overview and SEO operations: dashboard, websites, issues, pages, verification, crawls, image audit and the SEO editor.',
+  admin: 'Overview and SEO operations (dashboard, websites, issues, pages, verification, crawls, image audit, SEO editor), Google connections and insights, and the Development Team.',
   seo_specialist: 'Allocates issues, reviews work, triggers re-verification.',
-  developer: 'Works issues allocated to their team: start work and mark fixed; cannot allocate or verify.',
+  developer: 'Works issues allocated to their team and their Development Team tasks: start work and mark fixed; cannot allocate or verify.',
 };

@@ -110,6 +110,16 @@ export async function guardedSync(
 // ---------------------------------------------------------------------------------------------- HTTP helpers
 
 export async function googleToken(ctx: Ctx, deps: SyncDeps, label: string, rawJson: string | undefined, scope: string): Promise<string> {
+  // A website mapped to a Google account on the Integrations screen uses that account (OAuth) instead of the service account.
+  const product = scope === GSC_SCOPE ? 'gsc' : scope === GA4_SCOPE ? 'ga4' : undefined;
+  if (product && ctx.google) {
+    try {
+      const t = await ctx.google.syncToken(product);
+      if (t) return t;
+    } catch (e) {
+      throw new SyncError(`${label}: ${(e as Error).message}`);
+    }
+  }
   const sa = parseServiceAccount(rawJson);
   if ('error' in sa) throw new SyncError(`${label}: ${sa.error}`);
   const auth = deps.googleAuth ?? createGoogleAuth({ fetchImpl: deps.fetchImpl ?? defaultFetch, clock: ctx.clock });

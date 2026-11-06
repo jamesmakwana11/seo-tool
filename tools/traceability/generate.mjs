@@ -61,6 +61,8 @@ const sections = [
   ['Prompt §9 · Backend', (r) => r.id.startsWith('CUS-BE-')],
   ['Owner request · Website sync, 10,000-page Smart crawl, production-only app', (r) => r.id.startsWith('CUS-SYNC-')],
   ['Owner request · AI SEO suggestions, Fix All, Claude AI', (r) => r.id.startsWith('CUS-AI-')],
+  ['Owner request · Google integrations (GA4, Search Console, Core Web Vitals)', (r) => r.id.startsWith('CUS-GOOG-')],
+  ['Owner request · Development Team, tasks, reminders and notifications', (r) => r.id.startsWith('CUS-TEAM-')],
   ['Prompt §2/§7/§9/§14 · Documentation, process & database gate', (r) => r.id.startsWith('CUS-DOC-') || r.id.startsWith('CUS-DB-')],
 ];
 

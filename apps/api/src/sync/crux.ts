@@ -45,8 +45,8 @@ function topPage(pages: SitePage[], template: PageTemplate): SitePage | undefine
 export async function cruxCwv(ctx: Ctx, deps: SyncDeps = {}): Promise<SyncResult> {
   return guardedSync(ctx, 'psi_crux', deps, async () => {
     const label = 'Chrome UX Report API';
-    const key = ctx.env.GOOGLE_API_KEY;
-    if (!key) throw new SyncError(`${label}: GOOGLE_API_KEY is not set`);
+    const key = (await ctx.google?.psiKey()) ?? ctx.env.GOOGLE_API_KEY;
+    if (!key) throw new SyncError(`${label}: no Google API key — enter one under Integrations → Google (PageSpeed Insights) or set GOOGLE_API_KEY`);
     const fetchImpl = deps.fetchImpl ?? defaultFetch;
     const cfg = await ctx.repos.config.get();
     const th: CwvThresholds = { ...DEFAULT_CWV_THRESHOLDS, ...pick(cfg.thresholds) };

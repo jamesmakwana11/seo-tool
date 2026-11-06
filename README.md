@@ -18,6 +18,10 @@ Change Monitor (crawl-to-crawl changes, screenshots, rendered HTML / CSS / JS / 
 Website sync (Sync Now, Auto Sync every 12 hours — crawl only new and changed pages after the first crawl): `docs/WEBSITE_SYNC.md`.
 Roles (Super Admin: every section; Admin: Overview and SEO operations): `docs/ROLES.md`.
 AI SEO suggestions with Claude and Fix All across every field: `docs/AI_SEO.md`.
+
+Google Analytics 4, Search Console and Core Web Vitals (connected from the Integrations screen, reports per website): `docs/GOOGLE_INTEGRATIONS.md`.
+
+Development Team — members, invitations, tasks, reminders and notifications: `docs/DEVELOPMENT_TEAM.md`.
 Run locally with live crawling: `LOCAL_CRAWLING.md`. Deployment (Docker, env vars, production checks, PostgreSQL status): `DEPLOYMENT.md`.
 
 Status documents: `FEATURE_TRACEABILITY.md` (generated: `npm run traceability`), `FRONTEND_STATUS.md`, `BACKEND_STATUS.md`.

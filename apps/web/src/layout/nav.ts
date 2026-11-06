@@ -5,6 +5,7 @@ import {
   Sparkles, ShieldCheck, Bot, Lightbulb, Search, Layers, CalendarRange, Swords, Megaphone, AtSign, Newspaper, CalendarDays, CalendarClock,
   History, Bell, Plug, SlidersHorizontal, Settings2, ScrollText, Activity, Terminal, ListChecks, KeyRound, ArrowLeftRight, BadgeCheck,
   Ban, Network, PencilRuler, Store, FilePenLine, Wand2, Heading1, Type, AlignLeft, Image as ImageIcon, Tags,
+  LineChart, SearchCheck, Timer, UsersRound, ClipboardList, ListTodo, BellRing,
 } from 'lucide-react';
 import type { Permission, Role } from '@sentinel/shared';
 
@@ -56,6 +57,23 @@ export const NAV: NavSection[] = [
     ],
   },
   {
+    id: 'insights', label: 'Google insights',
+    items: [
+      { to: '/insights/analytics', label: 'Analytics', icon: LineChart, perm: 'analytics.view' },
+      { to: '/insights/search-console', label: 'Search Console', icon: SearchCheck, perm: 'analytics.view' },
+      { to: '/insights/core-web-vitals', label: 'Core Web Vitals', icon: Timer, perm: 'analytics.view' },
+    ],
+  },
+  {
+    id: 'devteam', label: 'Development team',
+    items: [
+      { to: '/dev-team', label: 'Team overview', icon: UsersRound, perm: 'devteam.manage', end: true },
+      { to: '/dev-team/tasks', label: 'Tasks', icon: ClipboardList, perm: 'devteam.manage' },
+      { to: '/dev-team/my-tasks', label: 'My tasks', icon: ListTodo, perm: 'devteam.view' },
+      { to: '/dev-team/reminders', label: 'Reminders', icon: BellRing, perm: 'devteam.manage' },
+    ],
+  },
+  {
     id: 'modules', label: 'Audit modules', collapsible: true,
     items: [
       { to: '/modules/technical', label: 'Technical SEO', icon: Wrench, perm: 'modules.view' },
@@ -103,7 +121,7 @@ export const NAV: NavSection[] = [
   {
     id: 'configuration', label: 'Configuration', collapsible: true,
     items: [
-      { to: '/settings/integrations', label: 'Integrations', icon: Plug, perm: 'integrations.view' },
+      { to: '/settings/integrations', label: 'Integrations', icon: Plug, anyOf: ['integrations.view', 'google.manage'] },
       { to: '/settings/shopify', label: 'Shopify', icon: Store, perm: 'integrations.view' },
       { to: '/settings/thresholds', label: 'Thresholds & scoring', icon: SlidersHorizontal, perm: 'settings.view' },
       { to: '/settings/crawl', label: 'Crawl configuration', icon: Settings2, perm: 'settings.view' },

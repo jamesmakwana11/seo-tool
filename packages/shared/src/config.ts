@@ -33,18 +33,27 @@ export const ALL_PERMISSIONS: Permission[] = [
   'reports.export', 'rules.view', 'rules.manage', 'qa_gate.approve', 'disavow.approve', 'employees.view',
   'employees.manage', 'roles.manage', 'integrations.view', 'integrations.manage', 'settings.view',
   'settings.manage', 'notifications.configure', 'audit.view', 'system.view', 'diagnostics.view', 'shopify.edit', 'shopify.theme',
+  'google.manage', 'analytics.view', 'devteam.view', 'devteam.manage',
 ];
 
+/** Added Nov 2026: Google connections, Google insights reports and the Development Team section. */
+export const TEAM_AND_GOOGLE_PERMISSIONS: Permission[] = ['google.manage', 'analytics.view', 'devteam.view', 'devteam.manage'];
+
 /**
- * Admin: the Overview and SEO operations sections only (dashboard, websites, health score, issues board, all pages,
- * verification, crawl center, image audit, SEO editor, SEO optimization). No audit modules, opportunities, reporting,
- * team or configuration.
+ * Admin: the Overview and SEO operations sections (dashboard, websites, health score, issues board, all pages,
+ * verification, crawl center, image audit, SEO editor, SEO optimization), plus Google connections (GA4, Search Console,
+ * PageSpeed Insights) and their reports, and the Development Team (members, roles of team members, tasks, reminders).
+ * No audit modules, opportunities, reporting, the Team / Roles pages or the rest of Configuration.
  */
 export const ADMIN_PERMISSIONS: Permission[] = [
   'dashboard.view', 'issues.view', 'issues.allocate', 'issues.update_status', 'issues.verify', 'issues.mark_not_issue', 'websites.manage',
   'fixcards.approve_proposal', 'tasks.view_all', 'tasks.view_team', 'tasks.create', 'tasks.assign', 'tasks.update_own', 'tasks.review',
   'tasks.cancel', 'tasks.verify_trigger', 'crawls.view', 'crawls.run', 'crawls.configure', 'shopify.edit', 'shopify.theme',
+  ...TEAM_AND_GOOGLE_PERMISSIONS,
 ];
+
+/** Roles the Development Team section manages (an Admin cannot create or promote Admins / Super Admins there). */
+export const TEAM_MEMBER_ROLES = ['developer', 'seo_specialist'] as const;
 
 /**
  * Default role → permission matrix (prompt §4.3). The Super Admin can edit it at runtime
@@ -59,11 +68,11 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     'tasks.update_own', 'tasks.review', 'tasks.cancel', 'tasks.verify_trigger', 'crawls.view', 'crawls.run',
     'modules.view', 'opportunities.view', 'opportunities.manage', 'reports.view', 'reports.export',
     'rules.view', 'rules.manage', 'qa_gate.approve', 'disavow.approve', 'employees.view', 'settings.view',
-    'settings.manage', 'notifications.configure', 'integrations.view', 'audit.view', 'shopify.edit',
+    'settings.manage', 'notifications.configure', 'integrations.view', 'audit.view', 'shopify.edit', 'analytics.view', 'devteam.view',
   ],
   developer: [
     'dashboard.view', 'issues.view', 'issues.update_status', 'tasks.view_team', 'tasks.update_own', 'crawls.view', 'modules.view',
-    'reports.view', 'employees.view', 'diagnostics.view', 'system.view', 'shopify.theme',
+    'reports.view', 'employees.view', 'diagnostics.view', 'system.view', 'shopify.theme', 'devteam.view',
   ],
 };
 

@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError, INTEGRATION_CATALOG, normalizeIntegrationProperty, type IntegrationId, type IntegrationStatus, type ShopifyStatus } from '@sentinel/shared';
 
 /**
- * Integrations: three permanent cards (Site crawler, GSC, GA4), every other integration one at a time from a dropdown,
+ * Integrations: the Google section, two permanent cards (Site crawler, Claude AI), every other integration one at a time from a dropdown,
  * the GSC / GA4 property saved through the API; Shopify: clear setup errors and .myshopify.com validation. Mocked API.
  */
 const fake = vi.hoisted(() => ({
@@ -52,6 +52,13 @@ vi.mock('@/api/client', () => ({
       return fake.shopify;
     },
     removeShopifyAppCredentials: async () => fake.shopify,
+    getGoogleStatus: async () => ({
+      canStore: true, persistent: true, oauth: { configured: false, secretSet: false, source: 'none', appUrlSource: 'none', problem: 'Enter the Client ID.' }, accounts: [],
+      psi: { connected: false, keySource: 'none' }, website: { id: 'site-deodap', name: 'DeoDap', url: 'https://deodap.in' },
+      ga4: { product: 'ga4', via: 'none', state: 'not_mapped', stateDetail: 'No GA4 property chosen for this website yet.' },
+      gsc: { product: 'gsc', via: 'none', state: 'not_mapped', stateDetail: 'No Search Console property chosen for this website yet.' },
+      cwv: { urls: [], autoDaily: true },
+    }),
   },
 }));
 vi.mock('@/auth/AuthContext', () => ({ useAuth: () => ({ can: () => true }) }));
@@ -73,18 +80,19 @@ function show(el: JSX.Element) {
 const cardTitles = (root: HTMLElement) => within(root).getAllByRole('heading').map((h) => h.textContent);
 
 describe('Integrations screen', () => {
-  it('always shows Site crawler, GSC and GA4; the others one at a time from the dropdown', async () => {
+  it('shows the Google section, always shows Site crawler and Claude AI, and the others one at a time from the dropdown', async () => {
     show(<IntegrationsPage />);
+    expect(await screen.findByTestId('google-section')).toBeTruthy();
     const primary = await screen.findByTestId('primary-integrations');
-    expect(cardTitles(primary)).toEqual(['Site crawler', 'Google Search Console API', 'Google Analytics 4 API']);
+    expect(cardTitles(primary)).toEqual(['Site crawler', 'Claude AI (Anthropic)']);
     // No additional card until one is chosen.
     expect(screen.queryByTestId('selected-integration')).toBeNull();
     const picker = screen.getByTestId('integration-picker') as HTMLSelectElement;
     const options = [...picker.options].map((o) => o.value).filter(Boolean);
     expect(options).not.toContain('crawler');
-    expect(options).not.toContain('gsc');
-    expect(options).not.toContain('ga4');
-    expect(options).toEqual(expect.arrayContaining(['psi_crux', 'shopify', 'openai', 'slack']));
+    expect(options).not.toContain('claude');
+    // The service-account GSC / GA4 cards stay available.
+    expect(options).toEqual(expect.arrayContaining(['gsc', 'ga4', 'psi_crux', 'shopify', 'openai', 'slack']));
 
     fireEvent.change(picker, { target: { value: 'shopify' } });
     let chosen = await screen.findByTestId('selected-integration');
@@ -94,7 +102,7 @@ describe('Integrations screen', () => {
     chosen = await screen.findByTestId('selected-integration');
     expect(cardTitles(chosen)).toEqual(['OpenAI API']);
     expect(screen.queryByText('Shopify Admin API + webhooks')).toBeNull();
-    expect(cardTitles(screen.getByTestId('primary-integrations'))).toHaveLength(3);
+    expect(cardTitles(screen.getByTestId('primary-integrations'))).toHaveLength(2);
     // Back to none.
     fireEvent.change(picker, { target: { value: '' } });
     await waitFor(() => expect(screen.queryByTestId('selected-integration')).toBeNull());
@@ -104,6 +112,7 @@ describe('Integrations screen', () => {
     fake.updates = [];
     fake.settings = {};
     show(<IntegrationsPage />);
+    fireEvent.change(await screen.findByTestId('integration-picker'), { target: { value: 'gsc' } });
     const gsc = await screen.findByTestId('property-gsc');
     expect(within(screen.getByTestId('property-source-gsc')).getByText(/No property yet/)).toBeTruthy();
     const input = within(gsc).getByLabelText('Search Console property');
@@ -117,7 +126,8 @@ describe('Integrations screen', () => {
     // The property alone is not presented as a connection.
     expect(screen.getByTestId('property-source-gsc').textContent).toMatch(/service-account key/);
 
-    const ga4 = screen.getByTestId('property-ga4');
+    fireEvent.change(screen.getByTestId('integration-picker'), { target: { value: 'ga4' } });
+    const ga4 = await screen.findByTestId('property-ga4');
     const pid = within(ga4).getByLabelText('GA4 property ID');
     fireEvent.change(pid, { target: { value: 'G-ABC123' } });
     expect(within(ga4).getByRole('alert').textContent).toMatch(/Measurement ID/);

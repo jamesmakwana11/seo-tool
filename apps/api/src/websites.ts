@@ -126,7 +126,10 @@ export function createWorkspaces(primary: Container) {
     const now = primary.clock();
     const repos: Repositories = db ? await db.repositories(w.id, now, { shared: false }) : createInMemoryRepositories(now);
     const p = primary.repos;
-    Object.assign(repos, { employees: p.employees, credentials: p.credentials, resetTokens: p.resetTokens, sessions: p.sessions, permissions: p.permissions });
+    Object.assign(repos, {
+      employees: p.employees, credentials: p.credentials, resetTokens: p.resetTokens, sessions: p.sessions, permissions: p.permissions,
+      devTasks: p.devTasks, teamReminders: p.teamReminders, teamNotifications: p.teamNotifications,
+    });
     if (isNew) {
       const cfg = defaultConfig(now);
       cfg.site = { ...cfg.site, baseUrl: w.url.replace(/\/$/, ''), canonicalHost: w.domain, brand: w.name, platform: w.platform };
@@ -139,9 +142,18 @@ export function createWorkspaces(primary: Container) {
     return createContainer({
       env: { ...primary.env, CRAWLER_BASE_URL: w.url.replace(/\/$/, ''), SEED_TEST_FIXTURES: false },
       repos, log: primary.log, clock: primary.clock, fetchImpl: primary.fetchImpl, diagnostics: primary.diagnostics,
-      persistence: db, scope: w.id, claude: primary.claude,
+      persistence: db, scope: w.id, claude: primary.claude, googleCore: primary.googleCore,
     });
   }
+
+  // Google accounts show which websites use them.
+  primary.googleCore.siteRegistry.list = () => websites.filter((w) => containers.has(w.id)).map((w) => {
+    const c = containers.get(w.id)!;
+    return {
+      id: w.id, name: w.name,
+      settings: async () => ({ ga4: (await c.repos.integrationSettings.get('ga4'))?.settings, gsc: (await c.repos.integrationSettings.get('gsc'))?.settings }),
+    };
+  });
 
   const stopPrimary = primary.scheduler.stop.bind(primary.scheduler);
   primary.scheduler.stop = () => { stopPrimary(); for (const c of containers.values()) if (c !== primary) c.scheduler.stop(); };

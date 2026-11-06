@@ -96,7 +96,7 @@ Required in production:
 | `DATABASE_WAIT_SECONDS` | optional: how long start-up waits for the database (default 60) |
 | `ALLOW_EPHEMERAL_STORAGE` | only without a database: `true` acknowledges that all data is lost on restart (staging only) |
 | `ADMIN_EMAIL`, `ADMIN_INITIAL_PASSWORD` | first account, a **Super Admin** (password ≥ 10 chars, letters + numbers); optional `ADMIN_NAME`. On a server started before the Super Admin role, this account becomes Super Admin |
-| `SITE_ADMIN_EMAIL`, `SITE_ADMIN_INITIAL_PASSWORD` | optional **Admin** account (Overview and SEO operations only), created at start-up when no employee has that email; never changed afterwards (at least 8 characters; a warning is logged when it is simpler than the rule above). Optional `SITE_ADMIN_NAME` |
+| `SITE_ADMIN_EMAIL`, `SITE_ADMIN_INITIAL_PASSWORD` | optional **Admin** account (Overview, SEO operations, Google connections / insights and the Development Team), created at start-up when no employee has that email; never changed afterwards (at least 8 characters; a warning is logged when it is simpler than the rule above). Optional `SITE_ADMIN_NAME` |
 | `APP_BASE_URL` | the public HTTPS URL, used in alert/digest links |
 
 Crawling and scheduling (needed for real audits):
@@ -193,7 +193,18 @@ fallback; credentials saved in the app take precedence for that website. If your
 `/seo-tool`, also set `APP_BASE_URL=https://apps.deodap.info/seo-tool` so the web app itself loads under that path
 (otherwise the saved App URL is enough).
 
-**Google Search Console / GA4** — one-time setup: create a Google Cloud service account, enable the *Search Console API*
+**Google Analytics 4, Search Console, Core Web Vitals (recommended route, no server settings)** — one-time Google Cloud
+step that cannot be skipped: create an OAuth client (type *Web application*) with the Authorized redirect URI shown under
+Settings → Integrations → Google (`<Sentinel address>/api/google/oauth/callback`, e.g.
+`https://apps.deodap.info/seo-tool/api/google/oauth/callback`), publish the OAuth consent screen (or make it Internal),
+enable the *Google Analytics Admin API*, *Google Analytics Data API*, *Google Search Console API* and *PageSpeed Insights
+API*, and create an API key for PageSpeed Insights. Everything else happens in the app: Client ID / secret and the API
+key are entered on the screen (stored encrypted, like the Shopify credentials — same `SESSION_SECRET` /
+`CREDENTIALS_ENCRYPTION_KEY` and `DATABASE_URL` requirement), Google accounts are connected with Google sign-in and each
+website picks its properties. Optional fallbacks: `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`,
+`GOOGLE_API_KEY`. Details: `docs/GOOGLE_INTEGRATIONS.md`.
+
+**Google Search Console / GA4 through a service account (older route, still supported)** — one-time setup: create a Google Cloud service account, enable the *Search Console API*
 and the *Google Analytics Data API* in its project, download its JSON key and set it (single line) as
 `GSC_SERVICE_ACCOUNT_JSON` / `GA4_SERVICE_ACCOUNT_JSON` in the API environment (the same key may be used for both).
 Add the service-account e-mail as an **Owner** in Search Console (Settings → Users and permissions) and as **Viewer** in

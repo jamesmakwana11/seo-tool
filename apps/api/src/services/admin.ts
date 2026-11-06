@@ -160,15 +160,23 @@ export function createAdminService(ctx: Ctx, auth: AuthService, diag: Diagnostic
     },
 
     // ---------------------------------------------------------------- notifications, deliveries, audit
+    /** This website's notifications plus the Development Team's (assignments, reminders, comments — shared by every website). */
     async listNotifications(actor: Actor) {
-      return (await r.notifications.where({ recipientId: actor.id })).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 200);
+      const [site, team] = await Promise.all([r.notifications.where({ recipientId: actor.id }), r.teamNotifications.where({ recipientId: actor.id })]);
+      return [...site, ...team].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id)).slice(0, 300);
     },
-    async markRead(actor: Actor, id: string) {
+    /** Marks one notification (or "all") read — or unread again with `unread`. */
+    async markRead(actor: Actor, id: string, unread = false) {
       let n = 0;
-      for (const x of await r.notifications.where({ recipientId: actor.id })) {
-        if ((id === 'all' || x.id === id) && !x.readAt) { await r.notifications.update({ ...x, readAt: iso() }); n++; }
+      for (const repo of [r.notifications, r.teamNotifications]) {
+        for (const x of await repo.where({ recipientId: actor.id })) {
+          if (id !== 'all' && x.id !== id) continue;
+          if (unread && x.readAt) { await repo.update({ ...x, readAt: undefined }); n++; }
+          else if (!unread && !x.readAt) { await repo.update({ ...x, readAt: iso() }); n++; }
+          else if (x.id === id) n++;
+        }
       }
-      if (id !== 'all' && n === 0 && !(await r.notifications.get(id))) throw notFound('Notification');
+      if (id !== 'all' && n === 0) throw notFound('Notification');
     },
     async listDeliveries(actor: Actor) { await need(ctx, actor, 'reports.view'); return (await r.deliveries.list()).sort((a, b) => b.at.localeCompare(a.at)); },
     async auditLog(actor: Actor, f: { q?: string; entityType?: string; actorId?: string; page?: number; pageSize?: number }) {

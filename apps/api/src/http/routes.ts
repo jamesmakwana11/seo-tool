@@ -43,7 +43,7 @@ function issueFilter(q: Request['query']): import('@sentinel/shared').IssueFilte
 /** Register one route per SentinelApi method. Order: auth → dashboard → modules → issues → tasks → crawls → opportunities → off-page → AI → reports → notifications → people → config → audit/system/search/diagnostics. */
 export function registerRoutes(routes: ApiRoute[], c: Container) {
   const { services } = c;
-  const { auth, tasks, issues, rules, crawls, changes, captures, imageAudits, reports, insights, admin, lighthouse, shopify, monitor } = services;
+  const { auth, tasks, issues, rules, crawls, changes, captures, imageAudits, reports, insights, admin, lighthouse, shopify, monitor, google, devTeam } = services;
   const add = (r: ApiRoute) => routes.push(r);
 
   // -------------------------------------------------------------- auth
@@ -235,6 +235,34 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
     method: 'get', path: '/api/shopify/oauth/callback', public: true, raw: true, description: 'Shopify OAuth callback (HMAC + single-use state verified; redirects to the app)',
     handle: async (req) => { const to = await handleOAuthCallback(req, c.env); req.res!.setHeader('Cache-Control', 'no-store'); req.res!.redirect(302, to); },
   });
+  // -------------------------------------------------------------- Google (Integrations → Google) and Google insights
+  const origin = (req: Request) => optStr(req.body?.origin) ?? optStr(req.query.origin);
+  const product = (req: Request): 'ga4' | 'gsc' => { const p = prm(req, 'product'); if (p !== 'ga4' && p !== 'gsc') throw badRequest('product must be ga4 or gsc.'); return p; };
+  add({ method: 'get', path: '/api/google/status', permission: 'google.manage', description: 'Google connections: OAuth client (never the secret), connected accounts, PageSpeed Insights key status, and this website\'s GA4 / Search Console mapping', handle: (req) => google.status(actorOf(req), origin(req)) });
+  add({ method: 'put', path: '/api/google/oauth-client', permission: 'google.manage', description: 'Save the Google OAuth client (body: clientId, clientSecret — stored encrypted, never returned —, appUrl)', handle: (req) => google.saveClient(actorOf(req), (req.body ?? {}) as Record<string, unknown>, origin(req)) });
+  add({ method: 'delete', path: '/api/google/oauth-client', permission: 'google.manage', description: 'Remove the Google OAuth client credentials', handle: (req) => google.removeClient(actorOf(req)) });
+  add({ method: 'post', path: '/api/google/oauth/start', permission: 'google.manage', description: 'Start Google sign-in to connect (or reconnect, body: accountId) a Google account → authorize URL', handle: (req) => google.startOAuth(actorOf(req), { origin: origin(req), accountId: optStr(req.body?.accountId) }) });
+  add({
+    method: 'get', path: '/api/google/oauth/callback', public: true, raw: true, description: 'Google OAuth callback (single-use state verified; stores the account\'s access encrypted; redirects to the app)',
+    handle: async (req) => { const to = await c.googleCore.completeOAuth(req.query as Record<string, unknown>, c.env.APP_BASE_URL ?? ''); req.res!.setHeader('Cache-Control', 'no-store'); req.res!.redirect(302, to); },
+  });
+  add({ method: 'post', path: '/api/google/accounts/:id/test', permission: 'google.manage', description: 'Test a connected Google account (lists the properties it can read)', handle: (req) => google.testAccount(actorOf(req), prm(req, 'id')) });
+  add({ method: 'delete', path: '/api/google/accounts/:id', permission: 'google.manage', description: 'Disconnect a Google account (revokes and removes its stored access)', handle: (req) => google.disconnectAccount(actorOf(req), prm(req, 'id')) });
+  add({ method: 'get', path: '/api/google/accounts/:id/ga4-properties', permission: 'google.manage', description: 'GA4 properties a connected account can read', handle: (req) => google.listGa4Properties(actorOf(req), prm(req, 'id')) });
+  add({ method: 'get', path: '/api/google/accounts/:id/gsc-sites', permission: 'google.manage', description: 'Search Console properties a connected account can read', handle: (req) => google.listGscSites(actorOf(req), prm(req, 'id')) });
+  add({ method: 'put', path: '/api/google/mapping/:product', permission: 'google.manage', description: 'Map this website to a Google account + GA4 property or Search Console property (body: accountId, property); tests it', handle: (req) => google.setMapping(actorOf(req), product(req), req.body ?? {}) });
+  add({ method: 'delete', path: '/api/google/mapping/:product', permission: 'google.manage', description: 'Remove this website\'s GA4 / Search Console mapping', handle: (req) => google.clearMapping(actorOf(req), product(req)) });
+  add({ method: 'post', path: '/api/google/mapping/:product/test', permission: 'google.manage', description: 'Test this website\'s GA4 / Search Console connection', handle: (req) => google.testProduct(actorOf(req), product(req)) });
+  add({ method: 'put', path: '/api/google/psi-key', permission: 'google.manage', description: 'Save the PageSpeed Insights API key (body: apiKey) after a real test run; stored encrypted, never returned', handle: (req) => google.savePsiKey(actorOf(req), req.body?.apiKey) });
+  add({ method: 'delete', path: '/api/google/psi-key', permission: 'google.manage', description: 'Remove the PageSpeed Insights API key', handle: (req) => google.removePsiKey(actorOf(req)) });
+  add({ method: 'post', path: '/api/google/psi/test', permission: 'google.manage', description: 'Test PageSpeed Insights with the stored key (one mobile run of the homepage)', handle: (req) => google.testPsi(actorOf(req)) });
+  add({ method: 'put', path: '/api/google/cwv/settings', permission: 'google.manage', description: 'Core Web Vitals pages of this website (body: urls ≤ 5, autoDaily)', handle: (req) => google.saveCwvSettings(actorOf(req), req.body ?? {}) });
+  add({ method: 'get', path: '/api/insights/ga4', permission: 'analytics.view', description: 'GA4 report of this website (query: range 7|28|90, compare previous|year, force)', handle: (req) => google.ga4Report(actorOf(req), { range: req.query.range, compare: req.query.compare, force: req.query.force }) });
+  add({ method: 'get', path: '/api/insights/gsc', permission: 'analytics.view', description: 'Search Console report of this website (query: range 7|28|90, compare previous|year, force)', handle: (req) => google.gscReport(actorOf(req), { range: req.query.range, compare: req.query.compare, force: req.query.force }) });
+  add({ method: 'post', path: '/api/insights/gsc/inspect', permission: 'analytics.view', description: 'Search Console URL inspection of one page (body: url)', handle: (req) => google.inspectUrl(actorOf(req), req.body?.url) });
+  add({ method: 'get', path: '/api/insights/history', permission: 'analytics.view', description: 'Stored daily GA4 / Search Console totals (query: days ≤ 480)', handle: (req) => google.historyPoints(actorOf(req), req.query.days) });
+  add({ method: 'get', path: '/api/insights/cwv', permission: 'analytics.view', description: 'Core Web Vitals of this website: latest mobile / desktop results and history', handle: (req) => google.cwvReport(actorOf(req)) });
+  add({ method: 'post', path: '/api/insights/cwv/run', permission: 'analytics.view', description: 'Run PageSpeed Insights now for this website\'s Core Web Vitals pages (mobile + desktop)', handle: (req) => google.startCwv(actorOf(req)) });
   add({ method: 'get', path: '/api/monitor', permission: 'crawls.view', description: 'Incremental monitoring: last run, open errors and recent changes (new pages, SEO changes, errors, resolved)', handle: (req) => monitor.get(actorOf(req)) });
   add({ method: 'post', path: '/api/monitor/run', permission: 'crawls.run', description: 'Sync Now: find new, changed and removed URLs (sitemaps, Shopify updates, webhooks, ETag / content checks) and crawl only those', handle: (req) => monitor.run(actorOf(req)) });
   add({ method: 'patch', path: '/api/monitor/settings', permission: 'crawls.configure', description: 'Auto Sync on / off (body: autoSync)', handle: (req) => monitor.updateSettings(actorOf(req), req.body ?? {}) });
@@ -311,9 +339,31 @@ export function registerRoutes(routes: ApiRoute[], c: Container) {
   add({ method: 'get', path: '/api/reports/:kind/export', permission: 'reports.export', description: 'Export a report', raw: true, handle: async (req) => { const out = await reports.export(actorOf(req), prm(req, 'kind') as never, (optStr(req.query.format) ?? 'json') as never); const res = (req as unknown as { res: import('express').Response }).res; res.setHeader('Content-Type', out.mime); res.setHeader('Content-Disposition', `attachment; filename="${out.filename}"`); res.send(out.content); } });
   add({ method: 'post', path: '/api/reports/:kind/send', permission: 'reports.export', description: 'Send a report through configured channels', handle: (req) => reports.sendManual(actorOf(req), prm(req, 'kind') as never) });
 
+  // -------------------------------------------------------------- Development Team (members, roles, tasks, reminders)
+  const taskFilter = (q: Request['query']) => ({ status: optStr(q.status) as never, assigneeId: optStr(q.assigneeId), priority: optStr(q.priority) as never, kind: optStr(q.kind) as never, websiteId: optStr(q.websiteId), q: optStr(q.q) });
+  add({ method: 'get', path: '/api/dev-team/overview', permission: 'devteam.manage', description: 'Development Team overview: members with their work status, task counts, overdue and due-soon tasks', handle: (req) => devTeam.overview(actorOf(req)) });
+  add({ method: 'get', path: '/api/dev-team/members', permission: 'devteam.view', description: 'Development Team members with their open / overdue / completed task counts', handle: (req) => devTeam.listMembers(actorOf(req)) });
+  add({ method: 'post', path: '/api/dev-team/members', permission: 'devteam.manage', status: 201, description: 'Invite a member (body: name, email, role developer|seo_specialist, title) → one-time activation link (emailed, or returned once when email is not configured)', handle: (req) => devTeam.inviteMember(actorOf(req), req.body ?? {}) });
+  add({ method: 'patch', path: '/api/dev-team/members/:id', permission: 'devteam.manage', description: 'Edit a member (body: name, email, role, title)', handle: (req) => devTeam.updateMember(actorOf(req), prm(req, 'id'), req.body ?? {}) });
+  add({ method: 'post', path: '/api/dev-team/members/:id/status', permission: 'devteam.manage', description: 'Activate or deactivate a member (body: status active|suspended)', handle: (req) => devTeam.setMemberStatus(actorOf(req), prm(req, 'id'), req.body?.status) });
+  add({ method: 'post', path: '/api/dev-team/members/:id/resend-invite', permission: 'devteam.manage', description: 'Send a new one-time activation link', handle: (req) => devTeam.resendInvite(actorOf(req), prm(req, 'id'), optStr(req.body?.origin)) });
+  add({ method: 'delete', path: '/api/dev-team/members/:id', permission: 'devteam.manage', description: 'Remove a member from the team (account deactivated, open tasks unassigned)', handle: (req) => devTeam.removeMember(actorOf(req), prm(req, 'id')) });
+  add({ method: 'get', path: '/api/dev-team/roles', permission: 'devteam.manage', description: 'Permissions of the Developer and SEO Specialist roles, and which ones the caller may change', handle: (req) => devTeam.teamRoles(actorOf(req)) });
+  add({ method: 'put', path: '/api/dev-team/roles/:role', permission: 'devteam.manage', description: 'Set the permissions of the Developer or SEO Specialist role (body: permissions) — only permissions the caller holds', handle: (req) => devTeam.updateTeamRole(actorOf(req), prm(req, 'role'), req.body?.permissions) });
+  add({ method: 'get', path: '/api/dev-team/websites', permission: 'devteam.view', description: 'Websites a task can belong to', handle: (req) => devTeam.websites(actorOf(req)) });
+  add({ method: 'get', path: '/api/dev-team/tasks', permission: 'devteam.view', description: 'Tasks (query: status pending|in_progress|completed|overdue|open|all, assigneeId, priority, kind, websiteId, q); members see their own', handle: (req) => devTeam.listTasks(actorOf(req), taskFilter(req.query)) });
+  add({ method: 'post', path: '/api/dev-team/tasks', permission: 'devteam.manage', status: 201, description: 'Create and assign a task (body: title, description, kind, priority, dueDate, assigneeId, websiteId, issueId, url)', handle: (req) => devTeam.createTask(actorOf(req), req.body ?? {}) });
+  add({ method: 'get', path: '/api/dev-team/tasks/:id', permission: 'devteam.view', description: 'One task with comments and history', handle: (req) => devTeam.getTask(actorOf(req), prm(req, 'id')) });
+  add({ method: 'patch', path: '/api/dev-team/tasks/:id', permission: 'devteam.view', description: 'Update a task (Admin: any field; assignee: status only)', handle: (req) => devTeam.updateTask(actorOf(req), prm(req, 'id'), req.body ?? {}) });
+  add({ method: 'post', path: '/api/dev-team/tasks/:id/comments', permission: 'devteam.view', description: 'Comment on a task (body: text)', handle: (req) => devTeam.commentTask(actorOf(req), prm(req, 'id'), req.body?.text) });
+  add({ method: 'delete', path: '/api/dev-team/tasks/:id', permission: 'devteam.manage', description: 'Delete a task', handle: (req) => devTeam.deleteTask(actorOf(req), prm(req, 'id')) });
+  add({ method: 'get', path: '/api/dev-team/reminders', permission: 'devteam.manage', description: 'Reminder history (manual and automatic)', handle: (req) => devTeam.listReminders(actorOf(req), num(req.query.limit, 300)) });
+  add({ method: 'post', path: '/api/dev-team/reminders', permission: 'devteam.manage', status: 201, description: 'Send a reminder to one member or the whole team (body: to memberId|all, message, taskId)', handle: (req) => devTeam.sendReminder(actorOf(req), req.body ?? {}) });
+
   // -------------------------------------------------------------- notifications & deliveries
   add({ method: 'get', path: '/api/notifications', description: 'My notifications', handle: (req) => admin.listNotifications(actorOf(req)) });
   add({ method: 'post', path: '/api/notifications/:id/read', description: 'Mark a notification read (or all)', handle: async (req) => { await admin.markRead(actorOf(req), prm(req, 'id')); return { ok: true }; } });
+  add({ method: 'post', path: '/api/notifications/:id/unread', description: 'Mark a notification unread again', handle: async (req) => { await admin.markRead(actorOf(req), prm(req, 'id'), true); return { ok: true }; } });
   add({ method: 'get', path: '/api/deliveries', permission: 'reports.view', description: 'Delivery attempts', handle: (req) => admin.listDeliveries(actorOf(req)) });
   add({ method: 'put', path: '/api/alert-rules', permission: 'notifications.configure', description: 'Update real-time alert routing', handle: (req) => admin.updateAlertRules(actorOf(req), req.body) });
 
